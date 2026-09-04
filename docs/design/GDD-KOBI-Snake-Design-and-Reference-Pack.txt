@@ -1,0 +1,2343 @@
+KOBI SNAKE
+COMPLETE GAME DESIGN, DISCOVERY, AND VISUAL REFERENCE PACK
+Compiled from the full design conversation to date
+
+======================================================================
+TABLE OF CONTENTS
+======================================================================
+
+1. Original Game Concept
+2. Discovery Brief
+3. Core Design Principles
+4. Confirmed Game Design Decisions
+5. Comprehensive Game Design & Build Specification
+6. Open Questions / Decisions Still To Be Finalized
+7. Suggested Technical Architecture
+8. Development Roadmap / MVP
+9. Playtesting Checklist
+10. Full Concept Image Reference List
+11. Highest-Priority Image Set
+12. Detailed Image Generation Prompts
+13. Recommended Concept Image Generation Sequence
+
+======================================================================
+1. ORIGINAL GAME CONCEPT
+======================================================================
+
+GAME NAME:
+KOBI Snake
+
+ORIGINAL CATEGORY:
+Arcade / Snake
+
+ORIGINAL IDEA:
+Two snakes compete for food without hitting walls or each other.
+
+CONTROLS:
+WASD vs Arrow Keys
+
+REPLAY VALUE:
+Classic replayability, shrinking arena, special food, speed changes.
+
+OVERALL DIRECTION:
+KOBI Snake is intended to be a modern, highly replayable browser-based Snake game,
+built to work with one or two players on the same keyboard. It should require no
+online content, no mouse during actual gameplay, and should be approachable enough
+that an 11-year-old developer can understand, modify, and continue building it.
+
+The major visual experiment is to use Three.js or another browser-based 3D engine
+while preserving a top-down / bird's-eye gameplay view.
+
+======================================================================
+2. DISCOVERY BRIEF
+======================================================================
+
+PURPOSE
+
+We want to design and build a small, highly replayable web-based game called KOBI Snake.
+
+The game is inspired by the fundamental simplicity of classic Snake, but we do not
+want to simply remake Snake with prettier graphics.
+
+The goal is to create something that:
+
+- An 11-year-old can realistically understand, modify, and continue coding.
+- Is immediately fun.
+- Can be played for a few minutes or repeatedly for much longer sessions.
+- Works entirely in a web browser.
+- Requires no mouse during gameplay.
+- Supports one-player and/or local two-player gameplay.
+- Can be played by two people sharing one keyboard.
+- Has no multiplayer servers.
+- Has no online content or dependency on live services.
+- Uses a top-down / bird's-eye-view perspective.
+- Uses 3D graphics, preferably with Three.js.
+- Feels much more visually polished and dimensional than a normal browser Snake game.
+- Has enough randomness, strategy, progression, competition, and variation to retain long-term play value.
+
+This discovery process was intentionally designed not to lock every mechanic in too early.
+
+CORE GAME CONCEPT
+
+At the simplest level:
+
+KOBI Snake is a modern 3D top-down Snake game in which one or two snakes move around
+an arena, collect food or other objects, grow, avoid danger, and try to survive or
+defeat their opponent.
+
+Classic Snake should be treated as the foundation rather than the final mechanic.
+
+Mechanics considered during discovery included:
+
+- Snake growth
+- Food
+- Collision
+- Arena hazards
+- Speed changes
+- Special food
+- Power-ups
+- Shrinking arenas
+- Temporary abilities
+- Different snake behaviors
+- Different arena configurations
+- Competitive two-player mechanics
+- Survival modes
+- High scores
+- Unlocks
+- Increasing difficulty
+- Procedurally generated situations
+- Risk/reward choices
+- Combos
+- Environmental effects
+
+PRIMARY DESIGN PRINCIPLE
+
+The game should be:
+
+"Easy to understand in 10 seconds, difficult to master after 100 games."
+
+Avoid unnecessary complexity.
+
+Ideally:
+
+1. Player presses Start.
+2. Snake begins moving.
+3. Player understands almost immediately what to do.
+4. Interesting situations gradually emerge from the mechanics.
+
+The complexity should come from the interaction between simple systems rather than
+lots of buttons or rules.
+
+PLAYER AGE / DEVELOPMENT CONSTRAINT
+
+The game is being designed with an 11-year-old programmer in mind.
+
+Therefore, avoid designing mechanics that require enormous amounts of:
+
+- Animation work
+- Content creation
+- Backend development
+- Complicated AI
+- Networking
+- Physics simulation
+- Asset management
+- Advanced shaders
+- Procedural generation algorithms
+
+Favor understandable game variables such as:
+
+snake.speed
+snake.length
+snake.score
+food.type
+food.value
+arena.size
+powerup.duration
+game.difficulty
+
+over overly abstract architectures.
+
+PLATFORM
+
+Target:
+Desktop web browser
+
+Possible technology:
+
+- HTML
+- CSS
+- JavaScript
+- Three.js
+- Web Audio API
+- LocalStorage
+
+There should be:
+
+- No required account
+- No login
+- No server
+- No database
+- No matchmaking
+- No API calls
+- No streamed assets
+- No advertisements
+- No online leaderboard requirement
+
+Ideally, the game can continue working if the computer has no internet connection
+after the files have been loaded.
+
+CONTROLS
+
+Player 1:
+W / A / S / D
+
+Player 2:
+Arrow Up / Arrow Left / Arrow Down / Arrow Right
+
+During discovery, we considered whether players should have an additional action button
+for boost, dash, brake, shield, attack, dropping obstacles, or activating stored power-ups.
+
+The final direction so far is to keep direction controls primary, while power-ups remain
+optional and simple.
+
+CAMERA & PERSPECTIVE
+
+The game should use a top-down bird's-eye-view camera.
+
+However, it should not look like a flat 2D game.
+
+The world should feel like a miniature 3D arena viewed from above.
+
+Possible camera characteristics:
+
+- Slight perspective rather than perfectly orthographic
+- Enough tilt to see sides of objects
+- Shadows under snakes and objects
+- Visible depth and thickness
+- Smooth camera movement
+- Small camera reactions to important events
+- Slight zoom during dramatic moments
+
+Gameplay must remain extremely readable.
+
+VISUAL DIRECTION
+
+The final chosen direction is:
+
+Bright LEGO-inspired building-block toy style.
+
+The entire game should feel built from colorful modular plastic construction pieces.
+
+Everything should share the same physical visual language:
+
+- Snake
+- Food
+- Arena
+- Walls
+- Hazards
+- Power-ups
+- Particles
+- Score indicators
+- Menus
+- Game-over presentation
+- Countdown
+- Player indicators
+- Shop
+- Tutorial
+- Settings
+
+The interface should feel like it belongs to the same toy world as the game.
+
+MOVEMENT OPTIONS CONSIDERED
+
+A. Classic grid movement
+B. Smooth analog-style movement
+C. Hybrid
+
+Chosen:
+Hybrid.
+
+The snake logically moves on a grid and makes clean 90-degree turns, but its motion is
+visually interpolated so it glides smoothly rather than snapping cell by cell.
+
+GAME MODES CONSIDERED
+
+- Classic
+- Endless Survival
+- Battle Snake
+- Duel
+- Co-op Survival
+- Time Attack
+- Challenge Mode
+
+Chosen initial priority:
+Two-player Battle Snake first.
+
+Single-player should come later after the two-player core is fun.
+
+======================================================================
+3. CORE DESIGN PRINCIPLES
+======================================================================
+
+1. SIMPLE TO LEARN
+The rules should be understandable almost immediately.
+
+2. SHORT, REPLAYABLE ROUNDS
+A loss should naturally produce:
+"Again!"
+
+3. PLAYER SKILL MATTERS
+Randomness and power-ups can add variety, but should not make the game feel unfair.
+
+4. TWO-PLAYER FUN IS THE PRIMARY MVP TARGET
+The game should be designed around two people physically sharing one keyboard.
+
+5. THE CLOSING LASER ARENA IS THE SIGNATURE HOOK
+The arena forces a climax instead of allowing players to avoid each other forever.
+
+6. 3D PRESENTATION SHOULD IMPROVE FEEL, NOT HURT READABILITY
+Three.js is for character, depth, lighting, and atmosphere, not unnecessary complexity.
+
+7. SYSTEMS OVER HANDCRAFTED CONTENT
+Replayability should come from interaction between simple systems rather than hundreds
+of manually built levels.
+
+8. BUILD IN LAYERS
+Prove that the movement and battles are fun before investing heavily in art.
+
+======================================================================
+4. CONFIRMED GAME DESIGN DECISIONS
+======================================================================
+
+GAME NAME:
+KOBI Snake
+
+PRIMARY PLATFORM:
+Desktop web browser
+
+PRIMARY TECHNOLOGY:
+HTML, JavaScript, Three.js, Web Audio API, LocalStorage
+
+VISUAL STYLE:
+Bright LEGO-inspired / interlocking toy-brick aesthetic
+No need to use real LEGO branding or logos.
+
+CAMERA:
+Top-down bird's-eye 3D camera with slight perspective tilt.
+
+SNAKES:
+- Block-built toy snake appearance
+- Friendly expressive toy eyes
+- Head clearly visually distinct from body
+- Segmented body
+- Default Player 1 color: red
+- Default Player 2 color: blue
+
+MOVEMENT:
+- Grid logic
+- Smooth visual interpolation
+- Clean 90-degree turns
+- Snake continuously moves
+
+CONTROLS:
+Player 1: WASD
+Player 2: Arrow keys
+
+INITIAL DEVELOPMENT PRIORITY:
+Two-player first
+Single-player later
+
+ROUND LENGTH:
+Approximately 90 seconds
+
+SIGNATURE ENDGAME:
+At approximately 30 seconds remaining, four deadly laser walls begin closing inward.
+
+LASER BEHAVIOR:
+- Four sides of the square arena
+- Lasers squeeze toward the center
+- They kill snakes if the snake's head touches them
+- The shrinking area should create a natural climax
+- The shrink begins around the final 30 seconds
+- There should be a dramatic approximately 5-second warning when shrinking starts
+
+MATCH FORMATS:
+- Best of 1
+- Best of 3
+- Best of 5
+
+MATCH WIN CONDITIONS:
+Best of 1:
+First round decides the match.
+
+Best of 3:
+First player to win 2 rounds wins.
+
+Best of 5:
+First player to win 3 rounds wins.
+
+BETWEEN ROUNDS:
+Quick scoreboard
+Then 3-2-1-GO / next round transition
+
+COLLISION:
+- Head into another snake's body = deadly
+- Head into laser = deadly
+- Head into wall = deadly
+- Body contact by itself is not automatically deadly
+- Self-collision is recommended to behave like classic Snake, but still needs explicit final confirmation
+- Simultaneous head-on collision still needs a final rule
+
+POWER-UPS:
+Players can choose:
+Power-ups ON
+or
+Power-ups OFF
+
+INITIAL POWER-UPS:
+1. Speed Boost
+2. Slow power-up concept
+
+SPEED BOOST:
+- Duration: approximately 5 seconds
+- If active when the laser phase begins, it continues until its full duration ends
+
+POWER-UP SPAWNING:
+- Approximately every 15 seconds
+- If the previous power-up is not collected, it despawns
+- A new power-up appears
+- New location is random
+- Same location can happen by chance, but there should be no fixed pattern
+- New power-ups stop spawning when the final 30-second shrink phase begins
+
+SLOW POWER-UP:
+The concept is approved, but exact behavior is still open:
+- Slow collector?
+- Slow opponent?
+- Slow everyone except collector?
+
+FOOD:
+Normal food exists
+Exact final visual form is not yet locked
+Likely a toy-brick apple or similarly obvious pickup
+
+GROWTH:
+Food should grow the snake
+Exact amount per food is still open
+
+PLAYER COLORS:
+Default:
+- Red
+- Blue
+
+Additional colors are unlockable.
+
+PERSISTENT CURRENCY:
+Keys
+
+MATCH REWARDS:
+Best of 1 winner: 0 keys
+Best of 3 winner: 1 key
+Best of 5 winner: 2 keys
+
+Only the overall match winner gets the key reward.
+
+KEYS:
+Used to buy cosmetic snake colors / appearances.
+
+SHOP:
+- Dedicated 3D shop room
+- Mouse can be used in the shop
+- Actual snake models displayed
+- Player can buy cosmetics
+- Player can try a snake before buying
+
+TRY-BEFORE-YOU-BUY:
+- Launches a practice environment
+- Can use the snake as long as desired
+- No points / keys / rewards earned
+- Purely for testing appearance and movement
+
+PRACTICE MODE:
+Also available from main menu
+No rewards
+No pressure
+Can be used to learn controls and test snakes
+
+TUTORIAL:
+- Interactive
+- Step-by-step
+- Teaches movement
+- Teaches food/growth
+- Teaches at least one power-up
+- Teaches danger
+- Text bubbles rather than voice narration
+- Skippable
+- Replayable from main menu
+
+MUSIC:
+- Music and sound effects both included
+- Three arcade-style music tracks planned
+- User can choose among them
+
+LASER WARNING MUSIC:
+At the start of the shrink phase:
+- Approximately 5 seconds of tense/scary warning music or sting
+- Then return to the regular selected track
+- Lasers continue closing after the warning sting ends
+
+SETTINGS:
+At minimum:
+- Music On/Off
+- Sound Effects On/Off
+
+MAIN MENU:
+Planned items:
+- 1 Player
+- 2 Players
+- Practice
+- Tutorial
+- Shop
+- Settings
+
+Single Player may initially show "Coming Soon" until implemented.
+
+======================================================================
+5. COMPREHENSIVE GAME DESIGN & BUILD SPECIFICATION
+======================================================================
+
+GAME VISION
+
+KOBI Snake is a modern local multiplayer reimagining of classic Snake.
+
+The fundamental gameplay remains immediately understandable:
+
+- Snakes constantly move
+- Players steer them around an arena
+- They collect items
+- Snakes grow
+- A snake dies when its head hits something deadly
+
+The major twist is that every match has a natural climax.
+
+During the final 30 seconds of a 90-second round, four deadly laser walls surrounding
+the square arena begin closing inward.
+
+The available space becomes smaller and smaller, forcing the snakes together until
+somebody crashes.
+
+The game should feel like:
+
+"Classic Snake, but turned into a fast, colorful 3D battle game."
+
+PRIMARY DESIGN GOALS
+
+SIMPLE
+Players should understand the basic rules almost immediately.
+
+COMPETITIVE
+Two people sitting at the same keyboard should constantly create funny, tense,
+exciting situations for each other.
+
+REPLAYABLE
+Rounds are short enough that losing naturally produces:
+"Again!"
+
+VISUALLY DISTINCTIVE
+The game should not look like a normal HTML Snake game.
+
+EXPANDABLE
+Architecture should allow future:
+- Power-ups
+- Snake colors
+- Arenas
+- Game modes
+- Cosmetics
+- Music
+- Challenges
+
+UNDERSTANDABLE TO A YOUNG DEVELOPER
+The project should stay approachable.
+
+MAIN GAMEPLAY HOOK
+
+Closing Laser Arena
+
+Every standard round lasts approximately 1 minute 30 seconds.
+
+For roughly the first minute:
+Players have the full arena.
+
+When the timer reaches 30 seconds remaining:
+The endgame begins.
+
+Four laser boundaries on the top, bottom, left, and right gradually move inward.
+
+The lasers are deadly.
+
+As the walls move inward:
+- Arena becomes tighter
+- Players encounter each other more often
+- Long snakes become harder to maneuver
+- Defensive play becomes less effective
+- Match naturally builds toward confrontation
+
+PERSPECTIVE AND CAMERA
+
+Top-down / bird's-eye 3D camera.
+
+Preferred:
+Slight perspective angle rather than perfectly vertical.
+
+Enough to see:
+- Thickness of toy bricks
+- Snake body depth
+- Shadows
+- Arena edges
+- Laser structures
+- 3D food
+- 3D power-ups
+
+Priority:
+Gameplay clarity over cinematic flair.
+
+Avoid:
+- Extreme camera movement
+- Large rotations
+- Perspective distortion
+- Effects that hide collision locations
+
+CORE VISUAL DIRECTION
+
+Bright LEGO-inspired toy style.
+
+Everything appears constructed from modular molded plastic building pieces.
+
+Visual characteristics:
+- Bright colors
+- Rounded plastic surfaces
+- Visible studs and seams
+- Chunky geometry
+- Friendly proportions
+- Soft shadows
+- Strong readability
+- Exaggerated toy shapes
+- Playful animation
+
+SNAKE APPEARANCE
+
+Each snake:
+- Distinctive head
+- Toy eyes
+- Segmented body
+- Strong player color
+- Playful / non-realistic design
+
+Potential head traits:
+- Large eyes
+- Slightly raised head
+- Small mouth
+- Player color accents
+
+Head must remain easy to identify because collision rules depend on the head.
+
+SNAKE MOVEMENT
+
+Logical:
+Grid based
+
+Visual:
+Smooth interpolation
+
+Result:
+- Predictable Snake mechanics
+- Simple collision system
+- Modern motion
+- Responsive 90-degree turns
+
+PLAYER CONTROLS
+
+Player 1:
+W Up
+A Left
+S Down
+D Right
+
+Player 2:
+Arrow Up
+Arrow Left
+Arrow Down
+Arrow Right
+
+Snake moves continuously.
+
+COLLISION RULES
+
+The head is the dangerous collision point.
+
+Head into wall:
+Dead
+
+Head into closing laser:
+Dead
+
+Head into another snake's body:
+Dead
+
+Head into own body:
+Recommended dead, pending final confirmation
+
+Body against body:
+Not automatically fatal
+
+Body against arena object:
+Not automatically fatal unless that object has a specific deadly rule
+
+INITIAL GAME MODE PRIORITY
+
+Two-player first.
+
+Recommended development order:
+1. Two-player core mechanics
+2. Make two-player fun
+3. Polish two-player
+4. Add single player
+
+MATCH STRUCTURE
+
+Players choose:
+- Best of 1
+- Best of 3
+- Best of 5
+
+ROUND STRUCTURE
+
+Standard target:
+90 seconds maximum
+
+Timeline:
+
+1:30
+Round begins
+Full arena
+Power-ups may spawn if enabled
+
+Every ~15 seconds
+Power-up refresh
+
+0:30
+Closing phase begins
+Warning effect
+New power-ups stop
+Four laser walls begin moving inward
+
+Final 30 seconds
+Arena shrinks progressively
+Pressure increases
+
+ROUND VICTORY
+
+Primary round condition:
+Last snake alive wins.
+
+BETWEEN-ROUND SCOREBOARD
+
+Should show:
+- Player 1 wins
+- Player 2 wins
+- How many wins remain
+- Match format
+
+Example:
+
+BEST OF 5
+
+Blue: 2 wins
+Red: 1 win
+
+Blue needs 1 more win
+
+Then:
+3
+2
+1
+GO
+
+MATCH REWARDS
+
+Persistent currency:
+Keys
+
+Reward table:
+Best of 1 -> 0 keys
+Best of 3 -> 1 key
+Best of 5 -> 2 keys
+
+WHAT KEYS BUY
+
+Initially:
+Snake colors
+
+Possible future cosmetics:
+- Eyes
+- Hats
+- Head shapes
+- Trails
+- Body styles
+- Special themed snakes
+
+No gameplay advantages should be purchasable.
+
+SHOP
+
+3D showroom built from the same toy-block world.
+
+Possible layout:
+- Snake models on pedestals
+- Key price nearby
+- Owned/locked state
+- Buy
+- Try
+
+Mouse navigation is allowed in the shop.
+
+TRY BEFORE YOU BUY
+
+Selecting TRY launches practice.
+
+Rules:
+- No timer required
+- No match reward
+- No keys
+- No score benefit
+- Exit at any time
+
+PRACTICE MODE
+
+Available from main menu.
+
+Use cases:
+- Learn movement
+- Test controls
+- Explore arena
+- Try cosmetics
+- Experiment with power-ups
+
+No rewards.
+
+POWER-UP MODES
+
+Match setting:
+Power-ups ON / OFF
+
+Power-ups should be optional.
+
+POWER-UP TIMING
+
+If enabled:
+New power-up approximately every 15 seconds.
+
+If not collected:
+- Old disappears
+- New one appears
+- New valid location chosen randomly
+
+POWER-UPS DURING LASER PHASE
+
+At 30 seconds:
+No new power-ups.
+
+If a power-up is already active:
+It continues until its normal duration ends.
+
+INITIAL POWER-UPS
+
+1. Speed Boost
+2. Slow
+
+SPEED BOOST
+
+Approximate duration:
+5 seconds
+
+Should feel noticeably faster without becoming uncontrollable.
+
+Possible uses:
+- Escape
+- Aggressive attack
+- Riskier turns
+- Chaotic moments
+
+SLOW
+
+Exact effect not finalized.
+
+POWER-UP VISUAL LANGUAGE
+
+Each power-up should have:
+- Unique shape
+- Unique icon
+- Strong color differentiation
+- Clear animation
+- Pickup sound
+- Temporary snake effect
+
+Do not rely only on color.
+
+LASER SYSTEM
+
+Square arena has four laser boundaries:
+Top
+Bottom
+Left
+Right
+
+At first:
+Inactive / parked at perimeter
+
+At 30 seconds:
+Warning
+Then all four move inward
+
+Movement:
+Gradual and readable
+
+Visual design:
+- Bright emissive beam
+- Toy-brick emitters
+- Warning lights
+- Floor glow
+- Small particles
+- Strong sound
+- Clear collision boundary
+
+LASER WARNING SEQUENCE
+
+Approximately 5 seconds.
+
+Possible warning:
+LASERS CLOSING!
+
+Audio:
+Tense sting / siren / percussion overlay
+
+After warning:
+Normal selected music resumes
+Lasers continue closing
+
+MUSIC
+
+Launch target:
+Three arcade-style tracks
+
+Potential flavors:
+- Energetic arcade
+- Playful arcade
+- Slightly intense arcade
+
+SOUND EFFECTS
+
+Recommended:
+- Menu move
+- Menu select
+- Countdown
+- Food collection
+- Power-up appearance
+- Power-up pickup
+- Speed boost
+- Slow power-up
+- Snake growth
+- Crash
+- Laser warning
+- Laser movement
+- Round win
+- Match win
+- Key reward
+- Shop purchase
+
+SETTINGS
+
+Initial:
+Music On/Off
+Sound Effects On/Off
+
+Later:
+Possible volume sliders
+
+TUTORIAL
+
+Interactive tutorial sequence:
+
+Step 1:
+Use WASD or Arrow Keys to steer
+
+Step 2:
+Grab the food
+
+Step 3:
+Your snake grows when you collect food
+
+Step 4:
+Grab the power-up
+
+Step 5:
+Show effect
+
+Step 6:
+Explain deadly collisions
+
+Step 7:
+Show laser closing mechanic
+
+Finish:
+You're ready!
+
+TUTORIAL PRESENTATION
+
+Text bubbles / prompts
+Short
+Large
+Simple
+No long paragraphs
+No voice narration required
+
+TUTORIAL ACCESS
+
+Always replayable from main menu.
+
+TUTORIAL SKIP
+
+Should be skippable.
+
+MAIN MENU
+
+KOBI SNAKE
+
+1 PLAYER
+2 PLAYERS
+PRACTICE
+TUTORIAL
+SHOP
+SETTINGS
+
+Keyboard:
+Up/Down navigate
+Enter select
+Escape back
+
+Mouse can also be supported in menu/shop.
+
+MATCH SETUP SCREEN
+
+2 Players -> Match Setup
+
+Possible configuration:
+
+MATCH LENGTH
+Best of 1
+Best of 3
+Best of 5
+
+POWER-UPS
+ON / OFF
+
+MUSIC
+Track 1
+Track 2
+Track 3
+
+PLAYER 1
+Owned snake/color
+
+PLAYER 2
+Owned snake/color
+
+START MATCH
+
+PLAYER COLOR RULES
+
+Default:
+P1 red
+P2 blue
+
+Identical color selection should probably be prevented for readability.
+
+3D INTERFACE PHILOSOPHY
+
+Where useful:
+- KOBI SNAKE title built from blocks
+- Physical score panels
+- Shop pedestals
+- 3D countdown
+- Key models
+- Winner presentation
+
+But simple HTML overlays are acceptable when they improve:
+- Accessibility
+- Readability
+- Development speed
+
+GAME FEEL
+
+Food pickup:
+- Small pop
+- Particle burst
+- Sound
+- Body pulse
+- New segment
+
+Power-up:
+- Larger burst
+- Strong sound
+- Clear snake effect
+
+Crash:
+- Toy blocks scatter
+- Short screen shake
+- Brief slow motion
+- Crash sound
+
+Round win:
+- Winning snake celebrates
+- Scoreboard appears
+- Short musical sting
+
+Match win:
+- Larger celebration
+- Keys visibly awarded
+- Winner shown prominently
+
+FOOD
+
+Version 1 can use one normal pickup.
+
+Purpose:
+- Encourage movement
+- Grow snake
+- Create competition
+
+Visual candidates:
+- Toy-brick apple
+- Bright food block
+- Fruit-like construction piece
+
+GROWTH
+
+Food increases snake length.
+
+This creates a useful tension:
+Longer snake = more successful
+Longer snake = harder to maneuver when lasers close
+
+SCORING PHILOSOPHY
+
+Two-player competition should focus on:
+Round wins
+
+Persistent progression:
+Keys
+
+Keep concepts simple:
+Round win -> advances match
+Match win -> earns keys
+Keys -> buy cosmetics
+
+SINGLE-PLAYER FUTURE MODE
+
+Potential structure:
+- Classic survival
+- Food
+- Growth
+- Increasing speed
+- Laser closing
+- High score
+
+Possible future additions:
+- Random hazards
+- Difficulty progression
+- Special events
+- More power-ups
+- Challenge modes
+
+REPLAY VALUE
+
+Primary sources:
+- Short competitive rounds
+- Best-of formats
+- Random food placement
+- Random power-up placement
+- Power-ups ON/OFF
+- Closing laser phase
+- Cosmetics
+- Keys
+- Shop
+- Music choices
+- Practice
+- Future arenas
+- Future colors
+- Future power-ups
+- Future single-player
+
+OFFLINE REQUIREMENT
+
+No:
+- Account
+- Login
+- Backend
+- Online multiplayer
+- Cloud leaderboard dependency
+- Live content
+
+Prefer bundling Three.js locally rather than depending on a CDN.
+
+======================================================================
+6. OPEN QUESTIONS / DECISIONS STILL TO BE FINALIZED
+======================================================================
+
+1. Exact food appearance
+2. Exact growth amount per food
+3. Exact slow power-up behavior
+4. Exact speed boost multiplier
+5. Laser shrink speed
+6. Minimum final arena size
+7. Simultaneous crash rule
+8. Head-to-head collision rule
+9. Exact arena wall behavior before lasers activate
+10. Self-collision final confirmation
+11. Starting snake length
+12. Number of unlockable colors
+13. Key prices for colors
+14. Shop navigation specifics
+15. Whether additional cosmetics exist in Version 1 or later
+16. Exact single-player mechanics
+17. Whether normal food contributes a visible numerical score
+18. Whether food disappears or remains until collected
+19. Number of food items active at once
+20. Exact power-up visual designs
+21. Whether "Slow" affects opponent or collector
+22. Whether simultaneous head collision is draw, double loss, or replay
+23. Whether the shrinking arena stops at a minimum size or can continue to near-zero
+24. Exact camera field of view / orthographic-vs-perspective implementation
+25. Exact music production method and files
+
+======================================================================
+7. SUGGESTED TECHNICAL ARCHITECTURE
+======================================================================
+
+Possible file structure:
+
+/index.html
+
+/css
+    style.css
+
+/js
+    main.js
+    Game.js
+    Snake.js
+    Arena.js
+    Input.js
+    Food.js
+    PowerUp.js
+    Audio.js
+    UI.js
+    SaveData.js
+
+/assets
+    music/
+    sounds/
+
+SUGGESTED CENTRAL SETTINGS OBJECT
+
+const SETTINGS = {
+  roundDuration: 90,
+  laserStartTime: 30,
+
+  snakeSpeed: 5,
+  startingSnakeLength: 4,
+
+  powerUpsEnabled: true,
+  powerUpInterval: 15,
+  speedBoostDuration: 5,
+
+  bestOfOptions: [1, 3, 5],
+
+  rewards: {
+    1: 0,
+    3: 1,
+    5: 2
+  }
+};
+
+SUGGESTED GAME STATES
+
+MAIN_MENU
+MATCH_SETUP
+TUTORIAL
+PRACTICE
+SHOP
+SETTINGS
+COUNTDOWN
+PLAYING
+LASER_WARNING
+ROUND_OVER
+MATCH_OVER
+
+SUGGESTED LOCALSTORAGE DATA
+
+const saveData = {
+  keys: 0,
+
+  unlockedColors: [
+    "red",
+    "blue"
+  ],
+
+  selectedPlayer1Color: "red",
+  selectedPlayer2Color: "blue",
+
+  settings: {
+    musicEnabled: true,
+    soundEnabled: true,
+    selectedMusicTrack: 1
+  },
+
+  tutorialCompleted: false,
+
+  stats: {
+    matchesPlayed: 0,
+    player1Wins: 0,
+    player2Wins: 0
+  }
+};
+
+CODE PHILOSOPHY
+
+Prefer:
+- Clear variable names
+- Small functions
+- Comments explaining systems
+- Adjustable constants
+- Simple data structures
+- Easy-to-find settings
+
+Avoid:
+- Unnecessary frameworks
+- Deep inheritance
+- Overly abstract patterns
+- Excessive configuration complexity
+
+======================================================================
+8. DEVELOPMENT ROADMAP / MVP
+======================================================================
+
+PHASE 1: GREY BOX / CORE GAME
+
+Build only:
+- Arena
+- Two snakes
+- Movement
+- Input
+- Food
+- Growth
+- Collision
+- Round timer
+- Round victory
+
+Goal:
+Prove two-player movement and collision are fun.
+
+PHASE 2: SIGNATURE HOOK
+
+Add:
+- Four laser walls
+- 30-second trigger
+- Inward movement
+- Laser death
+- Warning effect
+
+Goal:
+Prove the closing arena creates a strong climax.
+
+PHASE 3: MATCH STRUCTURE
+
+Add:
+- Best of 1
+- Best of 3
+- Best of 5
+- Round scoreboard
+- Match win logic
+
+PHASE 4: POWER-UPS
+
+Add:
+- Power-ups ON/OFF
+- Speed boost
+- Slow concept
+- 15-second spawn cycle
+- Random placement
+- Despawn/replace behavior
+- Stop new power-ups at 30 seconds
+
+PHASE 5: 3D POLISH
+
+Add:
+- Bright toy-brick art
+- Snake eyes
+- Better materials
+- Lighting
+- Shadows
+- Food model
+- Laser effects
+- Particles
+- Crash animation
+
+PHASE 6: UI / AUDIO
+
+Add:
+- Main menu
+- Match setup
+- Settings
+- Three music tracks
+- Sound effects
+- Tutorial
+- Practice mode
+
+PHASE 7: META PROGRESSION
+
+Add:
+- Keys
+- Save data
+- Snake colors
+- Shop
+- Try-before-you-buy
+- More cosmetics
+
+PHASE 8: SINGLE PLAYER
+
+Only after two-player is polished.
+
+======================================================================
+9. PLAYTESTING CHECKLIST
+======================================================================
+
+MOVEMENT
+- Does smooth grid movement feel responsive?
+- Are turns accepted reliably?
+- Does the snake ever feel like controls were ignored?
+
+VISIBILITY
+- Can each player instantly locate their head?
+- Are red and blue readable under all lighting?
+
+COLLISION
+- Does every death feel fair?
+- Is head collision clearly distinguished from body contact?
+
+ARENA CLOSING
+- Does 30 seconds feel like the right start time?
+- Is the warning obvious?
+- Is the shrink speed fair?
+- Does the arena become exciting rather than frustrating?
+
+ROUND LENGTH
+- Does 90 seconds feel right?
+- Are rounds often decided before timeout?
+
+GROWTH
+- Does growing make the game more interesting?
+- Do long snakes remain visually readable?
+
+POWER-UPS
+- Do they add strategy?
+- Are they too random?
+- Is every 15 seconds too frequent / too rare?
+
+SPEED BOOST
+- Is 5 seconds the right duration?
+- Is the speed increase controllable?
+
+SLOW POWER-UP
+- Which target behavior is most fun?
+
+REWARDS
+- Is 1 key for Best of 3 satisfying?
+- Is 2 keys for Best of 5 satisfying?
+- Are cosmetic prices motivating without feeling grindy?
+
+SHOP
+- Do players understand Buy vs Try?
+- Are snake models clear?
+- Is mouse movement comfortable?
+
+TUTORIAL
+- Can a brand-new player understand the game after one pass?
+- Is it short enough?
+- Are text bubbles readable?
+
+======================================================================
+10. FULL CONCEPT IMAGE REFERENCE LIST
+======================================================================
+
+1. KOBI Snake Master Visual
+Hero concept showing the overall look of the finished game: two bright block-built
+snakes battling in the 3D arena.
+
+2. Standard Gameplay View
+Exact bird's-eye gameplay camera showing both snakes, food, arena boundaries, timer,
+and basic HUD.
+
+3. Camera Angle Study
+Comparison of several top-down camera angles to establish how much perspective and
+visible 3D depth the game should have.
+
+4. Full Arena Design
+Clean view of the complete square building-block arena before the lasers begin closing.
+
+5. Laser Arena Activated
+The arena at the 30-second mark with all four laser walls glowing and beginning to move inward.
+
+6. Final Shrink Phase
+Extremely small late-game arena with two long snakes squeezed into a tense final confrontation.
+
+7. Laser Wall Close-Up
+Detailed concept for toy-brick laser emitters, beams, warning lights, and glowing floor effects.
+
+8. Red Player Snake
+Detailed character sheet for default red snake.
+
+9. Blue Player Snake
+Matching character reference for default blue snake.
+
+10. Snake Head Design Exploration
+Several possible block-built snake faces.
+
+11. Snake Body Construction
+How body segments connect and curve.
+
+12. Snake Turning Animation
+Visual sequence showing a smooth-looking 90-degree turn.
+
+13. Snake Growth Sequence
+Before-and-after sequence showing a new body segment.
+
+14. Normal Food Pickup
+Concept for the standard collectible food.
+
+15. Food Collection Effect
+Snake eating food with particles, bounce, glow, and segment addition.
+
+16. Speed Power-Up
+Design for the five-second speed boost pickup and active effect.
+
+17. Slow Power-Up
+Visual concept for the slow power-up.
+
+18. Power-Up Spawn Moment
+Power-up materializing at a random arena location.
+
+19. Power-Up Visual Language Sheet
+Consistent shape, symbol, color, base, glow, and animation system.
+
+20. Snake Crash Sequence
+Snake dying and breaking apart into colorful toy-block pieces.
+
+21. Head-to-Body Collision
+Gameplay reference demonstrating a deadly collision.
+
+22. Laser Death Effect
+Snake head touching laser and breaking apart.
+
+23. Round Start Countdown
+Large 3D block-built 3, 2, 1, GO.
+
+24. 30-Second Warning Moment
+Warning when lasers activate.
+
+25. Between-Round Scoreboard
+Player 1 / Player 2 round wins during Best of 3 or Best of 5.
+
+26. Match Victory Screen
+Winning snake celebrating with final score and keys.
+
+27. Key Reward Animation
+One or two toy-like keys awarded.
+
+28. Main Menu
+1 Player, 2 Players, Practice, Tutorial, Shop, Settings.
+
+29. Main Menu Environment Without UI
+Pure environment concept.
+
+30. Two-Player Match Setup Screen
+Best of 1/3/5, power-ups, music, colors.
+
+31. Snake Selection Screen
+Red and blue plus room for future colors.
+
+32. 3D Snake Shop Exterior / Entrance
+Establishing shot of shop entrance.
+
+33. 3D Snake Shop Interior
+Snake models on pedestals with prices.
+
+34. Shop Pedestal Close-Up
+One purchasable snake with Buy / Try / Owned / Locked states.
+
+35. Shop Mouse Navigation View
+First-person or free-camera exploration.
+
+36. Try-Before-You-Buy Practice Arena
+No-reward test environment.
+
+37. General Practice Mode
+Simple friendly practice environment.
+
+38. Tutorial Opening Screen
+Movement explanation with text bubbles.
+
+39. Tutorial Movement Step
+Keys highlighted while snake moves.
+
+40. Tutorial Power-Up Step
+Collect and explain a power-up.
+
+41. Tutorial Laser Demonstration
+Safe demonstration of laser closing.
+
+42. Settings Screen
+Music and sound options.
+
+43. Music Selection Interface
+Choose among three arcade tracks.
+
+44. HUD Design Sheet
+Timer, players, power-up status, match score.
+
+45. Player Identification Study
+Ways to distinguish players beyond color.
+
+46. Unlocked Snake Color Collection
+Lineup of future colors.
+
+47. Premium Cosmetic Snake Concepts
+More elaborate unlockable styles.
+
+48. Toy Plastic Material Study
+Gloss, seams, studs, shadows, edges.
+
+49. Lighting Reference
+Arena with intended shadows, glows, and readability.
+
+50. Visual Effects Style Sheet
+Particles, sparks, pickups, crashes, victory, warning, speed trail.
+
+51. Arena Floor Detail Sheet
+Studs, tiles, markings, seams, subtle grid.
+
+52. Color and Material Palette
+Arena, player, laser, power-up, UI palette.
+
+53. Long-Snake Gameplay Stress Test
+Two long snakes while preserving readability.
+
+54. Maximum Chaos Gameplay Scene
+Food, long snakes, power-up, particles, lasers, HUD all at once.
+
+55. KOBI SNAKE Logo / 3D Title
+Block-built title exploration.
+
+======================================================================
+11. HIGHEST-PRIORITY IMAGE SET
+======================================================================
+
+The recommended first-wave reference pack contains 18 images:
+
+1. KOBI Snake Master Visual
+2. Standard Gameplay Camera
+3. Camera Angle Comparison Sheet
+4. Clean Arena Design
+5. Laser Closing Phase
+6. Final Shrink Showdown
+7. Red and Blue Snake Character Sheet
+8. Snake Head Exploration
+9. Snake Movement and Turning Reference
+10. Food and Growth Sequence
+11. Power-Up Design Sheet
+12. Snake Crash and Laser Death Effects
+13. Gameplay HUD
+14. Main Menu
+15. Two-Player Match Setup
+16. 3D Shop Interior
+17. Interactive Tutorial
+18. Master Materials, Lighting and Effects Bible
+
+SHARED VISUAL BIBLE FOR ALL IMAGES
+
+- Bright premium interlocking toy-brick aesthetic
+- Inspired by high-quality construction toys
+- No branded logos or trademarks
+- Everything feels physically built from molded plastic bricks and modular pieces
+- Smooth glossy plastic
+- Slightly rounded edges
+- Subtle studs and seams
+- Cheerful saturated palette
+- Default Player 1 = bright red
+- Default Player 2 = bright blue
+- Friendly block-built snake heads with large expressive toy eyes
+- Square tabletop-style 3D arena
+- Bird's-eye / top-down camera with slight perspective tilt
+- Soft studio-like lighting
+- Readable shadows
+- Mild ambient occlusion
+- Lasers vivid and emissive
+- Gameplay readability always overrides spectacle
+- No humans
+- No realistic snakes
+- No photorealism
+- No branded construction-toy logos
+- Do not add arbitrary text unless requested
+
+======================================================================
+12. DETAILED IMAGE GENERATION PROMPTS
+======================================================================
+
+IMAGE 1 — KOBI SNAKE MASTER VISUAL
+
+Purpose:
+Establish the overall visual target for the entire project.
+
+Prompt:
+
+Create a polished hero concept image for a browser game called KOBI Snake. Show a
+square 3D arena built entirely from bright interlocking toy-brick pieces, viewed from
+a high bird's-eye perspective with a slight cinematic tilt so the thickness of objects
+is visible. Inside the arena, two long segmented toy snakes compete: one vivid red and
+one vivid blue. Each snake has a chunky block-built head with large friendly expressive
+toy eyes and a body made from smoothly connected modular plastic segments. The snakes
+should look playful but competitive, not realistic.
+
+Show food pickups and one glowing power-up inside the arena. Around all four outer
+edges are futuristic toy-brick laser emitters preparing to close inward. Some laser
+elements may already glow to hint at the game's signature shrinking-arena mechanic.
+
+Use premium molded-plastic materials, subtle studs, rounded brick edges, soft shadows
+and colorful arcade lighting. The environment should feel like an expensive animated
+toy set. Make the gameplay geometry extremely readable despite the visual polish.
+Composition should immediately communicate: two-player Snake + 3D toy world +
+dangerous shrinking laser arena.
+
+16:9 composition. No logos, no humans, no realistic textures, no excessive clutter.
+
+
+IMAGE 2 — STANDARD GAMEPLAY CAMERA
+
+Purpose:
+Main reference for actual gameplay composition.
+
+Prompt:
+
+Create a precise gameplay concept image for KOBI Snake showing the intended normal
+in-game camera. Use a square interlocking toy-brick arena viewed from a high top-down
+perspective with only a slight angle, approximately 75–80 degrees downward, so players
+can clearly judge positions while still seeing the 3D thickness of snakes, arena tiles
+and walls.
+
+Show a red segmented toy snake and a blue segmented toy snake moving through the arena.
+Both should have clearly visible heads with large toy eyes. Their bodies should follow
+clean grid-like paths but visually glide smoothly between positions. Include several
+pieces of normal food and one power-up.
+
+Keep the four laser boundaries around the outside inactive during this image. Make the
+playable area large and uncluttered.
+
+Include a restrained gameplay HUD: 90-second countdown timer centered near the top,
+small red and blue player indicators, and a simple round-score indicator. The UI should
+be clean enough for an 11-year-old to immediately understand.
+
+The primary goal is gameplay readability. No dramatic perspective distortion, no giant
+effects, no camera blur. Bright plastic toy aesthetic, soft shadows and premium arcade
+presentation. 16:9.
+
+
+IMAGE 3 — CAMERA ANGLE COMPARISON SHEET
+
+Purpose:
+Lock the exact camera before building environments.
+
+Prompt:
+
+Create a professional game-development camera study for KOBI Snake. Show the exact same
+square toy-brick arena in four side-by-side panels, each containing a red and blue
+block-built snake in identical positions.
+
+Panel A: perfectly vertical orthographic top-down view.
+Panel B: very slight perspective tilt, approximately 85 degrees downward.
+Panel C: recommended gameplay camera, approximately 75–80 degrees downward, enough to
+see object depth while retaining excellent positional clarity.
+Panel D: more dramatic approximately 65-degree perspective for comparison.
+
+Keep lighting, arena layout, snake position and scale identical in all four panels so
+only the camera differs.
+
+The arena should use premium bright molded-plastic construction-toy materials, subtle
+studs, rounded edges and soft shadows.
+
+This should resemble an actual visual-development sheet prepared for a game team, clean
+and systematic rather than promotional artwork. Include small unobtrusive labels
+A, B, C, D only. 16:9.
+
+
+IMAGE 4 — CLEAN ARENA DESIGN
+
+Purpose:
+Define the actual playing field without effects obscuring it.
+
+Prompt:
+
+Design the core KOBI Snake arena as a clean 3D environment reference with no snakes
+present. Show a large square playing field built from bright modular toy bricks and
+tiles, viewed from the intended high bird's-eye gameplay camera.
+
+The arena floor should subtly communicate a logical movement grid without looking like
+a plain checkerboard. Use seams, studs, tile divisions or alternating construction
+patterns to suggest navigation positions.
+
+Around the four edges, build matching mechanical laser-wall structures into the toy
+architecture. Each side should clearly be capable of sliding inward later. The emitters
+should currently be inactive.
+
+Create a strong physical border outside the playable floor, small decorative mechanical
+details and enough depth that the arena feels like a miniature tabletop machine.
+
+Keep the center open and readable. Avoid decorative obstacles that interfere with gameplay.
+
+Bright premium plastic, rounded toy edges, subtle molded seams, believable soft shadows,
+gentle ambient occlusion. The result should be useful as an environment-modeling
+reference, not just atmospheric artwork. 16:9.
+
+
+IMAGE 5 — LASER CLOSING PHASE
+
+Purpose:
+Define the game's signature mechanic.
+
+Prompt:
+
+Show the KOBI Snake arena at exactly the moment the final 30-second phase begins. Use
+the established high top-down 3D gameplay camera. A red snake and blue snake remain
+inside the square toy-brick arena.
+
+All four surrounding laser systems have activated simultaneously. Bright emissive laser
+boundaries on the top, bottom, left and right are beginning to move inward toward the
+center. The movement direction should be visually obvious.
+
+Make the dangerous boundary extremely readable: strong glowing beams, illuminated floor
+edges, warning lights on the brick-built emitters and restrained sparks or energy
+particles. Do not allow glow to obscure exact collision boundaries.
+
+Include a clear but tasteful warning overlay reading "LASERS CLOSING!" and show
+approximately 0:30 on the timer.
+
+The regular colorful toy environment should remain visible underneath the danger state.
+Lighting can become slightly more dramatic during this moment.
+
+Create tension without making the image frightening. Family-friendly arcade game
+aesthetic. 16:9.
+
+
+IMAGE 6 — FINAL SHRINK SHOWDOWN
+
+Purpose:
+Make sure the endgame remains playable and visually clear.
+
+Prompt:
+
+Create a late-round KOBI Snake gameplay scene showing the arena after the four laser
+walls have moved far inward. The remaining playable square is now very small.
+
+Show one long red toy snake and one long blue toy snake weaving through the limited
+space, creating an extremely tense but readable confrontation. Their bodies should
+occupy a significant portion of the remaining arena without becoming visually confusing.
+
+The four active laser boundaries must clearly define the safe area. Outside the lasers,
+show abandoned outer arena tiles darkened or visually disabled so players instantly
+understand they are no longer playable.
+
+The snakes should be close enough to create opportunities for trapping and head-to-body
+collisions.
+
+Use the standard high bird's-eye camera and retain excellent positional clarity.
+Avoid excessive particles.
+
+This is specifically a gameplay stress-test reference showing what the screen looks like
+at maximum tension, not marketing key art. Bright toy bricks, strong laser glow,
+soft plastic materials. 16:9.
+
+
+IMAGE 7 — RED AND BLUE SNAKE CHARACTER SHEET
+
+Purpose:
+Lock the basic snake model.
+
+Prompt:
+
+Create a detailed game-character design sheet for the two default KOBI Snake characters.
+
+Show the same segmented block-built snake design in two versions: bright red Player 1
+and bright blue Player 2.
+
+Include:
+- front three-quarter head view
+- side view
+- top view
+- full snake with approximately 8–10 body segments
+- close-up of the head
+- close-up of a body connection
+
+The head should be slightly larger and more expressive than the body pieces, constructed
+from modular toy bricks with large friendly plastic eyes. Make the head immediately
+recognizable during fast gameplay.
+
+Body segments should feel like connected toy pieces rather than individual disconnected
+cubes. Show enough flexibility for smooth 90-degree turns.
+
+Use premium glossy molded plastic with subtle seams and studs. Rounded corners.
+Cute but not babyish.
+
+Clean neutral background, game-development presentation sheet, consistent scale.
+No realistic snake anatomy and no branded logos. 16:9.
+
+
+IMAGE 8 — SNAKE HEAD EXPLORATION
+
+Purpose:
+Choose the personality of KOBI Snake.
+
+Prompt:
+
+Create a visual-development sheet exploring six possible head designs for KOBI Snake
+while keeping the same bright interlocking toy-brick aesthetic.
+
+All six heads should clearly belong to the same game but vary slightly in personality.
+
+Explore differences such as:
+- eye size
+- eyebrow or eye angle
+- mouth shape
+- flatter versus taller head
+- round versus rectangular front
+- more mischievous versus more friendly expression
+
+Every head must remain easy to recognize from a distant bird's-eye gameplay camera.
+
+Avoid detailed cartoon faces that would disappear at small size. Use large toy eyes and
+a few bold shapes.
+
+Present each concept in red plastic first, with one small blue color example showing how
+the final design recolors.
+
+Clean design-sheet layout on neutral background. Premium molded toy materials, subtle
+highlights, no logos. 16:9.
+
+
+IMAGE 9 — SNAKE MOVEMENT AND TURNING REFERENCE
+
+Purpose:
+Show developers exactly what "grid logic, smooth visuals" means.
+
+Prompt:
+
+Create a sequential animation-reference sheet showing how a KOBI Snake performs a smooth
+90-degree turn.
+
+Show six sequential positions from left to right.
+
+The snake logically travels along a square gameplay grid, but visually interpolates
+smoothly instead of snapping from cell to cell.
+
+Begin with the snake moving straight to the right. Then the player presses Up. Show the
+head smoothly entering the upward path while each subsequent body segment follows the
+exact earlier path of the head.
+
+The final pose should show a clean 90-degree turn with the body bending naturally
+through the corner.
+
+Use the standard red block-built snake with large toy eyes and modular segments.
+Add a subtle translucent floor grid underneath specifically for technical clarity.
+
+Include arrows showing direction of travel, but no large explanatory text.
+
+Make this feel like a professional game-animation reference rather than a dramatic scene.
+Neutral background, clean lighting, 16:9.
+
+
+IMAGE 10 — FOOD AND GROWTH SEQUENCE
+
+Purpose:
+Define the simplest repeated action in the game.
+
+Prompt:
+
+Create a KOBI Snake gameplay-effects sheet showing the full food collection and growth
+interaction.
+
+Use four sequential panels.
+
+Panel 1:
+A bright toy-brick food collectible sitting clearly on the arena floor in front of the
+red snake.
+
+Panel 2:
+The snake head contacts and collects the food.
+
+Panel 3:
+A satisfying small burst of colorful particles and a brief pulse through the snake body.
+
+Panel 4:
+One new body segment has visibly joined the tail.
+
+Design the normal food as a charming, immediately readable object made from
+construction-toy pieces. A small block-built apple or similarly recognizable food is
+appropriate.
+
+Effects should be joyful and satisfying but small enough that repeated pickups do not
+overwhelm gameplay.
+
+Use glossy toy-plastic materials, soft shadows and consistent KOBI Snake visual language.
+Technical concept sheet rather than advertisement. 16:9.
+
+
+IMAGE 11 — POWER-UP DESIGN SHEET
+
+Purpose:
+Establish a language that can later support many power-ups.
+
+Prompt:
+
+Create a unified power-up design sheet for KOBI Snake.
+
+The two main concepts are:
+
+1. SPEED BOOST — lasts approximately five seconds.
+2. SLOW — a slowing-related power-up whose exact gameplay target may still change.
+
+Design each power-up as a distinct collectible object built from bright toy bricks while
+maintaining a shared product family.
+
+SPEED should communicate motion through a lightning bolt, forward chevrons or spinning
+energy element.
+
+SLOW should communicate reduced speed using a clock, snowflake, hourglass or similarly
+intuitive symbol.
+
+Show each power-up:
+- inactive on arena floor
+- glowing when available
+- being collected
+- corresponding temporary visual effect on a snake
+
+Also show one generic blank/template power-up to demonstrate how future abilities could
+use the same design system.
+
+Strong silhouette differentiation is essential. No reliance on color alone.
+Clean neutral development-sheet background. 16:9.
+
+
+IMAGE 12 — SNAKE CRASH AND LASER DEATH EFFECTS
+
+Purpose:
+Lock death feedback and avoid inconsistent effects later.
+
+Prompt:
+
+Create a two-part visual-effects reference sheet for KOBI Snake.
+
+Left side:
+Standard collision death. A red toy snake's head has collided with the blue snake's body.
+Show the red snake breaking apart into several chunky plastic toy pieces with a short burst
+of particles. The effect should be dramatic and funny rather than violent. No gore,
+no injury.
+
+Right side:
+Laser death. Show a blue snake head touching the bright closing laser boundary. The
+impacted toy segments burst apart with a sharper glowing energy effect, small sparks and
+illuminated plastic pieces.
+
+Keep both effects stylistically related while making the laser death clearly distinct.
+
+Effects should be brief, readable and appropriate for a family-friendly arcade game.
+
+Use the established bright construction-toy look, premium plastic materials and high
+gameplay readability. Neutral comparison-sheet presentation. 16:9.
+
+
+IMAGE 13 — GAMEPLAY HUD
+
+Purpose:
+Define all permanent on-screen information before coding it.
+
+Prompt:
+
+Design a clean gameplay HUD for KOBI Snake using the standard top-down arena view as
+the background.
+
+Show a live two-player Best-of-3 match.
+
+Required information:
+- large but unobtrusive round timer centered near the top
+- red Player 1 indicator
+- blue Player 2 indicator
+- current round wins
+- clear indication that the match is Best of 3
+- temporary five-second speed-boost indicator near a player when active
+
+Keep the center and arena edges visually unobstructed because players need to see
+approaching snakes and lasers.
+
+The UI should use chunky toy-inspired forms matching the 3D environment, but text and
+numbers must remain extremely crisp.
+
+Prefer a restrained hybrid of 3D-styled panels and readable flat text rather than
+physically modeling every letter.
+
+Make it understandable instantly to an 11-year-old. Avoid excessive icons or statistics.
+16:9.
+
+
+IMAGE 14 — MAIN MENU
+
+Purpose:
+Establish first impression and menu hierarchy.
+
+Prompt:
+
+Create the main menu concept for KOBI Snake as a playful 3D toy environment rather than
+a generic webpage.
+
+Show the KOBI SNAKE title constructed from large colorful toy blocks inside or above a
+miniature arena environment.
+
+Clearly present these menu choices:
+
+1 PLAYER
+2 PLAYERS
+PRACTICE
+TUTORIAL
+SHOP
+SETTINGS
+
+The current selection should be visibly highlighted for keyboard navigation.
+
+Include the red and blue snakes somewhere in the scene, perhaps resting or moving
+playfully around the title.
+
+The environment should use the same bright interlocking-brick materials as gameplay.
+
+Maintain excellent text legibility. Do not turn every menu word into complex 3D geometry
+if that reduces readability.
+
+The overall impression should be cheerful, premium, inviting and immediately
+understandable. 16:9.
+
+
+IMAGE 15 — TWO-PLAYER MATCH SETUP
+
+Purpose:
+Define the configuration flow before development.
+
+Prompt:
+
+Design the KOBI Snake two-player match setup screen.
+
+Keep it visually connected to the 3D toy world, perhaps with the red and blue snake
+models positioned on opposite sides of a miniature arena.
+
+Show simple selectable settings:
+
+MATCH LENGTH
+Best of 1
+Best of 3
+Best of 5
+
+POWER-UPS
+ON / OFF
+
+MUSIC
+Arcade Track 1
+Arcade Track 2
+Arcade Track 3
+
+PLAYER 1
+red snake preview
+
+PLAYER 2
+blue snake preview
+
+START MATCH
+
+The currently highlighted choice should be very obvious for keyboard navigation.
+
+Make the interface playful but extremely simple. This screen should take only a few
+seconds to understand and configure.
+
+Use chunky building-block panels, premium plastic textures and clean typography.
+Avoid unnecessary options. 16:9.
+
+
+IMAGE 16 — 3D SHOP INTERIOR
+
+Purpose:
+One of the game's largest non-gameplay environments.
+
+Prompt:
+
+Create a complete interior concept for the KOBI Snake cosmetic shop.
+
+The shop is a bright 3D showroom constructed from colorful modular toy bricks. The
+player explores it using the mouse.
+
+Display multiple full snake models on individual raised pedestals. Include the default
+red and blue snakes plus several colorful locked alternatives such as green, yellow,
+purple, orange and a more premium gold-style snake.
+
+Each pedestal should visually communicate:
+- snake model
+- key price
+- owned or locked state
+- BUY option
+- TRY option
+
+Include a visible key counter in the environment or HUD.
+
+Make the snake models the focal point. The room should feel fun to explore but not
+enormous or confusing.
+
+Use display lighting, glossy plastic floors, block-built shelves and toy-scale
+architecture.
+
+No real-world store branding. Premium family-friendly game aesthetic. 16:9.
+
+
+IMAGE 17 — INTERACTIVE TUTORIAL
+
+Purpose:
+Define how instructions appear without breaking immersion.
+
+Prompt:
+
+Create a KOBI Snake interactive tutorial gameplay concept.
+
+Show a simplified training arena using the standard high top-down camera. A red snake
+is moving while the WASD keys are displayed in a small clear tutorial bubble near the
+edge of the screen.
+
+Include three small sequential tutorial moments in one visual development sheet:
+
+1. "Use WASD to steer" while directional keys highlight.
+2. "Grab the food" with a food pickup visually emphasized.
+3. "Grab the power-up" with the speed boost highlighted.
+
+Also show a subtle SKIP option.
+
+Instructions must be short, large and easy to read. Avoid paragraphs.
+
+The tutorial should feel integrated into the game rather than like a separate manual.
+
+Maintain the bright construction-toy visual style, friendly plastic snake and clean
+uncluttered training arena. 16:9.
+
+
+IMAGE 18 — MASTER MATERIALS, LIGHTING AND EFFECTS BIBLE
+
+Purpose:
+Give the implementation team one image that answers:
+"How should everything be rendered?"
+
+Prompt:
+
+Create a professional visual-style bible for KOBI Snake combining materials, lighting
+and effects into one organized development sheet.
+
+Include close-up examples of:
+
+- red snake plastic
+- blue snake plastic
+- neutral arena tile
+- raised toy-brick stud
+- mechanical laser emitter
+- emissive laser beam
+- normal food
+- glowing power-up
+- translucent particle
+- snake crash fragment
+- soft contact shadow
+- bright menu panel
+
+Show one small complete arena render demonstrating how these materials look together
+under the intended lighting.
+
+Plastic should be glossy but not mirror-like. Edges slightly rounded. Shadows soft and
+readable. Ambient occlusion subtle. Lasers and power-ups may emit light but should never
+bloom enough to obscure gameplay.
+
+Bright saturated colors should be controlled by neutral flooring and backgrounds so the
+red and blue snakes remain immediately identifiable.
+
+This should resemble an internal art-direction sheet used by a 3D game team. 16:9.
+
+======================================================================
+13. RECOMMENDED CONCEPT IMAGE GENERATION SEQUENCE
+======================================================================
+
+Recommended order:
+
+1 → 2 → 3 → 7 → 4 → 5 → 6 → 9 → 13 → 11 → 12 → 10 → 14 → 15 → 16 → 17 → 18 → 8
+
+Reasoning:
+- First lock the overall visual language.
+- Then lock the real gameplay camera.
+- Then compare camera angles.
+- Then lock the snakes.
+- Then define the clean arena.
+- Then define the laser opening and final shrink states.
+- Then define movement.
+- Then HUD.
+- Then power-ups and crash effects.
+- Then food/growth.
+- Then menus, setup, shop, tutorial.
+- Finally create the consolidated art bible and refine the head design.
+
+======================================================================
+FINAL GUIDING PRINCIPLE
+======================================================================
+
+Do not add features merely because they are common in games.
+
+Every mechanic should serve at least one of these purposes:
+
+1. Make movement more satisfying.
+2. Make two-player competition more exciting.
+3. Make the closing arena more dramatic.
+4. Give players a reason to play again.
+
+Prefer:
+Five simple systems that interact beautifully
+
+over:
+Twenty unrelated features
+
+FIRST REAL MILESTONE:
+
+Build two snakes.
+Put them in a square arena.
+Make movement feel excellent.
+Make two people have fun trying to make each other crash.
+
+Then add the closing lasers.
+
+If those two things are fun together, KOBI Snake has a strong foundation.
+
+======================================================================
+END OF DOCUMENT
+======================================================================
