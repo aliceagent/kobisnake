@@ -8,7 +8,7 @@ import * as THREE from 'three';
  */
 export const COLORS = {
   /** Player 1 plastic red (DESIGN-DECISIONS §2.7). */
-  red: 0xe3261b,
+  red: 0x1f6fe5,
   /** Arena floor tile green, the 70 % tile (DESIGN-DECISIONS §3 "Materials bible"). */
   floorGreen: 0x3db54a,
   /** Hemisphere fill: sky above, ground below (DESIGN-DECISIONS §3 "Materials bible"). */
