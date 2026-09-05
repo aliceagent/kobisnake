@@ -50,6 +50,9 @@ jobs:
       - name: e2e
         env:
           PLAYWRIGHT_HTML_REPORT: playwright-report/${{ matrix.browser }}
+          # Mesa's software rasteriser, for the same reason as the Firefox prefs in playwright.config.js:
+          # these runners have no GPU and Firefox, unlike Chromium, ships no software WebGL of its own.
+          LIBGL_ALWAYS_SOFTWARE: '1'
         run: npx playwright test tests/e2e --project=${{ matrix.browser }}
 
       - uses: actions/upload-artifact@v4

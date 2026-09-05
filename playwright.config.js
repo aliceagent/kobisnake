@@ -65,6 +65,9 @@ export default defineConfig({
             'webgl.disabled': false,
             'webgl.enable-webgl2': true,
             'gfx.webrender.all': true,
+            // The runner has no GL driver at all ("Exhausted GL driver options"), so Firefox needs to be
+            // told to render WebGL in software the way Chromium does with SwiftShader by default.
+            'gfx.webrender.software': true,
           },
         },
       },
