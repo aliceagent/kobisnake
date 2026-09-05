@@ -5,27 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>KOBI Snake</title>
     <link rel="icon" type="image/svg+xml" href="./favicon.svg" />
-    <style>
-      /* Layout only. Every colour in the game comes from src/render/materials.js (3D) or the UI token
-         stylesheet a later sprint adds, never from this file. */
-      html,
-      body {
-        margin: 0;
-        height: 100%;
-        overflow: hidden;
-      }
-      #game {
-        display: block;
-        width: 100%;
-        height: 100%;
-      }
-      /* The UI overlay sits on top of the canvas; it must not swallow clicks meant for the game. */
-      #ui {
-        position: absolute;
-        inset: 0;
-        pointer-events: none;
-      }
-    </style>
+    <link rel="stylesheet" href="/src/ui/styles.css" />
   </head>
   <body>
     <canvas id="game"></canvas>

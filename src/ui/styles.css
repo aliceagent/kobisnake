@@ -1,0 +1,26 @@
+/* Page layout for the game shell. Colours belong in src/render/materials.js (3D) or, when the UI screens
+   arrive, in the UI token stylesheet — never here.
+
+   This lives in a real stylesheet rather than a <style> block in index.html so that production can send a
+   Content-Security-Policy with a plain `style-src 'self'`: no 'unsafe-inline' anywhere, which is what makes
+   "the game never loads anything from outside" enforceable by the browser instead of by convention. */
+
+html,
+body {
+  margin: 0;
+  height: 100%;
+  overflow: hidden;
+}
+
+#game {
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+
+/* The UI overlay sits on top of the canvas; it must not swallow clicks meant for the game. */
+#ui {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+}
