@@ -15,8 +15,8 @@
     "format": "prettier --write .",
     "typecheck": "tsc --noEmit -p jsconfig.json",
     "test:unit": "vitest run",
-    "test:e2e": "playwright test tests/e2e",
-    "test:visual": "playwright test tests/visual"
+    "test:e2e": "playwright test tests/e2e --project=chromium",
+    "test:visual": "playwright test tests/visual --project=chromium"
   },
   "dependencies": {
     "three": "0.185.1"

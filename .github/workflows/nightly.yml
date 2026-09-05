@@ -43,14 +43,14 @@ jobs:
           key: playwright-${{ matrix.browser }}-${{ runner.os }}-${{ steps.playwright-version.outputs.version }}
       - run: npx playwright install --with-deps ${{ matrix.browser }}
 
-      # playwright.config.js defines only a `chromium` project (that's the PR-blocking suite in
-      # ci.yml); `--browser` swaps the engine for this run without editing that config, which is
-      # outside this ticket's Files list. Visual baselines are Chromium/SwiftShader-specific
-      # (see the scaffold's known baseline caveat), so only e2e runs cross-browser here.
+      # playwright.config.js defines a project per engine, so the engine is selected with `--project`.
+      # `--browser` cannot be used here: Playwright rejects it outright whenever the config defines any
+      # project ("Cannot use --browser option when configuration file defines projects"), which is what
+      # issue #21 was. Visual baselines are Chromium-specific, so only e2e runs cross-browser.
       - name: e2e
         env:
           PLAYWRIGHT_HTML_REPORT: playwright-report/${{ matrix.browser }}
-        run: npx playwright test tests/e2e --browser=${{ matrix.browser }}
+        run: npx playwright test tests/e2e --project=${{ matrix.browser }}
 
       - uses: actions/upload-artifact@v4
         if: failure()

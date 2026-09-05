@@ -39,10 +39,24 @@ export default defineConfig({
     // only failing run instead.
     trace: 'retain-on-failure',
   },
+  // One project per engine. Playwright refuses the `--browser` CLI flag whenever a config defines projects,
+  // so the engine has to be chosen with `--project` — which is what `nightly.yml` and the npm scripts do.
+  // Chromium is the only engine a pull request blocks on; Firefox and WebKit run nightly (QA-STRATEGY §1).
+  // Visual baselines are Chromium-only: `snapshotPathTemplate` deliberately has no project segment, so
+  // `tests/visual` must never be run under another engine — it would compare a Firefox frame against a
+  // Chromium baseline. Nightly runs `tests/e2e` only, for exactly this reason.
   projects: [
     {
       name: 'chromium',
       use: { ...devices['Desktop Chrome'] },
+    },
+    {
+      name: 'firefox',
+      use: { ...devices['Desktop Firefox'] },
+    },
+    {
+      name: 'webkit',
+      use: { ...devices['Desktop Safari'] },
     },
   ],
   // `vite preview` only has something to serve once `dist/` exists, so the web server builds first.
