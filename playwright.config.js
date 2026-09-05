@@ -52,7 +52,22 @@ export default defineConfig({
     },
     {
       name: 'firefox',
-      use: { ...devices['Desktop Firefox'] },
+      use: {
+        ...devices['Desktop Firefox'],
+        // Headless Firefox on a GPU-less CI runner refuses to create a WebGL context at all
+        // ("AllowWebgl2:false restricts context creation on this system"), where Chromium quietly falls
+        // back to software rendering. Without these prefs the nightly Firefox leg cannot test the game, only
+        // the absence of a GPU. This makes the runner behave like a real desktop Firefox, which does have
+        // WebGL; it does not relax anything the test asserts.
+        launchOptions: {
+          firefoxUserPrefs: {
+            'webgl.force-enabled': true,
+            'webgl.disabled': false,
+            'webgl.enable-webgl2': true,
+            'gfx.webrender.all': true,
+          },
+        },
+      },
     },
     {
       name: 'webkit',
