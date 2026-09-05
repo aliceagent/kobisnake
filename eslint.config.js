@@ -50,6 +50,13 @@ export default [
         process: 'readonly',
       },
     },
+    rules: {
+      // `eslint-plugin-import`'s default resolver reads a package's `main`/`module` fields but not its
+      // `exports` map, so a conditional subpath like `vitest/config` (used by `vitest.config.js`) looks
+      // unresolvable to it even though Node and Vite both resolve it fine. Off for the root config files
+      // only — `import/no-unresolved` still runs on `src/` and `tests/`, where it earns its keep.
+      'import/no-unresolved': 'off',
+    },
   },
   {
     files: ['tests/**/*.js'],
@@ -68,6 +75,13 @@ export default [
         beforeAll: 'readonly',
         afterAll: 'readonly',
         vi: 'readonly',
+        // Node globals a Playwright spec file genuinely runs under (the file itself executes in Node).
+        URL: 'readonly',
+        // NOT a Node global: this exists so `page.evaluate(() => ... requestAnimationFrame ...)` lints
+        // clean. That arrow function's *body* is serialised and runs inside the browser page, not in Node,
+        // even though it is written inline in this Node-executed file — the one place in `tests/**` where
+        // the static file and the runtime environment genuinely differ.
+        requestAnimationFrame: 'readonly',
       },
     },
   },

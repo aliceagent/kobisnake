@@ -9,7 +9,9 @@ import { DEFAULT_QUERY } from '../../playwright.config.js';
  * captures; it does not need to replace this file's role as the visual-regression smoke test.
  */
 test.describe('KS-01-03 visual', () => {
-  test('KS-01-03 AC1: npm run test:visual passes — scaffold scene matches its baseline', async ({ page }) => {
+  test('KS-01-03 AC1: npm run test:visual passes — scaffold scene matches its baseline', async ({
+    page,
+  }) => {
     await page.goto(DEFAULT_QUERY);
     await expect(page.locator('#game')).toBeVisible();
 

@@ -15,7 +15,9 @@ import { DEFAULT_QUERY } from '../../playwright.config.js';
  *    src="https://…">` violates immediately.
  */
 test.describe('KS-01-03 offline', () => {
-  test('KS-01-03 AC1: npm run test:e2e passes — zero network requests after load', async ({ page }) => {
+  test('KS-01-03 AC1: npm run test:e2e passes — zero network requests after load', async ({
+    page,
+  }) => {
     await page.goto(DEFAULT_QUERY, { waitUntil: 'load' });
 
     /** @type {string[]} */
@@ -31,7 +33,9 @@ test.describe('KS-01-03 offline', () => {
         }),
     );
 
-    expect(requestsAfterLoad, `requests fired after load: ${requestsAfterLoad.join(', ')}`).toEqual([]);
+    expect(requestsAfterLoad, `requests fired after load: ${requestsAfterLoad.join(', ')}`).toEqual(
+      [],
+    );
   });
 
   test('KS-01-03 AC2: offline spec fails if index.html adds an external <script src>', async ({
@@ -49,6 +53,8 @@ test.describe('KS-01-03 offline', () => {
 
     await page.goto(DEFAULT_QUERY, { waitUntil: 'load' });
 
-    expect(foreignRequests, `requests left ${ownOrigin}: ${foreignRequests.join(', ')}`).toEqual([]);
+    expect(foreignRequests, `requests left ${ownOrigin}: ${foreignRequests.join(', ')}`).toEqual(
+      [],
+    );
   });
 });
