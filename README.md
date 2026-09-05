@@ -62,7 +62,7 @@ Hosting is **Vercel**, static, from the `dist/` folder Vite builds. Nobody deplo
 | Framework preset | Vite, output directory `dist` (also declared in `vercel.json` so the repository is the source of truth) |
 | Production branch | `main` — every merge redeploys production |
 | Preview | every pull request gets its own preview deployment; Vercel posts the URL as a commit status and a PR comment |
-| Production URL | _assigned by Vercel on the first successful production deployment; recorded here by Sprint 01 (see `docs/sprints/sprint-01-bootstrap-and-delivery-pipeline.md`)_ |
+| Production URL | **https://kobisnake.vercel.app** |
 
 `vercel.json` is what makes "the game loads nothing from the internet" enforceable by the browser rather than
 by good intentions:
