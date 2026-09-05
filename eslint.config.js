@@ -7,9 +7,10 @@ import eslintConfigPrettier from 'eslint-config-prettier';
  * Flat ESLint config (ARCHITECTURE §2: `eslint:recommended` + `eslint-plugin-import`; Prettier owns
  * formatting, so `eslint-config-prettier` turns off any rule that would fight it).
  *
- * Two kinds of file exist in the scaffold: browser code under `src/` (bundled by Vite, runs in a page) and
- * Node-ish tooling config at the repository root (this file, `vite.config.js`). Each gets its own globals so
- * `no-undef` knows what `window` or `process` means without pulling in a dependency neither list needs.
+ * Three kinds of file exist here: browser code under `src/` (bundled by Vite, runs in a page), Node-ish
+ * tooling config at the repository root (this file, `vite.config.js`), and test files under `tests/` (Vitest
+ * and Playwright, run by Node — KS-01-03 adds the first of these). Each gets its own globals so `no-undef`
+ * knows what `window`, `process` or `describe` means without pulling in a dependency none of the three need.
  */
 export default [
   {
@@ -46,6 +47,26 @@ export default [
       sourceType: 'module',
       globals: {
         process: 'readonly',
+      },
+    },
+  },
+  {
+    files: ['tests/**/*.js'],
+    languageOptions: {
+      ecmaVersion: 2022,
+      sourceType: 'module',
+      globals: {
+        // Vitest's global test API (`vitest.config.js` turns it on) and the identifiers `@playwright/test`
+        // specs commonly reach for, so `no-undef` does not flag KS-01-03's suites the moment they land.
+        describe: 'readonly',
+        it: 'readonly',
+        test: 'readonly',
+        expect: 'readonly',
+        beforeEach: 'readonly',
+        afterEach: 'readonly',
+        beforeAll: 'readonly',
+        afterAll: 'readonly',
+        vi: 'readonly',
       },
     },
   },
