@@ -26,6 +26,12 @@ export default [
   js.configs.recommended,
   importPlugin.flatConfigs.recommended,
   {
+    // `eslint-plugin-import`'s recommended flat config pins `ecmaVersion` to 2018, which turns modern syntax
+    // (`??`, `?.`) into a parse error in every file the per-directory blocks below do not cover —
+    // `scripts/sync-labels.mjs` was the first casualty. Set the language level once, for everything.
+    languageOptions: { ecmaVersion: 2022, sourceType: 'module' },
+  },
+  {
     files: ['src/**/*.js'],
     languageOptions: {
       ecmaVersion: 2022,
@@ -82,6 +88,18 @@ export default [
         // even though it is written inline in this Node-executed file — the one place in `tests/**` where
         // the static file and the runtime environment genuinely differ.
         requestAnimationFrame: 'readonly',
+      },
+    },
+  },
+  {
+    files: ['scripts/**/*.mjs'],
+    languageOptions: {
+      globals: {
+        // Maintenance scripts run under Node, not in the page.
+        process: 'readonly',
+        console: 'readonly',
+        fetch: 'readonly',
+        URL: 'readonly',
       },
     },
   },

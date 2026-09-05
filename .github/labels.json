@@ -1,0 +1,162 @@
+[
+  {
+    "name": "sprint:01",
+    "color": "1F6FE5",
+    "description": "Sprint 01 \u2014 Bootstrap & Delivery Pipeline"
+  },
+  {
+    "name": "sprint:02",
+    "color": "1F6FE5",
+    "description": "Sprint 02 \u2014 Core Simulation"
+  },
+  {
+    "name": "sprint:03",
+    "color": "1F6FE5",
+    "description": "Sprint 03 \u2014 Grey-box Renderer & First Playable"
+  },
+  {
+    "name": "sprint:04",
+    "color": "1F6FE5",
+    "description": "Sprint 04 \u2014 Closing Laser Arena"
+  },
+  {
+    "name": "sprint:05",
+    "color": "1F6FE5",
+    "description": "Sprint 05 \u2014 Match Structure & Game Flow"
+  },
+  {
+    "name": "sprint:06",
+    "color": "1F6FE5",
+    "description": "Sprint 06 \u2014 Power-ups"
+  },
+  {
+    "name": "sprint:07",
+    "color": "1F6FE5",
+    "description": "Sprint 07 \u2014 Playtest Gate 1 & Tuning"
+  },
+  {
+    "name": "sprint:08",
+    "color": "1F6FE5",
+    "description": "Sprint 08 \u2014 Snake Art & Animation"
+  },
+  {
+    "name": "sprint:09",
+    "color": "1F6FE5",
+    "description": "Sprint 09 \u2014 Arena Art, Lighting & Camera"
+  },
+  {
+    "name": "sprint:10",
+    "color": "1F6FE5",
+    "description": "Sprint 10 \u2014 VFX & Game Feel"
+  },
+  {
+    "name": "sprint:11",
+    "color": "1F6FE5",
+    "description": "Sprint 11 \u2014 HUD, Menus & Match Setup"
+  },
+  {
+    "name": "sprint:12",
+    "color": "1F6FE5",
+    "description": "Sprint 12 \u2014 Audio"
+  },
+  {
+    "name": "sprint:13",
+    "color": "1F6FE5",
+    "description": "Sprint 13 \u2014 Save Data & Keys"
+  },
+  {
+    "name": "sprint:14",
+    "color": "1F6FE5",
+    "description": "Sprint 14 \u2014 Shop & Cosmetics"
+  },
+  {
+    "name": "sprint:15",
+    "color": "1F6FE5",
+    "description": "Sprint 15 \u2014 Tutorial & Practice"
+  },
+  {
+    "name": "sprint:16",
+    "color": "1F6FE5",
+    "description": "Sprint 16 \u2014 Hardening"
+  },
+  {
+    "name": "sprint:17",
+    "color": "1F6FE5",
+    "description": "Sprint 17 \u2014 Playtest Gate 2 & Final Tuning"
+  },
+  {
+    "name": "sprint:18",
+    "color": "1F6FE5",
+    "description": "Sprint 18 \u2014 Release 1.0"
+  },
+  {
+    "name": "sprint:19",
+    "color": "1F6FE5",
+    "description": "Sprint 19 \u2014 Single Player"
+  },
+  {
+    "name": "sprint:20",
+    "color": "1F6FE5",
+    "description": "Sprint 20 \u2014 Arena Variants"
+  },
+  {
+    "name": "owner:fable",
+    "color": "8A3FD1",
+    "description": "Design lead: design, acceptance criteria, sign-off"
+  },
+  {
+    "name": "owner:opus",
+    "color": "12B5B0",
+    "description": "Tech lead: architecture-critical code and PR review"
+  },
+  {
+    "name": "owner:sonnet",
+    "color": "2FB44B",
+    "description": "Feature engineer: specified feature tickets"
+  },
+  {
+    "name": "owner:sonnet-qa",
+    "color": "F27A1A",
+    "description": "QA engineer: tests from acceptance criteria"
+  },
+  {
+    "name": "type:feature",
+    "color": "2FB44B",
+    "description": "Gameplay, view or UI work"
+  },
+  {
+    "name": "type:qa",
+    "color": "F6C21B",
+    "description": "Tests, harnesses, QA passes"
+  },
+  {
+    "name": "type:design",
+    "color": "8A3FD1",
+    "description": "Design decisions, docs, sign-off"
+  },
+  {
+    "name": "type:infra",
+    "color": "7C8088",
+    "description": "Toolchain, CI, hosting, repository hygiene"
+  },
+  {
+    "name": "needs-design-review",
+    "color": "F6C21B",
+    "description": "Design lead must compare this against the reference images before merge"
+  },
+  {
+    "name": "bug",
+    "color": "E3261B",
+    "description": "Behaves differently from the design"
+  },
+  {
+    "name": "blocker",
+    "color": "B60205",
+    "description": "Must be fixed inside the current sprint"
+  },
+  {
+    "name": "tuning-proposal",
+    "color": "E8B028",
+    "description": "Proposes changing a tunable; the design lead decides"
+  }
+]

@@ -6,3 +6,6 @@ test-results/
 .vercel/
 *.log
 .DS_Store
+
+# Agent worktrees (Claude Code creates these when subagents work in parallel).
+.claude/
