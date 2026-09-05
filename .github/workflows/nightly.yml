@@ -43,6 +43,14 @@ jobs:
           key: playwright-${{ matrix.browser }}-${{ runner.os }}-${{ steps.playwright-version.outputs.version }}
       - run: npx playwright install --with-deps ${{ matrix.browser }}
 
+      # Chromium ships SwiftShader and renders WebGL on a GPU-less runner out of the box. Firefox does not:
+      # it looks for a system GL driver, finds none, and reports "Exhausted GL driver options", so every
+      # WebGL page fails before the game gets a chance to be wrong. Mesa's software rasteriser is that
+      # driver. Installed only for the Firefox leg; WebKit is already fine.
+      - name: Install a software GL driver for Firefox
+        if: matrix.browser == 'firefox'
+        run: sudo apt-get update && sudo apt-get install -y libgl1-mesa-dri mesa-utils
+
       # playwright.config.js defines a project per engine, so the engine is selected with `--project`.
       # `--browser` cannot be used here: Playwright rejects it outright whenever the config defines any
       # project ("Cannot use --browser option when configuration file defines projects"), which is what
