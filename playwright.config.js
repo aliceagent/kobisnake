@@ -54,11 +54,12 @@ export default defineConfig({
       name: 'firefox',
       use: {
         ...devices['Desktop Firefox'],
-        // Headless Firefox on a GPU-less CI runner refuses to create a WebGL context at all
-        // ("AllowWebgl2:false restricts context creation on this system"), where Chromium quietly falls
-        // back to software rendering. Without these prefs the nightly Firefox leg cannot test the game, only
-        // the absence of a GPU. This makes the runner behave like a real desktop Firefox, which does have
-        // WebGL; it does not relax anything the test asserts.
+        // Headless Firefox on a GPU-less CI runner will not create a WebGL context, where Chromium falls
+        // back to SwiftShader. These prefs are NOT sufficient on their own: they get Firefox past
+        // "AllowWebgl2:false restricts context creation" to "Exhausted GL driver options", which is as far
+        // as three attempts got (see issue #23 for what was tried and what is left). They are kept because
+        // they are correct and because the next person should not repeat this ground. The nightly Firefox
+        // leg is red until #23 is solved; the failing test is right and stays failing.
         launchOptions: {
           firefoxUserPrefs: {
             'webgl.force-enabled': true,

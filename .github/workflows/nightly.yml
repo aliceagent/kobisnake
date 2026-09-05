@@ -45,8 +45,9 @@ jobs:
 
       # Chromium ships SwiftShader and renders WebGL on a GPU-less runner out of the box. Firefox does not:
       # it looks for a system GL driver, finds none, and reports "Exhausted GL driver options", so every
-      # WebGL page fails before the game gets a chance to be wrong. Mesa's software rasteriser is that
-      # driver. Installed only for the Firefox leg; WebKit is already fine.
+      # WebGL page fails before the game gets a chance to be wrong. Installing Mesa's rasteriser did NOT fix
+      # it (issue #23) — an X display via xvfb is the next thing to try. Kept so the next attempt starts one
+      # step further along. Firefox-only; WebKit passes all three specs.
       - name: Install a software GL driver for Firefox
         if: matrix.browser == 'firefox'
         run: sudo apt-get update && sudo apt-get install -y libgl1-mesa-dri mesa-utils
