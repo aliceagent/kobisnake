@@ -24,8 +24,10 @@ the reference concept images, and an 18-sprint plan for a multi-agent build.
 ## How it will be built and hosted
 
 - Code lives on GitHub (`aliceagent/kobisnake`). `main` is protected; every change is a pull request with CI.
-- Hosting is **Vercel**: every pull request gets a preview deployment, `main` deploys to production. Set up in
-  Sprint 00 (`docs/sprints/sprint-00-bootstrap-and-delivery-pipeline.md`).
+- Hosting is **Vercel**: every pull request gets a preview deployment, `main` deploys to production. The Vercel
+  project is `kobisnake` on the owner's team, linked to this repository through the GitHub integration (project
+  id `prj_cE5eSQETJjAtso5htBrzNI1jgAYj`). The production URL is assigned by Vercel on the first successful
+  deployment and is recorded here by Sprint 00 (`docs/sprints/sprint-00-bootstrap-and-delivery-pipeline.md`).
 - Sprint 00 creates the toolchain (`npm run dev | build | lint | typecheck | test:unit | test:e2e | test:visual`).
   Until then there is nothing to run.
 

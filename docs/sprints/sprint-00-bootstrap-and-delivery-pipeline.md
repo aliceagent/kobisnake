@@ -17,6 +17,12 @@ Any gameplay. No snake code is written in this sprint.
 - The Vercel project `kobisnake` exists on the owner's team, linked to `aliceagent/kobisnake` through the GitHub
   integration, with `main` as the production branch and preview deployments per PR.
 - `main` exists and is the repository's default branch.
+- Known access limit: agents in this environment cannot write GitHub repository *settings* (default branch,
+  branch protection, rulesets); the request proxy refuses those API paths regardless of token. KS-00-06 must
+  therefore prepare the exact protection settings as a checklist and post `BLOCKED:` for the owner to click
+  through, rather than applying them via API.
+- Known quota: the Vercel team is on the Hobby plan, which caps deployments per day. If a deployment is refused
+  with `api-deployments-free-per-day`, wait for the reset rather than retrying in a loop.
 - A placeholder `index.html` and a starter `vercel.json` (security headers, clean URLs) are committed so the
   first deployment is not a 404. KS-00-01 replaces `index.html` with the Vite entry page; KS-00-05 extends
   `vercel.json` (framework, cache headers, CSP) rather than creating it.
