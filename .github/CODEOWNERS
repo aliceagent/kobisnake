@@ -1,0 +1,25 @@
+# Who must review what.
+#
+# The design pack calls for two reviewer accounts: an engineering-lead account that owns the simulation and
+# the renderer foundation, and a design-lead account that owns the design documents
+# (AGENT-ROLES-AND-WORKFLOW §4, KS-01-06). Neither account exists on this repository yet — `@aliceagent` is
+# its only collaborator — so every path below routes to `@aliceagent` today. When the two reviewer accounts
+# are created, split the ownership at the marked lines; nothing else about this file has to change.
+#
+# See the branch-protection checklist on the Sprint 01 tracking issue: CODEOWNERS only has teeth once
+# "Require review from Code Owners" is switched on.
+
+# Everything, unless a more specific rule below wins.
+*                           @aliceagent
+
+# --- engineering lead ---------------------------------------------------------------------------------
+# Pure simulation and the pieces of the renderer everything else is built on. A mistake here is a mistake in
+# every sprint that follows.
+/src/core/**                @aliceagent
+/src/game/**                @aliceagent
+/src/render/renderer.js     @aliceagent
+/src/render/camera.js       @aliceagent
+
+# --- design lead --------------------------------------------------------------------------------------
+# The numbers, the rules and the reference images. Changing these changes the game, not the code.
+/docs/design/**             @aliceagent
