@@ -1,0 +1,23 @@
+{
+  "name": "kobisnake",
+  "version": "0.1.0",
+  "private": true,
+  "description": "KOBI Snake — a local two-player 3D Snake game for the desktop browser.",
+  "type": "module",
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview"
+  },
+  "dependencies": {
+    "three": "0.185.1"
+  },
+  "devDependencies": {
+    "@types/three": "0.185.4",
+    "typescript": "5.9.3",
+    "vite": "5.4.21"
+  }
+}
