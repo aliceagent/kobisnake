@@ -41,7 +41,8 @@ export default defineConfig({
   },
   // One project per engine. Playwright refuses the `--browser` CLI flag whenever a config defines projects,
   // so the engine has to be chosen with `--project` — which is what `nightly.yml` and the npm scripts do.
-  // Chromium is the only engine a pull request blocks on; Firefox and WebKit run nightly (QA-STRATEGY §1).
+  // Chromium is the only engine a pull request blocks on; WebKit runs nightly (QA-STRATEGY §1). The
+  // `firefox` project is defined but nothing runs it: its nightly leg was removed until Sprint 16 (#23).
   // Visual baselines are Chromium-only: `snapshotPathTemplate` deliberately has no project segment, so
   // `tests/visual` must never be run under another engine — it would compare a Firefox frame against a
   // Chromium baseline. Nightly runs `tests/e2e` only, for exactly this reason.
@@ -58,8 +59,10 @@ export default defineConfig({
         // back to SwiftShader. These prefs are NOT sufficient on their own: they get Firefox past
         // "AllowWebgl2:false restricts context creation" to "Exhausted GL driver options", which is as far
         // as three attempts got (see issue #23 for what was tried and what is left). They are kept because
-        // they are correct and because the next person should not repeat this ground. The nightly Firefox
-        // leg is red until #23 is solved; the failing test is right and stays failing.
+        // they are correct and because the next person should not repeat this ground. No workflow selects
+        // this project today — `nightly.yml` dropped its Firefox leg until KS-16-02 solves #23 — so running
+        // it by hand (`npx playwright test tests/e2e --project=firefox`) is still expected to fail, and the
+        // failing test is right.
         launchOptions: {
           firefoxUserPrefs: {
             'webgl.force-enabled': true,

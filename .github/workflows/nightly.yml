@@ -1,7 +1,15 @@
 # KS-01-04: cross-browser + perf coverage that is too slow (or, for perf, not written yet) to put
 # on every PR. `ci.yml` already runs the full e2e + visual suite on Chromium for every PR and push
-# to main; this workflow adds the two browser engines Chromium can't stand in for, plus a slot for
+# to main; this workflow adds the browser engines Chromium can't stand in for, plus a slot for
 # the perf specs Sprint 16 will add.
+#
+# Firefox is deliberately absent. It cannot render WebGL on a GPU-less runner — it finds no system
+# GL driver and reports "Exhausted GL driver options", so every spec fails before the game gets a
+# chance to be wrong; installing Mesa's rasteriser did not fix it (issue #23). A leg that is red
+# every night for fifteen sprints teaches everyone to ignore this workflow, so the design lead ruled
+# it removed rather than tolerated (issue #23, ruling 3 on issue #1). Sprint 16 re-adds it —
+# KS-16-02 owns getting Firefox green, starting from an X display via xvfb. This removes a job, not
+# a test: the same three e2e specs still run on WebKit here and on Chromium in `ci.yml`.
 name: Nightly
 
 on:
@@ -20,9 +28,10 @@ jobs:
     runs-on: ubuntu-latest
     strategy:
       # One engine failing (e.g. a real WebKit rendering gap) shouldn't cancel the other's run.
+      # The matrix is kept with a single entry so Sprint 16 re-adds Firefox by adding one word (#23).
       fail-fast: false
       matrix:
-        browser: [firefox, webkit]
+        browser: [webkit]
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -43,15 +52,6 @@ jobs:
           key: playwright-${{ matrix.browser }}-${{ runner.os }}-${{ steps.playwright-version.outputs.version }}
       - run: npx playwright install --with-deps ${{ matrix.browser }}
 
-      # Chromium ships SwiftShader and renders WebGL on a GPU-less runner out of the box. Firefox does not:
-      # it looks for a system GL driver, finds none, and reports "Exhausted GL driver options", so every
-      # WebGL page fails before the game gets a chance to be wrong. Installing Mesa's rasteriser did NOT fix
-      # it (issue #23) — an X display via xvfb is the next thing to try. Kept so the next attempt starts one
-      # step further along. Firefox-only; WebKit passes all three specs.
-      - name: Install a software GL driver for Firefox
-        if: matrix.browser == 'firefox'
-        run: sudo apt-get update && sudo apt-get install -y libgl1-mesa-dri mesa-utils
-
       # playwright.config.js defines a project per engine, so the engine is selected with `--project`.
       # `--browser` cannot be used here: Playwright rejects it outright whenever the config defines any
       # project ("Cannot use --browser option when configuration file defines projects"), which is what
@@ -59,8 +59,9 @@ jobs:
       - name: e2e
         env:
           PLAYWRIGHT_HTML_REPORT: playwright-report/${{ matrix.browser }}
-          # Mesa's software rasteriser, for the same reason as the Firefox prefs in playwright.config.js:
-          # these runners have no GPU and Firefox, unlike Chromium, ships no software WebGL of its own.
+          # These runners have no GPU, so anything that reaches a GL driver has to be told to rasterise
+          # in software. WebKit passes without it, but it is the correct setting for a GPU-less runner
+          # and it is what the Firefox leg will need when #23 re-adds it in Sprint 16.
           LIBGL_ALWAYS_SOFTWARE: '1'
         run: npx playwright test tests/e2e --project=${{ matrix.browser }}
 
