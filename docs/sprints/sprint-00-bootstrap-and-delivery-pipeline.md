@@ -13,6 +13,14 @@ test harness skeletons (unit, sim, e2e, visual, offline), a placeholder scene th
 ## Out of scope
 Any gameplay. No snake code is written in this sprint.
 
+## Already done before the sprint (by the design lead, at project setup)
+- The Vercel project `kobisnake` exists on the owner's team, linked to `aliceagent/kobisnake` through the GitHub
+  integration, with `main` as the production branch and preview deployments per PR.
+- `main` exists and is the repository's default branch.
+- A placeholder `index.html` and a starter `vercel.json` (security headers, clean URLs) are committed so the
+  first deployment is not a 404. KS-00-01 replaces `index.html` with the Vite entry page; KS-00-05 extends
+  `vercel.json` (framework, cache headers, CSP) rather than creating it.
+
 ## Tickets
 
 ### KS-00-01 · Vite + three.js scaffold
