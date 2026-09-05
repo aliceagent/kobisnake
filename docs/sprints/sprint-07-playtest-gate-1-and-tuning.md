@@ -1,6 +1,6 @@
-# Sprint 06 — Playtest Gate 1 & Tuning
+# Sprint 07 — Playtest Gate 1 & Tuning
 
-**Lead:** Fable · **Agents:** Fable ×1, Opus ×1, Sonnet ×2, Sonnet-QA ×1, **humans ×2+** · **Prerequisite:** `sprint-05-done`
+**Lead:** Fable · **Agents:** Fable ×1, Opus ×1, Sonnet ×2, Sonnet-QA ×1, **humans ×2+** · **Prerequisite:** `sprint-06-done`
 
 ## Goal
 Answer the GDD's first real milestone question with evidence: "Is it fun for two people to try to make each
@@ -16,7 +16,7 @@ New features. Art. Anything not required to answer the gate question.
 
 ## Tickets
 
-### KS-06-01 · Tuning build
+### KS-07-01 · Tuning build
 Owner: Sonnet · Size: M · Depends on: —
 Files: `src/game/tuning.js`, `src/game/session.js`, `src/ui/screens/tuning.js`
 Spec: `?tuning=1` shows a small overlay (DEV/`?test=1`-style gating; excluded from production unless the flag
@@ -31,8 +31,8 @@ Acceptance criteria:
 - [ ] AC3 Overlay is absent from a normal production load.
 QA: e2e.
 
-### KS-06-02 · Human playtest sessions (×3)
-Owner: Fable (facilitator), humans · Size: L · Depends on: KS-06-01
+### KS-07-02 · Human playtest sessions (×3)
+Owner: Fable (facilitator), humans · Size: L · Depends on: KS-07-01
 Files: `docs/qa/playtests/2026-xx-xx-gate1-session-N.md`
 Spec: Three sessions of ≥ 30 minutes with two humans on one keyboard, using `PLAYTEST-SCRIPT.md` sections 2–8.
 Session 1 default values. Session 2 the tuning variants Fable prepares from session 1 (at least: laser start
@@ -43,7 +43,7 @@ Acceptance criteria:
 - [ ] AC2 Every FAIL has an issue number.
 QA: —
 
-### KS-06-03 · Bot statistics comparison
+### KS-07-03 · Bot statistics comparison
 Owner: Sonnet-QA · Size: S · Depends on: —
 Files: `tests/sim/tuningMatrix.test.js`, `docs/qa/playtests/gate1-bot-matrix.md`
 Spec: Run the bot pairings across the same tuning variants as session 2 (500 rounds each) and produce the
@@ -53,8 +53,8 @@ Acceptance criteria:
 - [ ] AC1 Matrix committed and linked from the tracking issue.
 QA: —
 
-### KS-06-04 · Tuning decision and design update
-Owner: Fable · Size: S · Depends on: KS-06-02, KS-06-03
+### KS-07-04 · Tuning decision and design update
+Owner: Fable · Size: S · Depends on: KS-07-02, KS-07-03
 Files: `docs/design/DESIGN-DECISIONS.md`, `src/core/settings.js`
 Spec: Fable writes the decision memo in the tracking issue (what changed, what evidence, what stays), updates
 `DESIGN-DECISIONS.md` rows and `§4`, and the SETTINGS defaults change in one PR labelled `tuning-proposal`
@@ -64,17 +64,17 @@ Acceptance criteria:
 - [ ] AC2 Golden logs and replays regenerated and green.
 QA: —
 
-### KS-06-05 · Bug bash and fairness fixes
-Owner: Opus (+ Sonnet) · Size: M · Depends on: KS-06-02
+### KS-07-05 · Bug bash and fairness fixes
+Owner: Opus (+ Sonnet) · Size: M · Depends on: KS-07-02
 Files: as needed under `src/core`, `src/game`, `src/render`; `tests/sim/replays/*`
 Spec: Fix every `blocker` and `major` bug from the sessions. Each fix adds the reproducing replay to
 `tests/sim/replays/` first (red), then the fix (green).
 Acceptance criteria:
-- [ ] AC1 Zero open `blocker`/`major` issues labelled `sprint:06`.
+- [ ] AC1 Zero open `blocker`/`major` issues labelled `sprint:07`.
 - [ ] AC2 Replay count increased by at least the number of fixed bugs.
 QA: —
 
-### KS-06-06 · Input-feel instrumentation
+### KS-07-06 · Input-feel instrumentation
 Owner: Sonnet · Size: S · Depends on: —
 Files: `src/game/input.js`, `src/game/testHooks.js`, `tests/e2e/inputLatency.spec.js`
 Spec: Measure keydown → queued → committed step → first rendered frame with the new direction, in ms and in sim
@@ -93,10 +93,10 @@ the chosen values.
 - `PLAYTEST-SCRIPT.md`, `QA-STRATEGY §4`
 
 ## Risks
-- Humans unavailable: the gate cannot be replaced by bots. Fable schedules sessions at S05 kick-off.
-- Temptation to add features ("what if there were walls…"): out of scope by definition; file under S17.
+- Humans unavailable: the gate cannot be replaced by bots. Fable schedules sessions at S06 kick-off.
+- Temptation to add features ("what if there were walls…"): out of scope by definition; file under S20.
 
 ## Exit criteria
 - [ ] Session 3 script all-pass; matrix targets met; decisions memo posted; docs and settings in sync.
 - [ ] Fable writes the sentence "The grey-box game is fun; art may begin." in the tracking issue, or lists what must change first.
-- [ ] Tag `sprint-06-done` and `gate1-passed`.
+- [ ] Tag `sprint-07-done` and `gate1-passed`.

@@ -161,7 +161,7 @@ purposes; the simulation keeps running.
 - `?seed=123` fixes the RNG for visual regression baselines. `?reducedFx=1` disables particles for screenshot
   stability.
 
-## 12. Performance budgets (enforced in Sprint 14, measured from Sprint 02)
+## 12. Performance budgets (enforced in Sprint 16, measured from Sprint 03)
 | Metric | Budget |
 |---|---|
 | Initial JS bundle (gzip) | ≤ 350 kB including three.js |

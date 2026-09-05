@@ -1,6 +1,6 @@
-# Sprint 04 — Match Structure & Game Flow
+# Sprint 05 — Match Structure & Game Flow
 
-**Lead:** Sonnet (Opus owns the state machine) · **Agents:** Opus ×1, Sonnet ×2, Sonnet-QA ×1 · **Prerequisite:** `sprint-03-done`
+**Lead:** Sonnet (Opus owns the state machine) · **Agents:** Opus ×1, Sonnet ×2, Sonnet-QA ×1 · **Prerequisite:** `sprint-04-done`
 
 ## Goal
 Replace the placeholder "press Enter" flow with the real game-state machine: main menu (grey), match setup
@@ -12,11 +12,11 @@ best-of logic and rewards computed (not yet persisted), pause and auto-pause. Ev
 scoreboard / match over / pause with the final keyboard model, rematch, draw handling.
 
 ## Out of scope
-Visual design of screens (S10), save persistence (S12), audio (S11), power-ups (S05), tutorial/practice/shop (S12–S13; menu items present but disabled with "COMING SOON").
+Visual design of screens (S11), save persistence (S13), audio (S12), power-ups (S06), tutorial/practice/shop (S14–S15; menu items present but disabled with "COMING SOON").
 
 ## Tickets
 
-### KS-04-01 · MatchState
+### KS-05-01 · MatchState
 Owner: Sonnet · Size: S · Depends on: —
 Files: `src/core/match.js`, `tests/unit/core/match.test.js`
 Spec: `createMatch({ bestOf, players })` → `{ wins: {1:0, 2:0}, roundsPlayed, target, recordRound(result),
@@ -28,8 +28,8 @@ Acceptance criteria:
 - [ ] AC3 Rewards 0/1/2.
 QA: unit.
 
-### KS-04-02 · Game state machine
-Owner: Opus · Size: M · Depends on: KS-04-01
+### KS-05-02 · Game state machine
+Owner: Opus · Size: M · Depends on: KS-05-01
 Files: `src/game/gameStateMachine.js`, `tests/unit/game/gameStateMachine.test.js`
 Spec: Data-driven table per `ARCHITECTURE §6` with states `MAIN_MENU, MATCH_SETUP, TUTORIAL, PRACTICE, SHOP,
 SETTINGS, COUNTDOWN, PLAYING, LASER_WARNING, ROUND_OVER, MATCH_OVER, PAUSE`. Events: `SELECT_2P, SELECT_PRACTICE,
@@ -44,8 +44,8 @@ Acceptance criteria:
 - [ ] AC4 `ROUND_OVER` → `NEXT_ROUND` → COUNTDOWN when match not over; `MATCH_OVER` when it is.
 QA: unit.
 
-### KS-04-03 · Session rewrite around the state machine
-Owner: Opus · Size: L · Depends on: KS-04-02
+### KS-05-03 · Session rewrite around the state machine
+Owner: Opus · Size: L · Depends on: KS-05-02
 Files: `src/game/session.js`, `src/main.js`, `src/game/testHooks.js`
 Spec: Session holds `matchSettings { bestOf, powerUpsEnabled, musicTrack, colors: {1, 2} }`, `match`, `sim`,
 and drives the machine. COUNTDOWN: create the sim (new seed per round, derived from the match seed + round
@@ -61,13 +61,13 @@ Acceptance criteria:
 - [ ] AC4 Round seeds differ per round but are reproducible from the match seed.
 QA: e2e `tests/e2e/match-flow.spec.js`.
 
-### KS-04-04 · Grey-box screens with the shared focus model
-Owner: Sonnet · Size: M · Depends on: KS-04-02
+### KS-05-04 · Grey-box screens with the shared focus model
+Owner: Sonnet · Size: M · Depends on: KS-05-02
 Files: `src/ui/focus.js`, `src/ui/ui.js`, `src/ui/screens/mainMenu.js`, `src/ui/screens/matchSetup.js`, `src/ui/screens/countdown.js`, `src/ui/screens/scoreboard.js`, `src/ui/screens/matchOver.js`, `src/ui/screens/pause.js`, `src/ui/styles.css`, `tests/unit/ui/focus.test.js`
 Spec: `focus.js` implements `ARCHITECTURE §8` navigation (list of focusables, wrap-around, ←/→ value change
 via `onChange`, Enter/Esc). Main menu items exactly as GDD: 1 PLAYER (disabled, "COMING SOON"), 2 PLAYERS,
-PRACTICE (disabled until S13), TUTORIAL (disabled until S13), SHOP (disabled until S12), SETTINGS (disabled until
-S11). Match setup rows: MATCH LENGTH, POWER-UPS, MUSIC, PLAYER 1 colour, PLAYER 2 colour, START MATCH; colour rows
+PRACTICE (disabled until S15), TUTORIAL (disabled until S15), SHOP (disabled until S14), SETTINGS (disabled until
+S12). Match setup rows: MATCH LENGTH, POWER-UPS, MUSIC, PLAYER 1 colour, PLAYER 2 colour, START MATCH; colour rows
 cycle owned colours and enforce the swap rule (`DESIGN-DECISIONS §2.7`). Scoreboard shows the GDD example
 format ("BEST OF 5 / Blue: 2 wins / Red: 1 win / Blue needs 1 more win"). All unstyled beyond legibility.
 Acceptance criteria:
@@ -77,8 +77,8 @@ Acceptance criteria:
 - [ ] AC4 Focus ring is visible on the focused element (screenshot).
 QA: unit for focus + e2e `tests/e2e/menus.spec.js`.
 
-### KS-04-05 · Flow e2e suite and replays
-Owner: Sonnet-QA · Size: M · Depends on: KS-04-03, KS-04-04
+### KS-05-05 · Flow e2e suite and replays
+Owner: Sonnet-QA · Size: M · Depends on: KS-05-03, KS-05-04
 Files: `tests/e2e/match-flow.spec.js`, `tests/e2e/menus.spec.js`, `tests/e2e/pause.spec.js`, `tests/visual/screens.visual.spec.js`
 Spec: Cover Bo1/Bo3/Bo5 completion, draw replay, pause/resume/quit, auto-pause on hidden tab, rematch keeps
 settings, back navigation from every screen, visual baselines for every screen.
@@ -88,7 +88,7 @@ QA: —
 
 ## QA plan (sprint pass)
 1. Adversary: mash Enter during countdown, press Esc during slow-mo, hide the tab during the scoreboard, resize
-   during MATCH_OVER, start a match with power-ups OFF (still no power-ups since S05 is not done — verify nothing throws).
+   during MATCH_OVER, start a match with power-ups OFF (still no power-ups since S06 is not done — verify nothing throws).
 2. State machine table printed to the QA report with a check per row.
 3. Human: play a Bo5; confirm the between-round flow "quick scoreboard then 3-2-1-GO" feels quick.
 
@@ -102,4 +102,4 @@ QA: —
 ## Exit criteria
 - [ ] Table-coverage test proves every transition is tested.
 - [ ] Human confirms flow pacing.
-- [ ] Tag `sprint-04-done`.
+- [ ] Tag `sprint-05-done`.

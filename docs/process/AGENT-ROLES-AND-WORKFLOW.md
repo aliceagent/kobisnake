@@ -74,7 +74,7 @@ QA: the tests this ticket must add or make pass
 - Commit messages: imperative, ≤ 72 chars subject, body explains why. Ticket ID in the subject.
 - Squash-merge title = PR title = `KS-NN-TT: description`.
 - Labels: `sprint:NN`, `owner:*`, `type:*`, `needs-design-review`, `bug`, `blocker`, `tuning-proposal`.
-- Tags: `sprint-NN-done` at sign-off; `v1.0.0` at release (Sprint 15).
+- Tags: `sprint-NN-done` at sign-off; `v1.0.0` at release (Sprint 18).
 - Vercel: the GitHub integration builds every PR into a preview URL (posted automatically on the PR). `main`
   deploys to production. Nobody deploys manually.
 
@@ -101,8 +101,8 @@ than "after sprint-NN-done".
 
 ## 7. Human touchpoints
 - The owner reviews Fable's sign-off comment for each sprint and plays the preview.
-- Playtest gates (Sprint 06 and Sprint 14) require at least two humans sharing one keyboard to run
+- Playtest gates (Sprint 07 and Sprint 17) require at least two humans sharing one keyboard to run
   `docs/qa/PLAYTEST-SCRIPT.md` and record the answers. Agents cannot replace this step; they prepare the build,
   the script and the bots, and they act on the results.
-- The 11-year-old developer's "can I change this?" test: at Sprint 15 they change `snakeSpeed` and a colour hex
+- The 11-year-old developer's "can I change this?" test: at Sprint 18 they change `snakeSpeed` and a colour hex
   with no help. If they cannot find where, that is a blocker bug.

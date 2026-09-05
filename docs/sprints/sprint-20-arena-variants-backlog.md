@@ -1,6 +1,6 @@
-# Sprint 17 — Arena Variants (post-1.0 backlog)
+# Sprint 20 — Arena Variants (post-1.0 backlog)
 
-**Lead:** Fable · **Agents:** Fable ×1, Opus ×1, Sonnet ×2, Sonnet-QA ×1 · **Prerequisite:** `sprint-16-done` and an explicit owner decision to proceed
+**Lead:** Fable · **Agents:** Fable ×1, Opus ×1, Sonnet ×2, Sonnet-QA ×1 · **Prerequisite:** `sprint-19-done` and an explicit owner decision to proceed
 
 ## Why this sprint exists
 Two supplied concept images (`future-level-zigzag-zone.png`, `future-level-moving-obstacles.png`) show
@@ -22,16 +22,16 @@ that idea; it ships nothing to players until Fable and the owner agree the proto
    average length. Reject a variant if draws > 5 % or timeout > 20 %.
 4. **Human playtest (Fable).** Two sessions with the playtest script's Collision and Arena Closing sections
    plus "did the obstacles create new fun or just more deaths?".
-5. **Decision.** Ship (moves to a full art sprint modelled on S08/S09 with the image references), iterate, or
+5. **Decision.** Ship (moves to a full art sprint modelled on S09/S10 with the image references), iterate, or
    shelve. Recorded in `DESIGN-DECISIONS.md` §7.
 
 ## Tickets (prototype only)
-### KS-17-01 · Variant design note — Owner: Fable · Files: `docs/design/DESIGN-DECISIONS.md`
-### KS-17-02 · Obstacle model and layouts — Owner: Opus · Files: `src/core/obstacles.js`, `src/core/layouts/zigzag.js`, `src/core/layouts/movers.js`, `src/core/round.js`, `tests/unit/core/obstacles.test.js`
-### KS-17-03 · Grey-box obstacle rendering with arrows — Owner: Sonnet · Files: `src/render/obstacleView.js`
-### KS-17-04 · Setup toggle behind the flag — Owner: Sonnet · Files: `src/ui/screens/matchSetup.js`, `src/game/session.js`
-### KS-17-05 · Bots, statistics, fuzz — Owner: Sonnet-QA + Opus · Files: `tests/sim/bots/*`, `tests/sim/variantStats.test.js`, `tests/sim/obstacleFuzz.test.js`
-### KS-17-06 · Playtest sessions and decision — Owner: Fable · Files: `docs/qa/playtests/*variants*`
+### KS-20-01 · Variant design note — Owner: Fable · Files: `docs/design/DESIGN-DECISIONS.md`
+### KS-20-02 · Obstacle model and layouts — Owner: Opus · Files: `src/core/obstacles.js`, `src/core/layouts/zigzag.js`, `src/core/layouts/movers.js`, `src/core/round.js`, `tests/unit/core/obstacles.test.js`
+### KS-20-03 · Grey-box obstacle rendering with arrows — Owner: Sonnet · Files: `src/render/obstacleView.js`
+### KS-20-04 · Setup toggle behind the flag — Owner: Sonnet · Files: `src/ui/screens/matchSetup.js`, `src/game/session.js`
+### KS-20-05 · Bots, statistics, fuzz — Owner: Sonnet-QA + Opus · Files: `tests/sim/bots/*`, `tests/sim/variantStats.test.js`, `tests/sim/obstacleFuzz.test.js`
+### KS-20-06 · Playtest sessions and decision — Owner: Fable · Files: `docs/qa/playtests/*variants*`
 
 ## Exit criteria
 - [ ] A written ship / iterate / shelve decision with evidence. Nothing merges to `main` outside the feature flag until "ship".

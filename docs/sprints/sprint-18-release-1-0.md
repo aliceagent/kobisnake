@@ -1,4 +1,4 @@
-# Sprint 15 — Release 1.0
+# Sprint 18 — Release 1.0
 
 **Lead:** Opus · **Agents:** Opus ×1, Sonnet ×2, Fable · **Prerequisite:** `gate2-passed`
 
@@ -11,14 +11,14 @@ Release checklist, version stamping, changelog, player-facing README section, th
 credits/version display, final production verification, post-release monitoring plan (without analytics).
 
 ## Out of scope
-New features; single player (S16).
+New features; single player (S19).
 
 ## Tickets
 
-### KS-15-01 · Release checklist and version stamp
+### KS-18-01 · Release checklist and version stamp
 Owner: Opus · Size: S · Depends on: —
 Files: `docs/process/RELEASE-CHECKLIST.md`, `package.json` (version 1.0.0), `src/ui/screens/settings.js` (version line), `vite.config.js` (define `__APP_VERSION__`)
-Spec: Checklist: CI green on `main`; all `sprint-14-done` criteria; preview smoke by a human; tag `v1.0.0`;
+Spec: Checklist: CI green on `main`; all `sprint-17-done` criteria; preview smoke by a human; tag `v1.0.0`;
 production deploy verified; `curl` headers; offline check; rollback procedure (Vercel "promote previous
 deployment"). Settings screen shows "KOBI Snake v1.0.0" bottom-left.
 Acceptance criteria:
@@ -26,7 +26,7 @@ Acceptance criteria:
 - [ ] AC2 Version visible in-game matches the tag.
 QA: manual.
 
-### KS-15-02 · Developer guide for the 11-year-old
+### KS-18-02 · Developer guide for the 11-year-old
 Owner: Sonnet · Size: M · Depends on: —
 Files: `docs/DEVELOPER-GUIDE.md`, `README.md`
 Spec: A friendly guide (≤ 300 lines, short sentences, screenshots as needed via `docs/guide-images/`):
@@ -38,7 +38,7 @@ Acceptance criteria:
 - [ ] AC1 The "can I change this?" test from `AGENT-ROLES §7`: a young developer completes the first three exercises with no help (recorded in the release issue). If not possible to run, Fable performs the exercises literally as written and confirms each step is accurate.
 QA: manual.
 
-### KS-15-03 · Changelog, credits, licence
+### KS-18-03 · Changelog, credits, licence
 Owner: Sonnet · Size: S · Depends on: —
 Files: `CHANGELOG.md`, `LICENSE`, `src/ui/screens/credits.js` (reachable from Settings)
 Spec: `CHANGELOG.md` summarises sprints 00–14 as a 1.0.0 entry in player language. Credits screen: game
@@ -49,8 +49,8 @@ Acceptance criteria:
 - [ ] AC1 Files present; credits reachable by keyboard.
 QA: e2e smoke.
 
-### KS-15-04 · Production verification and monitoring plan
-Owner: Opus · Size: S · Depends on: KS-15-01
+### KS-18-04 · Production verification and monitoring plan
+Owner: Opus · Size: S · Depends on: KS-18-01
 Files: `docs/process/RELEASE-CHECKLIST.md` (post-release section)
 Spec: After the deploy: run the e2e suite against the production URL (`BASE_URL` env); manual smoke on two
 machines; document how to check Vercel deployment logs and how to roll back; since there are no analytics, the
@@ -68,4 +68,4 @@ QA: —
 
 ## Exit criteria
 - [ ] `v1.0.0` tag on `main`; production URL in `README.md`; developer guide verified.
-- [ ] Tag `sprint-15-done`. Version 1 complete.
+- [ ] Tag `sprint-18-done`. Version 1 complete.

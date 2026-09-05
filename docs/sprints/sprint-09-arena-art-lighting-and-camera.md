@@ -1,6 +1,6 @@
-# Sprint 08 — Arena Art, Lighting & Camera Polish
+# Sprint 09 — Arena Art, Lighting & Camera Polish
 
-**Lead:** Sonnet (Opus on instancing/perf) · **Agents:** Sonnet ×2, Opus ×0.5, Sonnet-QA ×1, Fable · **Prerequisite:** `sprint-07-done`
+**Lead:** Sonnet (Opus on instancing/perf) · **Agents:** Sonnet ×2, Opus ×0.5, Sonnet-QA ×1, Fable · **Prerequisite:** `sprint-08-done`
 
 ## Goal
 The arena matches `04-clean-arena-design.png` and the framing of `02-standard-gameplay-camera.png`: green
@@ -9,15 +9,15 @@ and mid-wall laser emitter towers (inactive look), trees, lanterns and banners o
 lighting, soft shadows, and a menu background scene reusing the same pieces. Apples become toy-brick apples.
 
 ## In scope
-Floor, walls, emitters (static look; animation in S09), outside decoration, lighting rig, apple model,
+Floor, walls, emitters (static look; animation in S10), outside decoration, lighting rig, apple model,
 menu-background scene, performance via instancing/merging.
 
 ## Out of scope
-Laser beams/glow (S09), shop room (S12), HUD (S10).
+Laser beams/glow (S10), shop room (S14), HUD (S11).
 
 ## Tickets
 
-### KS-08-01 · Floor and walls
+### KS-09-01 · Floor and walls
 Owner: Sonnet · Size: M · Depends on: —
 Files: `src/render/arenaView.js`, `src/render/brickGeometry.js`
 Spec: Floor: 24×24 `brick` tiles (1 × 0.2 × 1, 2×2 studs) with the two greens + 4 % grey per
@@ -31,20 +31,20 @@ Acceptance criteria:
 - [ ] AC3 Floor pattern identical across reloads (seeded).
 QA: visual + `renderer.info` assertions.
 
-### KS-08-02 · Laser emitter towers (static)
-Owner: Sonnet · Size: M · Depends on: KS-08-01
+### KS-09-02 · Laser emitter towers (static)
+Owner: Sonnet · Size: M · Depends on: KS-09-01
 Files: `src/render/arenaView.js`, `src/render/laserView.js`
 Spec: Corner emitter per the "corner laser emitter (inactive)" panel: grey/black brick tower 1.8 tall with a
 red lens (emissive off while PARKED), yellow trim, small side vents. Mid-wall emitters: lower (1.4), hazard
-stripe base, red lens. Emitters are `Group`s that `laserView` will move during CLOSING (S09), so they sit in a
+stripe base, red lens. Emitters are `Group`s that `laserView` will move during CLOSING (S10), so they sit in a
 parent node per side.
 Acceptance criteria:
 - [ ] AC1 Eight emitters (4 corners + 4 mids) at the positions in `04-clean-arena-design.png` top-down panel.
 - [ ] AC2 Lens material is emissive-capable but intensity 0 while PARKED.
 QA: visual.
 
-### KS-08-03 · Outside decoration
-Owner: Sonnet · Size: M · Depends on: KS-08-01
+### KS-09-03 · Outside decoration
+Owner: Sonnet · Size: M · Depends on: KS-09-01
 Files: `src/render/decorView.js`, `src/render/brickGeometry.js`
 Spec: A 6-cell apron of darker desaturated brick ground around the arena; block trees (green cube-cluster
 canopy on a brown brick trunk, 3 sizes), lanterns (yellow emissive cube on a pole; emissive intensity 1.5, no
@@ -57,8 +57,8 @@ Acceptance criteria:
 - [ ] AC3 Fable approves the look against the arena sheet and `02-standard-gameplay-camera.png`.
 QA: e2e occlusion test + visual.
 
-### KS-08-04 · Lighting rig and shadow tuning
-Owner: Opus · Size: S · Depends on: KS-08-01
+### KS-09-04 · Lighting rig and shadow tuning
+Owner: Opus · Size: S · Depends on: KS-09-01
 Files: `src/render/renderer.js`, `src/render/lighting.js`
 Spec: Exactly the rig in `DESIGN-DECISIONS §3 "Materials bible"`: warm key directional with shadow camera fitted
 tightly to the arena (not the decoration), 2048 PCFSoft, bias tuned to remove acne on studs; hemisphere fill;
@@ -70,7 +70,7 @@ Acceptance criteria:
 - [ ] AC3 Frame time p95 ≤ 16.6 ms with the full arena and two 20-segment snakes on the reference laptop.
 QA: visual + perf probe.
 
-### KS-08-05 · Toy-brick apple
+### KS-09-05 · Toy-brick apple
 Owner: Sonnet · Size: S · Depends on: —
 Files: `src/render/pickupView.js`, `src/render/brickGeometry.js`
 Spec: Apple per `DESIGN-DECISIONS §1 row 1` and every reference image: red rounded 2×2 body (0.6 units), one
@@ -81,19 +81,19 @@ Acceptance criteria:
 - [ ] AC2 One draw call for `foodCount` apples.
 QA: visual.
 
-### KS-08-06 · Menu background scene
-Owner: Sonnet · Size: M · Depends on: KS-08-03, KS-07-03
+### KS-09-06 · Menu background scene
+Owner: Sonnet · Size: M · Depends on: KS-09-03, KS-08-03
 Files: `src/render/menuScene.js`
 Spec: A wider, lower-angle (65°) shot of the same arena and decoration with the red snake coiled in the
 foreground left and the blue snake mid-right, both idling (breathing scale ±2 %, blinking), evening warm light
 as in `14-main-menu.png`. Slow 0.5°/s camera drift. Rendered only while in menu states.
 Acceptance criteria:
-- [ ] AC1 Fable approves composition against `14-main-menu.png` (composition only; the title/buttons are S10).
+- [ ] AC1 Fable approves composition against `14-main-menu.png` (composition only; the title/buttons are S11).
 - [ ] AC2 Switching menu ↔ game swaps scenes with no flash of the wrong scene.
 QA: visual.
 
-### KS-08-07 · Arena visual and occlusion suite
-Owner: Sonnet-QA · Size: S · Depends on: KS-08-03
+### KS-09-07 · Arena visual and occlusion suite
+Owner: Sonnet-QA · Size: S · Depends on: KS-09-03
 Files: `tests/visual/arena.visual.spec.js`, `tests/e2e/occlusion.spec.js`, `tests/perf/arena.perf.spec.js`
 Acceptance criteria:
 - [ ] AC1 Baselines approved and committed; occlusion test green; perf probe records the numbers.
@@ -110,4 +110,4 @@ QA: —
 - Images `04-clean-arena-design.png`, `02-standard-gameplay-camera.png`, `03-camera-angle-comparison.png`, `14-main-menu.png`, `01-master-visual.png`
 
 ## Exit criteria
-- [ ] Fidelity verdict positive on all six crops; perf budget held; tag `sprint-08-done`.
+- [ ] Fidelity verdict positive on all six crops; perf budget held; tag `sprint-09-done`.

@@ -1,6 +1,6 @@
-# Sprint 07 — Snake Art & Animation
+# Sprint 08 — Snake Art & Animation
 
-**Lead:** Sonnet (Opus reviews geometry/perf) · **Agents:** Sonnet ×2, Opus ×0.5, Sonnet-QA ×1, Fable (design review) · **Prerequisite:** `gate1-passed`. Runs in parallel with the UI track (S10).
+**Lead:** Sonnet (Opus reviews geometry/perf) · **Agents:** Sonnet ×2, Opus ×0.5, Sonnet-QA ×1, Fable (design review) · **Prerequisite:** `gate1-passed`. Runs in parallel with the UI track (S11).
 
 ## Goal
 The snakes look like `07-snake-character-sheet.png`: chunky block-built segments with studs, a larger
@@ -10,14 +10,14 @@ expressive head with big white toy eyes and a cream mouth stripe, smooth corner 
 ## In scope
 Procedural brick geometry (no external model files), materials, head/eyes/mouth, segment connection look,
 corner bending, growth animation, idle eye blink, colour catalogue applied to all eight colours, death "freeze"
-pose (the debris effect is S09).
+pose (the debris effect is S10).
 
 ## Out of scope
-Arena art (S08), particles/crash debris (S09), shop pedestals (S12).
+Arena art (S09), particles/crash debris (S10), shop pedestals (S14).
 
 ## Tickets
 
-### KS-07-01 · Brick geometry library
+### KS-08-01 · Brick geometry library
 Owner: Opus · Size: M · Depends on: —
 Files: `src/render/brickGeometry.js`, `tests/unit/render/brickGeometry.test.js`
 Spec: Functions returning merged `BufferGeometry`: `roundedBox(w, h, d, radius, segments)`, `stud(radius, height)`,
@@ -31,7 +31,7 @@ Acceptance criteria:
 - [ ] AC3 Segment vertex count ≤ 900; head ≤ 2 500.
 QA: unit (node, no WebGL).
 
-### KS-07-02 · Toy plastic materials and colour catalogue
+### KS-08-02 · Toy plastic materials and colour catalogue
 Owner: Sonnet · Size: S · Depends on: —
 Files: `src/render/materials.js`, `tests/unit/render/materials.test.js`
 Spec: `plastic(colorKey)` → `MeshStandardMaterial` per `DESIGN-DECISIONS §3 "Materials bible"`; Gold uses the
@@ -43,8 +43,8 @@ Acceptance criteria:
 - [ ] AC2 No hex literal exists in `src/render/**` outside `materials.js` (lint rule or grep test).
 QA: unit + grep test.
 
-### KS-07-03 · Snake view rebuild: segments, head, eyes, corners, growth
-Owner: Sonnet · Size: L · Depends on: KS-07-01, KS-07-02
+### KS-08-03 · Snake view rebuild: segments, head, eyes, corners, growth
+Owner: Sonnet · Size: L · Depends on: KS-08-01, KS-08-02
 Files: `src/render/snakeView.js`
 Spec: Replace grey-box boxes with `segmentBrick` instances (`InstancedMesh` per snake, capacity grows in
 chunks of 32). Head is a separate mesh group: `headBrick` + two eyes (white spheres radius 0.17 with black
@@ -56,7 +56,7 @@ circle between the incoming and outgoing edge midpoints (parametrised by stepPro
 lerp, so the chain reads as a smooth curve; adjacent segments stay in contact (gap ≤ 0.06 units at all times).
 Growth: new tail segment scales 0 → 1 with a small overshoot (1.15) over one step. Idle: eyes blink (scale y to
 0.1 for 80 ms) every 3–5 s per snake, RNG-seeded so visual tests are stable. Dead snake: freeze at the death
-frame (debris in S09 will hide it).
+frame (debris in S10 will hide it).
 Acceptance criteria:
 - [ ] AC1 Screenshot of a mid-turn snake with `?seed=1` matches the approved baseline; Fable approves the baseline against frames 3–5 of the turning sheet.
 - [ ] AC2 Gap between consecutive segment centres never exceeds 1.06 units and never falls below 0.85 during a full bot round (assert via `__kobi.getSegmentWorldPositions`).
@@ -64,8 +64,8 @@ Acceptance criteria:
 - [ ] AC4 Both eyes and the mouth are visible from the gameplay camera at every yaw (four screenshots).
 QA: visual + e2e geometry assertions + perf probe.
 
-### KS-07-04 · Effect looks on the snake
-Owner: Sonnet · Size: S · Depends on: KS-07-03
+### KS-08-04 · Effect looks on the snake
+Owner: Sonnet · Size: S · Depends on: KS-08-03
 Files: `src/render/snakeView.js`, `src/render/materials.js`
 Spec: SPEED: emissive yellow pulse travelling head → tail every 0.4 s plus a short translucent streak quad
 behind the head. SLOW victim: pale-blue tint on all segments and a small white snowflake sprite hovering 0.6
@@ -75,8 +75,8 @@ Acceptance criteria:
 - [ ] AC2 Effects are cleared on `EFFECT_ENDED` within one frame (no lingering tint).
 QA: visual + e2e.
 
-### KS-07-05 · Snake visual test suite
-Owner: Sonnet-QA · Size: M · Depends on: KS-07-03
+### KS-08-05 · Snake visual test suite
+Owner: Sonnet-QA · Size: M · Depends on: KS-08-03
 Files: `tests/visual/snake.visual.spec.js`, `tests/e2e/snakeGeometry.spec.js`, `tests/perf/snakes.perf.spec.js`
 Spec: Baselines: straight snake, mid-turn, U-turn (two consecutive turns), growth frame, 30-segment stress,
 each colour (8) on a neutral floor, effects. Geometry assertions from AC2. Perf probe from AC3.
@@ -100,4 +100,4 @@ QA: —
 
 ## Exit criteria
 - [ ] Fable's fidelity verdict is "matches the sheet" for head, body and turn.
-- [ ] Perf budget held. Tag `sprint-07-done`.
+- [ ] Perf budget held. Tag `sprint-08-done`.

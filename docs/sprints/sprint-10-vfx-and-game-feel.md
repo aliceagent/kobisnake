@@ -1,6 +1,6 @@
-# Sprint 09 — VFX & Game Feel
+# Sprint 10 — VFX & Game Feel
 
-**Lead:** Sonnet (Opus on the particle system) · **Agents:** Opus ×1, Sonnet ×2, Sonnet-QA ×1, Fable · **Prerequisite:** `sprint-08-done`
+**Lead:** Sonnet (Opus on the particle system) · **Agents:** Opus ×1, Sonnet ×2, Sonnet-QA ×1, Fable · **Prerequisite:** `sprint-09-done`
 
 ## Goal
 Everything in GDD "Game feel" and the laser visual design: emissive beams with floor glow, emitters that light
@@ -12,11 +12,11 @@ All effects respect readability and `?reducedFx=1`.
 Particle system, crash debris, laser visuals, pickup visuals and bursts, warning lighting, celebrations.
 
 ## Out of scope
-Sounds (S11), HUD banner styling (S10), key award animation (S12).
+Sounds (S12), HUD banner styling (S11), key award animation (S13).
 
 ## Tickets
 
-### KS-09-01 · Particle system
+### KS-10-01 · Particle system
 Owner: Opus · Size: M · Depends on: —
 Files: `src/render/effects/particles.js`, `tests/unit/render/particles.test.js`
 Spec: One `InstancedMesh` pool (capacity 512) of tiny bricks (0.12 units) with per-instance colour, velocity,
@@ -28,8 +28,8 @@ Acceptance criteria:
 - [ ] AC2 512 live particles cost ≤ 1 draw call and ≤ 1 ms update on the reference laptop.
 QA: unit + perf.
 
-### KS-09-02 · Laser visuals: beams, glow, emitters, sparks, dead zone
-Owner: Sonnet · Size: L · Depends on: KS-09-01
+### KS-10-02 · Laser visuals: beams, glow, emitters, sparks, dead zone
+Owner: Sonnet · Size: L · Depends on: KS-10-01
 Files: `src/render/laserView.js`, `src/render/materials.js`, `src/render/arenaView.js`
 Spec: Beams: emissive red core cylinder (radius 0.08) plus an additive-blended outer quad (0.5 wide, alpha
 0.35) and an additive floor-glow strip (1.2 wide) per side, matching `05-laser-closing-phase.png`. Emitters: lens
@@ -37,7 +37,7 @@ emissive intensity ramps 0 → 4 over 0.5 s at WARNING; corner towers stay; mid-
 beams (they are the "movers"); beam ends emit 3 sparks/s (particles) during CLOSING. Dead-zone tiles darken to
 35 % and desaturate over 0.3 s as the beam passes (per-instance colour update). Warning: hemisphere sky colour
 shifts to `#FFB4A0` and key light to 80 % intensity for the warning duration, then eases back over 2 s (the
-scene stays readable; compare `05` vs `06`). Beam glide 0.3 s ease-out as in S03. The final 6×6 state must
+scene stays readable; compare `05` vs `06`). Beam glide 0.3 s ease-out as in S04. The final 6×6 state must
 match `06-final-shrink-showdown.png`.
 Acceptance criteria:
 - [ ] AC1 Visual baselines at t=30.5, 24, 10, 3 approved by Fable against images 05 and 06.
@@ -45,8 +45,8 @@ Acceptance criteria:
 - [ ] AC3 Laser phase adds ≤ 12 draw calls.
 QA: visual + pixel sample e2e.
 
-### KS-09-03 · Food pop and power-up presentation
-Owner: Sonnet · Size: M · Depends on: KS-09-01
+### KS-10-03 · Food pop and power-up presentation
+Owner: Sonnet · Size: M · Depends on: KS-10-01
 Files: `src/render/pickupView.js`, `src/render/snakeView.js`
 Spec: Per `DESIGN-DECISIONS §3 "Food & growth"` and `"Power-up sheet"`: apple pop scale + 10 red/green
 particles + head→tail brightness pulse + tail segment overshoot. Power-up pedestals: SPEED two-tier blue brick
@@ -58,8 +58,8 @@ Acceptance criteria:
 - [ ] AC2 Pop and burst never exceed 0.4 s total so repeated pickups do not clutter (timed via e2e).
 QA: visual + e2e.
 
-### KS-09-04 · Crash debris, slow-mo, shake, laser death
-Owner: Opus · Size: L · Depends on: KS-09-01
+### KS-10-04 · Crash debris, slow-mo, shake, laser death
+Owner: Opus · Size: L · Depends on: KS-10-01
 Files: `src/render/effects/crashDebris.js`, `src/render/effects/screenShake.js`, `src/render/snakeView.js`, `src/render/camera.js`
 Spec: On `SNAKE_DIED`: hide the snake, spawn one rigid brick per segment at the segment's position with
 outward velocity (from the head), spin, gravity, bounce once on the floor (simple), fade after 0.8 s. Screen
@@ -73,8 +73,8 @@ Acceptance criteria:
 - [ ] AC3 Fable approves both death variants against the GDD image-12 prompt.
 QA: e2e + visual.
 
-### KS-09-05 · Round-win and match-win celebration
-Owner: Sonnet · Size: S · Depends on: KS-09-01
+### KS-10-05 · Round-win and match-win celebration
+Owner: Sonnet · Size: S · Depends on: KS-10-01
 Files: `src/render/snakeView.js`, `src/render/effects/celebration.js`
 Spec: Round win: the surviving snake's head bobs (3 hops over 0.9 s) with 20 particles in its colour; runs
 under the scoreboard. Match win: same plus a 2 s stream of confetti bricks in all catalogue colours from above
@@ -83,8 +83,8 @@ Acceptance criteria:
 - [ ] AC1 Effects trigger from `ROUND_OVER`/`MATCH_OVER` state entries and stop on exit.
 QA: e2e.
 
-### KS-09-06 · VFX visual and perf suite
-Owner: Sonnet-QA · Size: M · Depends on: KS-09-02, KS-09-04
+### KS-10-06 · VFX visual and perf suite
+Owner: Sonnet-QA · Size: M · Depends on: KS-10-02, KS-10-04
 Files: `tests/visual/vfx.visual.spec.js`, `tests/perf/vfx.perf.spec.js`, `tests/e2e/reducedFx.spec.js`
 Acceptance criteria:
 - [ ] AC1 Baselines approved; "maximum chaos" perf scene (two 30-segment snakes, laser phase, crash) p95 ≤ 16.6 ms.
@@ -101,4 +101,4 @@ QA: —
 - `DESIGN-DECISIONS §3`; images `05-laser-closing-phase.png`, `06-final-shrink-showdown.png`, `01-master-visual.png`
 
 ## Exit criteria
-- [ ] Fidelity verdict positive; perf held; reducedFx deterministic; tag `sprint-09-done`.
+- [ ] Fidelity verdict positive; perf held; reducedFx deterministic; tag `sprint-10-done`.

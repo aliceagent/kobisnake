@@ -13,15 +13,15 @@ review against the reference images. This document defines the layers, the tooli
 | Contract | Vitest | `tests/unit/` | every PR | State-machine transition table, save-data migration, settings schema, event names. |
 | End-to-end | Playwright (Chromium) | `tests/e2e/` | every PR, < 6 min | Real browser, real keyboard events, real UI. Uses `window.__kobi` hooks to fast-forward time. |
 | Visual regression | Playwright screenshots | `tests/visual/` | every PR | Fixed seed, `?reducedFx=1`, 1280×720, 0.2 % pixel-diff threshold per screen. Baselines updated only via a PR labelled `needs-design-review` with Fable's approval. |
-| Cross-browser | Playwright (Firefox, WebKit) | `tests/e2e/` | nightly + Sprint 14 | Rendering and input parity. |
-| Performance | Playwright + `performance.now()` probes | `tests/perf/` | nightly + Sprint 14 | Frame-time p95, draw calls (from `renderer.info`), bundle size (from `vite build` output). |
+| Cross-browser | Playwright (Firefox, WebKit) | `tests/e2e/` | nightly + Sprint 16 | Rendering and input parity. |
+| Performance | Playwright + `performance.now()` probes | `tests/perf/` | nightly + Sprint 16 | Frame-time p95, draw calls (from `renderer.info`), bundle size (from `vite build` output). |
 | Offline / network | Playwright request interception | `tests/e2e/offline.spec.js` | every PR | Assert zero network requests after `load`. |
 | Design fidelity | Human/Fable review of preview screenshots vs `docs/reference/images` | PR review | every visual PR | The game looks like the concept images. |
-| Manual playtest | Humans + `docs/qa/PLAYTEST-SCRIPT.md` | Sprints 06 and 14 (+ any sprint touching feel) | gates | Fun, fairness, readability. |
+| Manual playtest | Humans + `docs/qa/PLAYTEST-SCRIPT.md` | Sprints 07 and 14 (+ any sprint touching feel) | gates | Fun, fairness, readability. |
 
 ## 2. Test-first from acceptance criteria
 For each ticket, the QA engineer turns every acceptance-criteria checkbox into at least one test *before* or
-independently of the implementation, naming tests after the criterion: `it('KS-03-02 AC3: first laser step
+independently of the implementation, naming tests after the criterion: `it('KS-04-02 AC3: first laser step
 happens 5s after warning', ...)`. Reviewers reject PRs whose acceptance criteria have no corresponding test
 unless the ticket explicitly says "manual".
 
@@ -49,7 +49,7 @@ criteria walked by Fable on the production preview.
 
 ## 6. Bug report format (GitHub issue, label `bug`)
 ```
-Title: [S03] Laser step kills snake whose head is one cell inside the safe zone
+Title: [S04] Laser step kills snake whose head is one cell inside the safe zone
 Build: preview URL + commit sha
 Seed / replay: seed=4242 or attached replay json
 Steps: 1. … 2. …
@@ -71,8 +71,8 @@ Open bugs: blocker 0 · major N · minor N · polish N
 Verdict: READY FOR SIGN-OFF | NOT READY (list blockers)
 ```
 
-## 8. Non-functional checks (every sprint from Sprint 02)
+## 8. Non-functional checks (every sprint from Sprint 03)
 - Console has zero errors and zero warnings during a full match.
 - Resize the window mid-round; nothing breaks, aspect is preserved, HUD stays anchored.
 - Tab away and back; game is paused, timer did not advance.
-- Lighthouse (Sprint 14): Performance ≥ 90, Accessibility ≥ 90, Best Practices ≥ 95.
+- Lighthouse (Sprint 16): Performance ≥ 90, Accessibility ≥ 90, Best Practices ≥ 95.

@@ -1,6 +1,6 @@
 # Playtest Script
 
-Used at **Playtest Gate 1 (Sprint 06)** and **Playtest Gate 2 (Sprint 14)**, and any time Fable asks for a feel
+Used at **Playtest Gate 1 (Sprint 07)** and **Playtest Gate 2 (Sprint 17)**, and any time Fable asks for a feel
 check. Requires two humans on one keyboard, the production preview URL, and 30 minutes. Record answers in a
 copy of this file attached to the sprint tracking issue. Every question comes from the GDD playtesting
 checklist (section 9), expanded with a concrete procedure and a pass condition so agents can act on the result.
@@ -30,7 +30,7 @@ checklist (section 9), expanded with a concrete procedure and a pass condition s
 |---|---|---|
 | C1 Fair deaths | After each death ask the loser "was that fair?" | ≥ 4/5 answer yes; any "no" is reproduced with a replay and filed. |
 | C2 Head vs body | Deliberately brush bodies side-by-side. | No death from body contact. |
-| C3 Head-on | Charge each other head-on. | Both die, DRAW shown, round replays. |
+| C3 Head-on | Charge each other head-on, once at equal length and once after one player eats more. | Equal: both die, DRAW shown, round replays. Unequal: the longer snake survives and both players can say why. |
 
 ## 5. Arena closing
 | Q | Procedure | Pass condition |

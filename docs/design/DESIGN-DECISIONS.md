@@ -1,6 +1,6 @@
 # KOBI Snake — Design Decisions (Version 1)
 
-Owner: **Fable (design lead)**. Status: **LOCKED for Version 1** unless a Playtest Gate (Sprint 06 or Sprint 14)
+Owner: **Fable (design lead)**. Status: **LOCKED for Version 1** unless a Playtest Gate (Sprint 07 or Sprint 17)
 produces evidence to change a value. Every number below is a tunable in `src/core/settings.js`; the value here
 is the shipping default. Builder agents implement exactly these values and never invent new rules.
 
@@ -20,8 +20,8 @@ file is the authority on numbers and edge cases.
 | 4 | Speed boost multiplier | **1.5× movement speed for 5 s.** | Noticeably faster, still controllable at the base speed below. |
 | 5 | Laser shrink speed | **One grid cell inward per side every 2.5 s**, first step 5 s after the warning starts. | Reaches the minimum arena with ~2.5 s to spare in a 90 s round. Readable, stepwise, glides visually. |
 | 6 / 23 | Minimum final arena | **6 × 6 cells.** Lasers stop there. | Two length-15 snakes still fit; near-zero arenas produce unfair "nowhere to go" deaths. |
-| 7 / 22 | Simultaneous crash | **Both die in the same simulation step → round is a DRAW → replay the round**, no win recorded. | Symmetric, needs no tie-break the players must learn. Rare in practice. |
-| 8 | Head-to-head | Both heads enter the same cell, or swap cells, in the same step → **both die → draw → replay.** If one head enters a cell the other head already occupies (different step), the arriving snake dies. | Deterministic; "the head is the dangerous point" stays true. |
+| 7 / 22 | Simultaneous crash | **Both die in the same simulation step → round is a DRAW → replay the round**, no win recorded. (Head-on is the exception; see row 8.) | Symmetric, needs no tie-break the players must learn. Rare in practice: 1–4 % of bot rounds. |
+| 8 | Head-to-head | Both heads enter the same cell, or swap cells, in the same step → **the longer snake survives, the shorter dies** (cause `HEAD_ON`). Equal length → both die → draw → replay. If one head enters a cell the other head already occupies (different step), the arriving snake dies. | "Bigger snake wins a head-on" is a one-sentence rule, it gives apples a purpose in two-player, and the pre-sprint simulation showed the both-die rule produced 35 % draws between cautious snakes in the final 6×6 square versus 10 % with this rule (`docs/design/spikes/`). |
 | 9 | Arena wall before lasers | Outer wall is **deadly** on head contact from second 0. Lasers start parked exactly on the wall line, unlit. | Classic Snake rule; the laser phase changes where the deadly edge is, not whether it exists. |
 | 10 | Self-collision | **Deadly** (classic). | Confirmed as GDD recommended. |
 | 11 | Starting snake length | **4 segments** (head + 3). | GDD settings object value. |
@@ -29,8 +29,8 @@ file is the authority on numbers and edge cases.
 | 13 | Key prices | Green 2 · Yellow 2 · Orange 3 · Purple 3 · Teal 3 · Gold 6. | One Best-of-5 win (2 keys) buys the first colour; Gold is the long-term goal. |
 | 14 | Shop navigation | **Rail camera**: pedestals in an arc, mouse hover/click or ←/→ keys focus a pedestal, camera glides to it. No free-roam. Esc returns to the menu. | GDD wants mouse in the shop; free-roam first-person is complexity with no gameplay value. |
 | 15 | Additional cosmetics in V1 | **Colours only.** Eyes/hats/trails are post-1.0. | Scope control. |
-| 16 | Single-player mechanics | Post-1.0 (Sprint 16): solo survival, apples score points, laser phase every 90 s cycle, speed ramps, local high score. Menu shows "COMING SOON" until then. | GDD: two-player first. |
-| 17 | Numerical score for food | **No numeric score in two-player.** Length is the visible score. Single-player has a score (S16). | Keeps the HUD to timer + wins. |
+| 16 | Single-player mechanics | Post-1.0 (Sprint 19): solo survival, apples score points, laser phase every 90 s cycle, speed ramps, local high score. Menu shows "COMING SOON" until then. | GDD: two-player first. |
+| 17 | Numerical score for food | **No numeric score in two-player.** Length is the visible score. Single-player has a score (S19). | Keeps the HUD to timer + wins. |
 | 18 | Food persistence | **Persists until collected.** Never despawns. | Simplicity; encourages movement. |
 | 19 | Food items active at once | **4** apples always present; a collected apple respawns immediately at a random free cell. | Concept images show 4–6; 4 keeps the arena uncluttered. |
 | 20 | Power-up visuals | Speed = yellow lightning bolt over a blue two-tier pedestal inside a cyan ring. Slow = white snowflake over an ice-white pedestal inside a pale-blue ring. Different silhouette, icon, colour and pedestal. | GDD: never rely on colour alone. |
@@ -79,7 +79,8 @@ laser passes over it. A snake **body** in the dead zone does not die (the head i
 head entering or being inside the dead zone when the laser steps onto it dies.
 
 ### 2.5 Death and round end
-- Death is evaluated after every grid step in this order: wall/laser, self, other snake body, other snake head.
+- Death is evaluated after every grid step in this order: wall/laser, self, other snake body, other snake head
+  (head-on resolves by length: longer survives, equal both die).
 - When one snake dies the round ends immediately (survivor wins). `crashSlowMo`: game time runs at 0.25× for 0.6 s,
   then ROUND_OVER.
 - Round result is one of `P1_WIN | P2_WIN | DRAW`. Draws never count; the match simply replays the round.
@@ -190,8 +191,8 @@ export const SETTINGS = {
 ```
 
 ## 5. Things Version 1 deliberately does NOT do
-- No single-player mode (menu item says COMING SOON) — Sprint 16.
-- No obstacles inside the arena — Sprint 17 backlog.
+- No single-player mode (menu item says COMING SOON) — Sprint 19.
+- No obstacles inside the arena — Sprint 20 backlog.
 - No rebindable keys, gamepads, or touch controls.
 - No online anything: no analytics, no fonts from CDNs, no external scripts. The built site must make zero
   network requests after the initial page load (QA verifies this).

@@ -1,6 +1,6 @@
-# Sprint 03 — Closing Laser Arena
+# Sprint 04 — Closing Laser Arena
 
-**Lead:** Opus · **Agents:** Opus ×1, Sonnet ×2, Sonnet-QA ×1 · **Prerequisite:** `sprint-02-done`
+**Lead:** Opus · **Agents:** Opus ×1, Sonnet ×2, Sonnet-QA ×1 · **Prerequisite:** `sprint-03-done`
 
 ## Goal
 **Milestone 2 from the GDD:** at 0:30 four deadly laser walls light up, a five-second warning plays, and the
@@ -13,11 +13,11 @@ dead-zone rendering, warning overlay text in the placeholder HUD, camera zoom pu
 statistics for the closing phase.
 
 ## Out of scope
-Final laser art, sparks, floor glow (S09), warning music (S11), HUD styling (S10).
+Final laser art, sparks, floor glow (S10), warning music (S12), HUD styling (S11).
 
 ## Tickets
 
-### KS-03-01 · Laser schedule in the simulation
+### KS-04-01 · Laser schedule in the simulation
 Owner: Opus · Size: M · Depends on: —
 Files: `src/core/lasers.js`, `src/core/round.js`, `tests/unit/core/lasers.test.js`
 Spec: `createLasers(settings)` → `{ phase: 'PARKED'|'WARNING'|'CLOSING'|'STOPPED', inset, update(timeRemaining)
@@ -38,8 +38,8 @@ Acceptance criteria:
 - [ ] AC5 After STOPPED, `advance()` to 0:00 with both alive applies the timeout rule.
 QA: unit tests AC1–AC5 plus a golden event log for a no-input round with immortal snakes (test-only flag `godMode` in settings overrides, allowed only under `import.meta.env.TEST`).
 
-### KS-03-02 · Grey-box laser and dead-zone rendering
-Owner: Sonnet · Size: M · Depends on: KS-03-01
+### KS-04-02 · Grey-box laser and dead-zone rendering
+Owner: Sonnet · Size: M · Depends on: KS-04-01
 Files: `src/render/laserView.js`, `src/render/arenaView.js`
 Spec: Four thin emissive red boxes (0.15 wide, 0.4 tall) along the current safe-square edges, hidden while
 PARKED, visible from WARNING. On `LASER_STEP` the beams glide from the old inset to the new one over 0.3 s
@@ -52,18 +52,18 @@ Acceptance criteria:
 - [ ] AC3 Zero extra draw calls beyond +6 during the laser phase.
 QA: visual spec + e2e assert via `__kobi`.
 
-### KS-03-03 · Warning presentation (placeholder)
-Owner: Sonnet · Size: S · Depends on: KS-03-01
+### KS-04-03 · Warning presentation (placeholder)
+Owner: Sonnet · Size: S · Depends on: KS-04-01
 Files: `src/ui/hud.js`, `src/ui/styles.css`, `src/render/camera.js`
-Spec: On `LASER_WARNING`: HUD shows a "LASERS CLOSING!" banner for 5 s (plain styled div; real design in S10),
+Spec: On `LASER_WARNING`: HUD shows a "LASERS CLOSING!" banner for 5 s (plain styled div; real design in S11),
 timer text turns red for the rest of the round, camera `zoomPulse(2 %, 0.4 s)` twice. Respect `?reducedFx=1`.
 Acceptance criteria:
 - [ ] AC1 Banner appears within one frame of the event and disappears at 5 s ± 1 frame.
 - [ ] AC2 Timer stays red until ROUND_OVER.
 QA: e2e.
 
-### KS-03-04 · Closing-phase statistics and fairness tests
-Owner: Sonnet-QA · Size: M · Depends on: KS-03-01
+### KS-04-04 · Closing-phase statistics and fairness tests
+Owner: Sonnet-QA · Size: M · Depends on: KS-04-01
 Files: `tests/sim/laserStats.test.js`, `tests/sim/bots/survivorBot.js` (laser-aware), `tests/sim/replays/laser-*.json`
 Spec: Make `survivorBot` treat dead-zone and next-step cells as deadly. Run 500 seeded rounds for each bot
 pairing and report: % ending before 0:30, 0:30–0:00, timeout; draw rate; deaths by cause. Add replays for: head
@@ -75,8 +75,8 @@ Acceptance criteria:
 - [ ] AC3 Three replays committed and green.
 QA: —
 
-### KS-03-05 · Fuzz: laser step vs snake step ordering
-Owner: Opus (adversary) · Size: S · Depends on: KS-03-01
+### KS-04-05 · Fuzz: laser step vs snake step ordering
+Owner: Opus (adversary) · Size: S · Depends on: KS-04-01
 Files: `tests/sim/laserFuzz.test.js`
 Spec: For 2 000 seeds with random inputs, assert invariants after every sim tick: no living head in the dead
 zone; no apple in the dead zone; `inset` monotonic; number of `LASER_STEP` events ≤ 9; if a snake died with
@@ -87,7 +87,7 @@ QA: —
 
 ## QA plan (sprint pass)
 1. Human plays 5 rounds; answers A1, A3, A4 from `PLAYTEST-SCRIPT §5` (warning obviousness will be re-asked
-   after S09/S11 art and audio).
+   after S10/S12 art and audio).
 2. Adversary attempts: turn into a beam on the exact frame it steps; sit on the boundary cell; be 15 segments
    long inside the final 6×6.
 3. Design fidelity: safe-square shrink versus `05-laser-closing-phase.png` and `06-final-shrink-showdown.png`
@@ -99,11 +99,11 @@ QA: —
 - Images `05-laser-closing-phase.png`, `06-final-shrink-showdown.png`, `04-clean-arena-design.png` (emitter positions)
 
 ## Risks
-- Off-by-one on the boundary cell is the classic bug; AC2/AC3 of KS-03-01 pin it.
+- Off-by-one on the boundary cell is the classic bug; AC2/AC3 of KS-04-01 pin it.
 - The 6×6 minimum with two long snakes could feel unfair; the bot draw rate and human A4 answer decide whether
-  Fable changes `laserMinArena` in S06.
+  Fable changes `laserMinArena` in S07.
 
 ## Exit criteria
 - [ ] All tickets merged; fuzz green; statistics table in the tracking issue.
 - [ ] Human answers A3 and A4 positive.
-- [ ] Tag `sprint-03-done` and `m2-laser-arena`.
+- [ ] Tag `sprint-04-done` and `m2-laser-arena`.

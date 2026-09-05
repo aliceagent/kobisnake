@@ -1,6 +1,6 @@
-# Sprint 13 — Tutorial & Practice Mode
+# Sprint 15 — Tutorial & Practice Mode
 
-**Lead:** Sonnet · **Agents:** Sonnet ×2, Sonnet-QA ×1, Fable · **Prerequisite:** `sprint-12-done`
+**Lead:** Sonnet · **Agents:** Sonnet ×2, Sonnet-QA ×1, Fable · **Prerequisite:** `sprint-14-done`
 
 ## Goal
 An interactive, skippable, replayable seven-step tutorial with large text bubbles (GDD "Tutorial"), and a
@@ -16,7 +16,7 @@ Voice, videos, single-player scoring.
 
 ## Tickets
 
-### KS-13-01 · Practice mode
+### KS-15-01 · Practice mode
 Owner: Sonnet · Size: M · Depends on: —
 Files: `src/modes/practice.js`, `src/game/session.js`, `src/ui/screens/practiceHud.js`
 Spec: `RoundSimulation` in `mode: 'practice'`: one snake by default (second snake optional via a toggle on the
@@ -32,8 +32,8 @@ Acceptance criteria:
 - [ ] AC4 TRY from the shop enters practice with the tried colour and Esc returns to the shop with focus on that pedestal.
 QA: e2e `tests/e2e/practice.spec.js`.
 
-### KS-13-02 · Tutorial script engine and bubble UI
-Owner: Sonnet · Size: L · Depends on: KS-13-01
+### KS-15-02 · Tutorial script engine and bubble UI
+Owner: Sonnet · Size: L · Depends on: KS-15-01
 Files: `src/modes/tutorial.js`, `src/ui/screens/tutorialBubble.js`, `tests/unit/modes/tutorial.test.js`
 Spec: Steps exactly as GDD "Tutorial": (1) "Use WASD or Arrow Keys to steer" — completes after two different
 turns; (2) "Grab the food" — a single apple placed 4 cells ahead; completes on `FOOD_EATEN`; (3) "Your snake
@@ -55,8 +55,8 @@ Acceptance criteria:
 - [ ] AC4 Fable approves bubble text and layout against the image-17 prompt.
 QA: unit + e2e `tests/e2e/tutorial.spec.js` + visual.
 
-### KS-13-03 · Menu wiring and first-run prompt
-Owner: Sonnet · Size: S · Depends on: KS-13-02
+### KS-15-03 · Menu wiring and first-run prompt
+Owner: Sonnet · Size: S · Depends on: KS-15-02
 Files: `src/ui/screens/mainMenu.js`, `src/game/gameStateMachine.js`
 Spec: PRACTICE and TUTORIAL menu items enabled. When `tutorialCompleted` is false and the player selects
 2 PLAYERS for the first time, show a small prompt "Play the tutorial first? (Enter yes · Esc no)" once; either
@@ -65,8 +65,8 @@ Acceptance criteria:
 - [ ] AC1 Prompt appears once and only when not completed.
 QA: e2e.
 
-### KS-13-04 · Tutorial and practice suites
-Owner: Sonnet-QA · Size: S · Depends on: KS-13-02
+### KS-15-04 · Tutorial and practice suites
+Owner: Sonnet-QA · Size: S · Depends on: KS-15-02
 Files: `tests/e2e/tutorial.spec.js`, `tests/e2e/practice.spec.js`, `tests/visual/tutorial.visual.spec.js`
 Acceptance criteria:
 - [ ] AC1 Green in CI.
@@ -82,4 +82,4 @@ QA: —
 - `DESIGN-DECISIONS §1 row 14 (TRY), §3 "Tutorial"`
 
 ## Exit criteria
-- [ ] T1 passes with a first-time player; tag `sprint-13-done`.
+- [ ] T1 passes with a first-time player; tag `sprint-15-done`.

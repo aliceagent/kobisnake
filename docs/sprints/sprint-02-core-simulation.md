@@ -1,6 +1,6 @@
-# Sprint 01 — Core Simulation (headless)
+# Sprint 02 — Core Simulation (headless)
 
-**Lead:** Opus · **Agents:** Opus ×1, Sonnet ×2, Sonnet-QA ×1 · **Prerequisite:** `sprint-00-done`
+**Lead:** Opus · **Agents:** Opus ×1, Sonnet ×2, Sonnet-QA ×1 · **Prerequisite:** `sprint-01-done`
 
 ## Goal
 The whole grey-box game of GDD Phase 1 (arena, two snakes, movement, input queues, food, growth, collision,
@@ -12,11 +12,11 @@ deterministic, and is proven by unit and simulation tests to ≥ 90 % coverage.
 simulation test harness, bots, and replay format. Lasers, power-ups and match logic get placeholders only.
 
 ## Out of scope
-Rendering, input devices, UI, lasers (S03), power-ups (S05), match logic (S04).
+Rendering, input devices, UI, lasers (S04), power-ups (S06), match logic (S05).
 
 ## Tickets
 
-### KS-01-01 · Settings, RNG and grid primitives
+### KS-02-01 · Settings, RNG and grid primitives
 Owner: Sonnet · Size: S · Depends on: —
 Files: `src/core/settings.js`, `src/core/rng.js`, `src/core/grid.js`, `tests/unit/core/rng.test.js`, `tests/unit/core/grid.test.js`
 Spec: `SETTINGS` exactly as `DESIGN-DECISIONS §4` with a JSDoc typedef; `deepFreeze` it; export
@@ -30,8 +30,8 @@ Acceptance criteria:
 - [ ] AC4 `SETTINGS` is frozen; mutation throws in strict mode.
 QA: the listed unit tests.
 
-### KS-01-02 · Snake with direction queue and speed modifiers
-Owner: Opus · Size: M · Depends on: KS-01-01
+### KS-02-02 · Snake with direction queue and speed modifiers
+Owner: Opus · Size: M · Depends on: KS-02-01
 Files: `src/core/snake.js`, `tests/unit/core/snake.test.js`
 Spec: `class Snake { constructor({ id, cells, direction, settings }) }` with `segments` (head first),
 `direction`, `queue` (max `inputBufferSize`), `pendingGrowth`, `speedMultiplier`, `alive`, `stepProgress`,
@@ -48,8 +48,8 @@ Acceptance criteria:
 - [ ] AC5 `previousSegments` always has the same length as `segments` after a step (grown segment duplicates the tail).
 QA: the listed unit tests, named after AC1–AC5.
 
-### KS-01-03 · Food placement
-Owner: Sonnet · Size: S · Depends on: KS-01-01
+### KS-02-03 · Food placement
+Owner: Sonnet · Size: S · Depends on: KS-02-01
 Files: `src/core/food.js`, `tests/unit/core/food.test.js`
 Spec: `placeFood({ grid, occupied: Set<cellKey>, heads: cell[], deadZone: (cell)=>bool, rng, minDistance })`
 returns a random free cell not in the dead zone and ≥ `minDistance` Chebyshev from every head; throws
@@ -61,8 +61,8 @@ Acceptance criteria:
 - [ ] AC4 Deterministic for a given seed and occupancy.
 QA: listed unit tests.
 
-### KS-01-04 · Collision resolution
-Owner: Opus · Size: M · Depends on: KS-01-02
+### KS-02-04 · Collision resolution
+Owner: Opus · Size: M · Depends on: KS-02-02
 Files: `src/core/collisions.js`, `tests/unit/core/collisions.test.js`
 Spec: `resolveStep({ steppingSnakes, allSnakes, isDeadly(cell) })`: compute every stepping snake's
 `nextHeadCell` first, then evaluate in the order of `DESIGN-DECISIONS §2.5`: wall/laser (`isDeadly`), self (new
@@ -71,14 +71,14 @@ body, other snake head (same next cell, or swap: A moves into B's current head w
 head). Returns `{ deaths: [{snakeId, cause}] }`. `cause ∈ WALL | LASER | SELF | BODY | HEAD_ON`.
 Acceptance criteria:
 - [ ] AC1 Moving into the tail cell of a non-growing snake is safe; into the tail of a growing snake is death.
-- [ ] AC2 Two heads entering the same cell → both die with `HEAD_ON`.
-- [ ] AC3 Swap case → both die with `HEAD_ON`.
+- [ ] AC2 Two heads entering the same cell: equal length → both die with `HEAD_ON`; lengths 5 vs 4 → only the length-4 snake dies with `HEAD_ON`.
+- [ ] AC3 Swap case → same length rule as AC2.
 - [ ] AC4 Only one snake stepping this tick into the other's stationary head → only the mover dies (`BODY`).
 - [ ] AC5 Evaluation order: a cell that is both out of bounds and a body reports `WALL`.
 QA: listed unit tests.
 
-### KS-01-05 · RoundSimulation and event stream
-Owner: Opus · Size: L · Depends on: KS-01-02, KS-01-03, KS-01-04
+### KS-02-05 · RoundSimulation and event stream
+Owner: Opus · Size: L · Depends on: KS-02-02, KS-02-03, KS-02-04
 Files: `src/core/round.js`, `src/core/events.js`, `tests/unit/core/round.test.js`
 Spec: `new RoundSimulation({ settings, seed, players: [{id, color}], powerUpsEnabled, mode: 'match'|'practice' })`.
 `advance(dtSeconds)` accumulates and steps at `1/simHz`; per sim tick: decrement `timeRemaining`; for each alive
@@ -87,7 +87,7 @@ snake `accumulate`; collect due snakes; `resolveStep`; apply deaths; commit step
 `ARCHITECTURE §4`. `getState()` returns a plain snapshot (segments, previousSegments, stepProgress per snake,
 apples, timeRemaining, phase, result). `applyInput(playerId, dir)` → `queueDirection`. Spawn positions from
 `DESIGN-DECISIONS §2.3`. Hooks for lasers and power-ups exist as no-op modules (`lasers.js` and `powerups.js`
-stubs exporting `createInactive()`), to be filled in S03/S05. Practice mode: no timer, single snake optional.
+stubs exporting `createInactive()`), to be filled in S04/S06. Practice mode: no timer, single snake optional.
 Acceptance criteria:
 - [ ] AC1 A round with no inputs is deterministic: P1 (start (5,12) heading right) reaches x=23 on its 18th step and dies on its 19th step into the wall at x=24; P2 (start (18,11) heading left) mirrors it into x=−1. Both die on the same step at t = 19/6 ≈ 3.167 s ⇒ `DRAW`. Record the exact expected event log as a golden file.
 - [ ] AC2 Same seed + same input log ⇒ identical event log and identical `getState()` snapshots at every 0.5 s (100 seeds).
@@ -97,8 +97,8 @@ Acceptance criteria:
 - [ ] AC6 `getState()` is JSON-serialisable and contains no functions or class instances.
 QA: listed unit tests + `tests/sim/determinism.test.js`.
 
-### KS-01-06 · Simulation harness, bots and replays
-Owner: Sonnet-QA · Size: M · Depends on: KS-01-05
+### KS-02-06 · Simulation harness, bots and replays
+Owner: Sonnet-QA · Size: M · Depends on: KS-02-05
 Files: `tests/sim/harness.js`, `tests/sim/bots/randomBot.js`, `tests/sim/bots/greedyBot.js`, `tests/sim/bots/survivorBot.js`, `tests/sim/replays/README.md`, `tests/sim/replays/replay.schema.json`, `tests/sim/stats.test.js`, `tests/sim/replay.test.js`
 Spec: `runRound({ seed, bots, settings, inputLog? })` returns `{ events, result, lengths, endedAt, cause }`.
 Bots per `QA-STRATEGY §4`. Replay JSON `{ seed, settingsOverrides, inputs:[{t, player, dir}], expectedEvents }`;
@@ -110,8 +110,8 @@ Acceptance criteria:
 - [ ] AC3 At least one replay file exists (no-input round) and passes.
 QA: this is QA infrastructure.
 
-### KS-01-07 · Coverage gate on
-Owner: Sonnet-QA · Size: S · Depends on: KS-01-05
+### KS-02-07 · Coverage gate on
+Owner: Sonnet-QA · Size: S · Depends on: KS-02-05
 Files: `vitest.config.js`, `.github/workflows/ci.yml`
 Spec: Turn on `COVERAGE_STRICT` so CI fails below 90 % lines/branches on `src/core/`.
 Acceptance criteria:
@@ -122,7 +122,7 @@ QA: —
 1. Adversary (Opus): fuzz `RoundSimulation` with random input logs for 2 000 seeds; any exception or any
    snapshot with overlapping segments of a living snake is a blocker.
 2. Property: number of segments never decreases while alive except… never (only growth). Assert.
-3. Print the bot statistics table into the QA report for the Sprint 06 baseline.
+3. Print the bot statistics table into the QA report for the Sprint 07 baseline.
 
 ## References
 - GDD §5 "Snake movement", "Player controls", "Collision rules", "Round structure", "Round victory"
@@ -130,10 +130,10 @@ QA: —
 - `docs/reference/images/09-snake-turning-animation.png` (the "grid path" diagram: each segment follows the exact path of the one in front)
 
 ## Risks
-- Simultaneous stepping with different speeds is the subtle part. Opus writes the tests for KS-01-04 AC2–AC4 before the code.
+- Simultaneous stepping with different speeds is the subtle part. Opus writes the tests for KS-02-04 AC2–AC4 before the code.
 
 ## Exit criteria
 - [ ] All tickets merged, coverage on `src/core/` ≥ 90 %, determinism test green for 100 seeds.
 - [ ] Golden event log for the no-input round committed and explained in a comment.
 - [ ] Bot statistics baseline recorded in the tracking issue.
-- [ ] Tag `sprint-01-done`.
+- [ ] Tag `sprint-02-done`.

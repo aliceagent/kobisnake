@@ -1,6 +1,6 @@
-# Sprint 02 — Grey-box Renderer, Input & First Playable
+# Sprint 03 — Grey-box Renderer, Input & First Playable
 
-**Lead:** Opus · **Agents:** Opus ×1, Sonnet ×2, Sonnet-QA ×1 · **Prerequisite:** `sprint-01-done`
+**Lead:** Opus · **Agents:** Opus ×1, Sonnet ×2, Sonnet-QA ×1 · **Prerequisite:** `sprint-02-done`
 
 ## Goal
 **Milestone 1 from the GDD:** two snakes in a square arena, on screen, controlled by WASD and Arrow keys, with
@@ -13,11 +13,11 @@ interpolation and corner bending, a minimal HTML HUD (timer only), a minimal "pr
 press Enter" flow, the `window.__kobi` test hooks, first e2e and visual tests of real gameplay.
 
 ## Out of scope
-Art, materials, lighting polish (S07–S09), menus (S10), lasers (S03), match logic (S04).
+Art, materials, lighting polish (S08–S10), menus (S11), lasers (S04), match logic (S05).
 
 ## Tickets
 
-### KS-02-01 · Game loop with fixed-step accumulator and time scale
+### KS-03-01 · Game loop with fixed-step accumulator and time scale
 Owner: Opus · Size: M · Depends on: —
 Files: `src/game/loop.js`, `tests/unit/game/loop.test.js`
 Spec: `createLoop({ update(dt), render(alpha) })` using `requestAnimationFrame`; frame dt clamped to 0.1 s;
@@ -30,7 +30,7 @@ Acceptance criteria:
 - [ ] AC3 Hidden tab stops updates; visible resumes and calls `onAutoPause` first.
 QA: unit tests with a fake rAF.
 
-### KS-02-02 · Keyboard input
+### KS-03-02 · Keyboard input
 Owner: Sonnet · Size: S · Depends on: —
 Files: `src/game/input.js`, `tests/unit/game/input.test.js`
 Spec: `createInput({ onDirection(playerId, dir), onMenu(action) })`. WASD → player 1, Arrow keys → player 2.
@@ -43,7 +43,7 @@ Acceptance criteria:
 - [ ] AC3 Arrow keydown has `defaultPrevented === true`.
 QA: unit tests with synthetic events.
 
-### KS-02-03 · Locked gameplay camera
+### KS-03-03 · Locked gameplay camera
 Owner: Opus · Size: S · Depends on: —
 Files: `src/render/camera.js`, `tests/unit/render/camera.test.js`
 Spec: `createGameplayCamera({ grid, settings })` returns a `PerspectiveCamera` with FOV `settings.camera.fov`,
@@ -59,8 +59,8 @@ Acceptance criteria:
 - [ ] AC3 Pitch is exactly 78° (dot product of forward vector with down).
 QA: unit tests with `three` in node (no WebGL needed for matrix maths).
 
-### KS-02-04 · Grey-box views: arena, snakes, apples with interpolation
-Owner: Opus · Size: L · Depends on: KS-02-03
+### KS-03-04 · Grey-box views: arena, snakes, apples with interpolation
+Owner: Opus · Size: L · Depends on: KS-03-03
 Files: `src/render/renderer.js`, `src/render/arenaView.js`, `src/render/snakeView.js`, `src/render/pickupView.js`, `src/render/materials.js`
 Spec: Scene with a 24×24 floor of flat green tiles (slightly alternating shades already, since it is cheap) and
 a one-cell-thick grey wall ring, one directional light with shadows, hemisphere fill. `SnakeView.update(snapshot)`
@@ -78,13 +78,13 @@ Acceptance criteria:
 - [ ] AC4 Zero console warnings from three.js (no missing uniforms, no deprecated params).
 QA: e2e `tests/e2e/interpolation.spec.js` and the visual smoke baseline of the first frame.
 
-### KS-02-05 · Session wiring, minimal HUD and round flow
-Owner: Sonnet · Size: M · Depends on: KS-02-01, KS-02-02, KS-02-04
+### KS-03-05 · Session wiring, minimal HUD and round flow
+Owner: Sonnet · Size: M · Depends on: KS-03-01, KS-03-02, KS-03-04
 Files: `src/game/session.js`, `src/ui/ui.js`, `src/ui/hud.js`, `src/ui/styles.css`, `src/main.js`
 Spec: `main.js` builds `session` = loop + input + renderer + sim. Start state: an HTML overlay "PRESS ENTER"
 (grey-box). Enter → new `RoundSimulation(seed from `?seed` or `Date.now()`)`, loop running, HUD shows `m:ss`
 timer updated at 10 Hz and both players' current lengths. On `ROUND_OVER` overlay shows "P1 WINS / P2 WINS /
-DRAW — PRESS ENTER" and Enter starts a new round. This flow is a placeholder for Sprint 04's state machine and
+DRAW — PRESS ENTER" and Enter starts a new round. This flow is a placeholder for Sprint 05's state machine and
 must be trivially removable.
 Acceptance criteria:
 - [ ] AC1 Two humans can play a full round with WASD and Arrows on the Vercel preview.
@@ -92,8 +92,8 @@ Acceptance criteria:
 - [ ] AC3 Round over → Enter → new round with fresh apples and snakes.
 QA: e2e `tests/e2e/first-playable.spec.js` drives both players via keyboard, fast-forwards, and asserts the overlay text.
 
-### KS-02-06 · Test hooks
-Owner: Sonnet · Size: S · Depends on: KS-02-05
+### KS-03-06 · Test hooks
+Owner: Sonnet · Size: S · Depends on: KS-03-05
 Files: `src/game/testHooks.js`, `src/main.js`
 Spec: `window.__kobi` per `ARCHITECTURE §11`, gated on `import.meta.env.DEV || location.search.includes('test=1')`.
 `fastForward(seconds)` advances the sim without rendering frames in between (one render at the end).
@@ -104,8 +104,8 @@ Acceptance criteria:
 - [ ] AC2 `fastForward(90)` completes in < 500 ms.
 QA: e2e.
 
-### KS-02-07 · First-playable e2e and visual suite
-Owner: Sonnet-QA · Size: M · Depends on: KS-02-06
+### KS-03-07 · First-playable e2e and visual suite
+Owner: Sonnet-QA · Size: M · Depends on: KS-03-06
 Files: `tests/e2e/first-playable.spec.js`, `tests/e2e/interpolation.spec.js`, `tests/e2e/input.spec.js`, `tests/visual/gameplay.visual.spec.js`, `tests/visual/__baselines__/*`
 Spec: Scenarios: (a) P1 turns up then left, P2 turns down; fast-forward 2 s; snapshot positions match the
 headless sim run with the same seed and input log (cross-check e2e vs unit); (b) reversal key does nothing;
@@ -129,11 +129,11 @@ QA: —
 - Images `02-standard-gameplay-camera.png`, `03-camera-angle-comparison.png` (panel C), `09-snake-turning-animation.png`
 
 ## Risks
-- Interpolation across a growth step or a death step is where visual glitches hide; KS-02-04 must handle
+- Interpolation across a growth step or a death step is where visual glitches hide; KS-03-04 must handle
   `previousSegments` length changes explicitly.
-- Human playtest availability: schedule it the moment KS-02-05 has a preview.
+- Human playtest availability: schedule it the moment KS-03-05 has a preview.
 
 ## Exit criteria
 - [ ] Human playtest M1–M4 all pass; the reviewer writes "movement feels excellent" or lists what is wrong.
 - [ ] e2e/visual suites green; hooks absent in production.
-- [ ] Tag `sprint-02-done` and additionally `m1-first-playable`.
+- [ ] Tag `sprint-03-done` and additionally `m1-first-playable`.

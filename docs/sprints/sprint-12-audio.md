@@ -1,6 +1,6 @@
-# Sprint 11 — Audio: Music, SFX, Settings
+# Sprint 12 — Audio: Music, SFX, Settings
 
-**Lead:** Sonnet · **Agents:** Sonnet ×2, Sonnet-QA ×1, Fable · **Prerequisite:** `sprint-10-done`
+**Lead:** Sonnet · **Agents:** Sonnet ×2, Sonnet-QA ×1, Fable · **Prerequisite:** `sprint-11-done`
 
 ## Goal
 Three selectable arcade music tracks, a five-second laser-warning sting that ducks the music and returns, every
@@ -12,11 +12,11 @@ Audio engine, synth, sequencer, three tracks, sting, SFX bank, settings wiring, 
 audio unlock behaviour, tests with a fake AudioContext and one real-browser smoke.
 
 ## Out of scope
-Volume sliders (post-1.0), save persistence of settings (S12; this sprint keeps them in session state and exposes `get/set`).
+Volume sliders (post-1.0), save persistence of settings (S13; this sprint keeps them in session state and exposes `get/set`).
 
 ## Tickets
 
-### KS-11-01 · Audio engine, synth and sequencer
+### KS-12-01 · Audio engine, synth and sequencer
 Owner: Sonnet · Size: L · Depends on: —
 Files: `src/audio/audioEngine.js`, `src/audio/synth.js`, `src/audio/sequencer.js`, `tests/unit/audio/*.test.js`
 Spec: `audioEngine` creates the `AudioContext` lazily on the first keydown/pointerdown (`ARCHITECTURE §9`),
@@ -32,8 +32,8 @@ Acceptance criteria:
 - [ ] AC3 No `AudioContext` is created before user interaction; after the first keydown it exists and `state` is running (real-browser e2e).
 QA: unit + e2e.
 
-### KS-11-02 · Three arcade tracks and the laser sting
-Owner: Sonnet · Size: L · Depends on: KS-11-01
+### KS-12-02 · Three arcade tracks and the laser sting
+Owner: Sonnet · Size: L · Depends on: KS-12-01
 Files: `src/audio/tracks/track1.js`, `src/audio/tracks/track2.js`, `src/audio/tracks/track3.js`, `src/audio/tracks/laserSting.js`, `docs/design/AUDIO-NOTES.md`
 Spec: Compose three 16–32 bar loops in the flavours from the GDD ("energetic arcade" ~150 bpm, "playful
 arcade" ~120 bpm major key, "slightly intense arcade" ~140 bpm minor key), each with lead, bass, chords/arp and
@@ -47,8 +47,8 @@ Acceptance criteria:
 - [ ] AC3 Fable listens on the preview and approves the three flavours as distinct.
 QA: offline-render unit tests + manual.
 
-### KS-11-03 · SFX bank
-Owner: Sonnet · Size: M · Depends on: KS-11-01
+### KS-12-03 · SFX bank
+Owner: Sonnet · Size: M · Depends on: KS-12-01
 Files: `src/audio/sfx.js`, `src/game/session.js` (event → sfx map)
 Spec: One synth recipe per GDD sound: menu move, menu select, countdown tick + GO, food collect (short
 ascending blip), power-up appear (sparkle), power-up pickup (bigger sparkle), speed boost (whoosh loop for the
@@ -61,8 +61,8 @@ Acceptance criteria:
 - [ ] AC2 Sounds do not play when SFX is OFF; music does not play when MUSIC is OFF (fake context gain assertions).
 QA: unit + e2e (real browser: gain node values).
 
-### KS-11-04 · Settings and match-setup wiring
-Owner: Sonnet · Size: S · Depends on: KS-11-01
+### KS-12-04 · Settings and match-setup wiring
+Owner: Sonnet · Size: S · Depends on: KS-12-01
 Files: `src/ui/screens/settings.js`, `src/ui/screens/matchSetup.js`, `src/game/session.js`
 Spec: SETTINGS screen toggles call `audioEngine.mute`. MUSIC row in match setup previews the track on focus
 (plays 4 bars) and sets the match track. Laser warning: on `LASER_WARNING` duck music −12 dB, play the sting,
@@ -72,8 +72,8 @@ Acceptance criteria:
 - [ ] AC2 Warning sequence timing verified with the fake context (duck at t, sting 5 s, unduck at t+5).
 QA: unit + e2e.
 
-### KS-11-05 · Audio test suite
-Owner: Sonnet-QA · Size: S · Depends on: KS-11-03
+### KS-12-05 · Audio test suite
+Owner: Sonnet-QA · Size: S · Depends on: KS-12-03
 Files: `tests/unit/audio/FakeAudioContext.js`, `tests/e2e/audio.spec.js`
 Acceptance criteria:
 - [ ] AC1 Suite green in CI; the real-browser test runs with `--autoplay-policy=no-user-gesture-required` only where needed and documents it.
@@ -89,4 +89,4 @@ QA: —
 - `DESIGN-DECISIONS §1 row 25`, `ARCHITECTURE §9`
 
 ## Exit criteria
-- [ ] Fable audio approval; offline/CSP checks still green; tag `sprint-11-done`.
+- [ ] Fable audio approval; offline/CSP checks still green; tag `sprint-12-done`.

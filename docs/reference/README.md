@@ -9,18 +9,18 @@ are listed at the bottom so nobody goes looking for them.
 
 | File | GDD image # | What it shows | Used by sprints |
 |---|---|---|---|
-| `01-master-visual.png` | 1 | Hero key art: block-built KOBI SNAKE logo, both snakes, apples, speed power-up on a blue pedestal, all four lasers lit, emitter towers at corners and mid-walls. The overall "target look". | S07, S08, S09, S10, S15 |
-| `02-standard-gameplay-camera.png` | 2 | The real gameplay camera at round start (1:30, BEST OF 3). Lasers parked/inactive, four apples, one power-up, two 8–9 segment snakes. Locks HUD placement and arena framing. | S02, S08, S10, S14 |
-| `03-camera-angle-comparison.png` | 3 | Four camera pitches (90°, 85°, 75–80°, 65°). **Panel C (75–80°) is the locked gameplay camera.** | S02, S08 |
-| `04-clean-arena-design.png` | 4 | Clean arena with no snakes: floor tile detail (green tiles with subtle shade variety and studs), yellow/blue/grey wall bricks, hazard-stripe wall centre section, corner laser emitter (inactive, red lens), trees/lanterns/banners outside, primary material swatches. | S02, S08 |
-| `05-laser-closing-phase.png` | 5 | The 0:30 moment: all four beams lit at the perimeter, inward arrows, "LASERS CLOSING!" hazard banner, sparks, darker/redder lighting. | S03, S09, S10 |
-| `06-final-shrink-showdown.png` | 6 | 0:08, lasers far inward, a small safe square, outer tiles darkened, two long snakes squeezed together. Readability stress test. | S03, S06, S09, S14 |
-| `07-snake-character-sheet.png` | 7 | Red and blue snake front/side/top views, 10-segment full snake, head close-ups (large white eyes with black pupils, yellow/cream mouth stripe), body-segment connection detail, underside, plastic texture. | S07 |
-| `09-snake-turning-animation.png` | 9 | Six-frame 90° turn, "grid path (top view)" diagram, key principles (grid logic, smooth visuals, each segment follows the segment in front, clean 90° turns). | S01, S02, S07 |
-| `13-gameplay-hud.png` | 13 | Annotated HUD: P1/P2 pills with snake-face icon and round-win pips, central timer panel with BEST OF 3 tab beneath, "SPEED BOOST 5s" tag floating near the boosted snake, "ROUND 1 OF 3" pips at the bottom. | S04, S05, S10 |
-| `14-main-menu.png` | 14 | Main-menu look: block-built title, "SMALL SNAKE. BIG FUN." tagline, big yellow primary button, dark rounded secondary buttons with icons, stats panels top-right, red snake in foreground. **Menu items in this image differ from the GDD; see note below.** | S10, S12 |
-| `future-level-moving-obstacles.png` | — | Out-of-scope concept: "Level 8 – Moving Obstacles" with sliding block hazards. Kept for the post-1.0 arena-variants backlog. | S17 |
-| `future-level-zigzag-zone.png` | — | Out-of-scope concept: "Level 8 – Zigzag Zone" with static grey brick mazes. Kept for the post-1.0 arena-variants backlog. | S17 |
+| `01-master-visual.png` | 1 | Hero key art: block-built KOBI SNAKE logo, both snakes, apples, speed power-up on a blue pedestal, all four lasers lit, emitter towers at corners and mid-walls. The overall "target look". | S08, S09, S10, S11, S18 |
+| `02-standard-gameplay-camera.png` | 2 | The real gameplay camera at round start (1:30, BEST OF 3). Lasers parked/inactive, four apples, one power-up, two 8–9 segment snakes. Locks HUD placement and arena framing. | S03, S09, S11, S17 |
+| `03-camera-angle-comparison.png` | 3 | Four camera pitches (90°, 85°, 75–80°, 65°). **Panel C (75–80°) is the locked gameplay camera.** | S03, S09 |
+| `04-clean-arena-design.png` | 4 | Clean arena with no snakes: floor tile detail (green tiles with subtle shade variety and studs), yellow/blue/grey wall bricks, hazard-stripe wall centre section, corner laser emitter (inactive, red lens), trees/lanterns/banners outside, primary material swatches. | S03, S09 |
+| `05-laser-closing-phase.png` | 5 | The 0:30 moment: all four beams lit at the perimeter, inward arrows, "LASERS CLOSING!" hazard banner, sparks, darker/redder lighting. | S04, S10, S11 |
+| `06-final-shrink-showdown.png` | 6 | 0:08, lasers far inward, a small safe square, outer tiles darkened, two long snakes squeezed together. Readability stress test. | S04, S07, S10, S17 |
+| `07-snake-character-sheet.png` | 7 | Red and blue snake front/side/top views, 10-segment full snake, head close-ups (large white eyes with black pupils, yellow/cream mouth stripe), body-segment connection detail, underside, plastic texture. | S08 |
+| `09-snake-turning-animation.png` | 9 | Six-frame 90° turn, "grid path (top view)" diagram, key principles (grid logic, smooth visuals, each segment follows the segment in front, clean 90° turns). | S02, S03, S08 |
+| `13-gameplay-hud.png` | 13 | Annotated HUD: P1/P2 pills with snake-face icon and round-win pips, central timer panel with BEST OF 3 tab beneath, "SPEED BOOST 5s" tag floating near the boosted snake, "ROUND 1 OF 3" pips at the bottom. | S05, S06, S11 |
+| `14-main-menu.png` | 14 | Main-menu look: block-built title, "SMALL SNAKE. BIG FUN." tagline, big yellow primary button, dark rounded secondary buttons with icons, stats panels top-right, red snake in foreground. **Menu items in this image differ from the GDD; see note below.** | S11, S14 |
+| `future-level-moving-obstacles.png` | — | Out-of-scope concept: "Level 8 – Moving Obstacles" with sliding block hazards. Kept for the post-1.0 arena-variants backlog. | S20 |
+| `future-level-zigzag-zone.png` | — | Out-of-scope concept: "Level 8 – Zigzag Zone" with static grey brick mazes. Kept for the post-1.0 arena-variants backlog. | S20 |
 
 ## Notes and discrepancies (resolved by the design lead)
 
@@ -31,7 +31,7 @@ are listed at the bottom so nobody goes looking for them.
    and P1/P2 wins is allowed because the GDD save schema already tracks those numbers.
 2. **Obstacle levels.** Both "Level 8" images contradict the GDD instruction "avoid decorative obstacles that
    interfere with gameplay" for the standard arena. They are **not** part of Version 1. They are the seed of
-   Sprint 17 (arena variants) and must not leak into the default arena.
+   Sprint 20 (arena variants) and must not leak into the default arena.
 3. **Wall emitter placement.** The images consistently show emitter towers at the four corners **and** one at the
    centre of each wall (with hazard stripes). Build both; beams run between corner emitters, the centre emitter
    is the "mover" that visibly pushes the beam inward.

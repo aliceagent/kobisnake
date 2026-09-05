@@ -28,7 +28,7 @@ engineering and reviews every PR, **Sonnet** implements tickets and writes tests
 - Plain JavaScript ES modules. `// @ts-check` at the top of every file in `src/core/` and `src/game/`, with
   JSDoc types. Small files, one class per file, descriptive names, comments explain *why*.
 - Branch `s{NN}/{ticket-id}-{slug}`; PR title `KS-NN-TT: description`; one ticket per PR; squash merge.
-- Every acceptance criterion in your ticket gets a test named after it (`KS-03-02 AC3: …`) unless the ticket
+- Every acceptance criterion in your ticket gets a test named after it (`KS-04-02 AC3: …`) unless the ticket
   says "manual".
 - Before pushing run: `npm run lint && npm run typecheck && npm run test:unit && npm run build`, and paste the
   output in the PR. Run `npm run test:e2e` if you touched anything a browser can see.
@@ -37,7 +37,7 @@ engineering and reviews every PR, **Sonnet** implements tickets and writes tests
 - Determinism: all randomness goes through `src/core/rng.js` with a seed. E2e tests fast-forward time through
   `window.__kobi`; they never sleep.
 
-## Test layers (all wired in CI from Sprint 00)
+## Test layers (all wired in CI from Sprint 01)
 `tests/unit` (Vitest, ≥ 90 % on `src/core`), `tests/sim` (headless rounds, bots, replays), `tests/e2e`
 (Playwright), `tests/visual` (screenshot baselines, seed 1, `?reducedFx=1`), `tests/perf`, offline check.
 
