@@ -37,7 +37,7 @@ There is no `test:sim` script: simulation tests live in `tests/sim/` but run und
 - Never touch files outside your ticket's `Files:` list without saying so in the PR description.
 - Never skip, delete, weaken or quarantine a test to get CI green. If a test is flaky, say so and file it.
 - Never put DOM or three.js code in `src/core/`. It is pure simulation and must run in Node.
-- Never write a hex colour outside `src/render/materials.js` / `src/ui/tokens.css`.
+- Never write a hex colour outside `src/render/materials.js` (3D) or the UI stylesheet `src/ui/styles.css` (DOM).
 - Never invent a mechanic, screen, option or rule that is not in the ticket. File an issue instead.
 - Never put model names in commits, code or comments (this governs what you author — commit subject/body, code,
   comments, PR text — not the harness's automatic `Co-Authored-By:` trailer, which is attribution metadata you
