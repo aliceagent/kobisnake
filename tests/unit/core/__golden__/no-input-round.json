@@ -1,0 +1,73 @@
+[
+  {
+    "type": "FOOD_SPAWNED",
+    "tick": 0,
+    "t": 0,
+    "index": 0,
+    "cell": {
+      "x": 14,
+      "y": 22
+    }
+  },
+  {
+    "type": "FOOD_SPAWNED",
+    "tick": 0,
+    "t": 0,
+    "index": 1,
+    "cell": {
+      "x": 0,
+      "y": 1
+    }
+  },
+  {
+    "type": "FOOD_SPAWNED",
+    "tick": 0,
+    "t": 0,
+    "index": 2,
+    "cell": {
+      "x": 12,
+      "y": 15
+    }
+  },
+  {
+    "type": "FOOD_SPAWNED",
+    "tick": 0,
+    "t": 0,
+    "index": 3,
+    "cell": {
+      "x": 23,
+      "y": 13
+    }
+  },
+  {
+    "type": "SNAKE_DIED",
+    "tick": 380,
+    "t": 3.1666666666666665,
+    "snakeId": "p1",
+    "cause": "WALL",
+    "cell": {
+      "x": 24,
+      "y": 12
+    }
+  },
+  {
+    "type": "SNAKE_DIED",
+    "tick": 380,
+    "t": 3.1666666666666665,
+    "snakeId": "p2",
+    "cause": "WALL",
+    "cell": {
+      "x": -1,
+      "y": 11
+    }
+  },
+  {
+    "type": "ROUND_OVER",
+    "tick": 380,
+    "t": 3.1666666666666665,
+    "result": "DRAW",
+    "reason": "DEATH",
+    "winnerId": null,
+    "lengths": [4, 4]
+  }
+]
