@@ -90,11 +90,7 @@ function frameArena(target) {
   const centerX = ARENA.width / 2;
   const centerZ = ARENA.height / 2;
   // Yaw 0 means the camera hangs on the +z side of the arena and tips down towards its centre.
-  target.position.set(
-    centerX,
-    distance * Math.sin(pitch),
-    centerZ + distance * Math.cos(pitch),
-  );
+  target.position.set(centerX, distance * Math.sin(pitch), centerZ + distance * Math.cos(pitch));
   target.lookAt(centerX, 0, centerZ);
   target.updateProjectionMatrix();
 }
