@@ -24,12 +24,45 @@ the reference concept images, and an 18-sprint plan for a multi-agent build.
 ## How it will be built and hosted
 
 - Code lives on GitHub (`aliceagent/kobisnake`). `main` is protected; every change is a pull request with CI.
-- Hosting is **Vercel**: every pull request gets a preview deployment, `main` deploys to production. The Vercel
-  project is `kobisnake` on the owner's team, linked to this repository through the GitHub integration (project
-  id `prj_cE5eSQETJjAtso5htBrzNI1jgAYj`). The production URL is assigned by Vercel on the first successful
-  deployment and is recorded here by Sprint 01 (`docs/sprints/sprint-01-bootstrap-and-delivery-pipeline.md`).
 - Sprint 01 creates the toolchain (`npm run dev | build | lint | typecheck | test:unit | test:e2e | test:visual`).
-  Until then there is nothing to run.
+
+## Deployment
+
+Hosting is **Vercel**, static, from the `dist/` folder Vite builds. Nobody deploys by hand.
+
+| | |
+|---|---|
+| Vercel project | `kobisnake` (id `prj_cE5eSQETJjAtso5htBrzNI1jgAYj`), linked to this repository through the GitHub integration |
+| Framework preset | Vite, output directory `dist` (also declared in `vercel.json` so the repository is the source of truth) |
+| Production branch | `main` — every merge redeploys production |
+| Preview | every pull request gets its own preview deployment; Vercel posts the URL as a commit status and a PR comment |
+| Production URL | _assigned by Vercel on the first successful production deployment; recorded here by Sprint 01 (see `docs/sprints/sprint-01-bootstrap-and-delivery-pipeline.md`)_ |
+
+`vercel.json` is what makes "the game loads nothing from the internet" enforceable by the browser rather than
+by good intentions:
+
+- a **Content-Security-Policy** that allows `'self'` and nothing else for scripts, styles, images, fonts,
+  media, workers and connections (`object-src 'none'`, `frame-ancestors 'none'`). A `<script>` pointing at a
+  CDN is refused by the browser even if one ever slips past code review;
+- `Cache-Control: public, max-age=31536000, immutable` on `/assets/*`, whose filenames Vite content-hashes,
+  and `max-age=0, must-revalidate` on the page itself so a new build is never served from a stale index;
+- `X-Content-Type-Options: nosniff`, `Referrer-Policy: strict-origin-when-cross-origin`, and `cleanUrls`.
+
+Because the policy has no `'unsafe-inline'`, page CSS lives in `src/ui/styles.css` rather than in a `<style>`
+block, and Vite emits it as a hashed stylesheet.
+
+### Checking a deployment
+
+Agent sessions cannot reach `*.vercel.app` or `api.vercel.com`. Check the commit status GitHub records
+instead:
+
+```
+curl -s https://api.github.com/repos/aliceagent/kobisnake/commits/<sha>/status
+```
+
+The `Vercel` context reports `pending` → `success` with the deployment URL in `target_url`, or `failure` with
+the reason. The team is on the Hobby plan, which caps deployments per day; if the status says
+`Deployment rate limited`, wait for the daily reset rather than retrying in a loop.
 
 ## Reading order for a new agent
 1. `CLAUDE.md`
