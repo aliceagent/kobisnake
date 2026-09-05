@@ -11,6 +11,23 @@ engineering and reviews every PR, **Sonnet** implements tickets and writes tests
    for what each image locks and the known discrepancies.
 4. Only when intent is unclear, read the GDD: `docs/design/GDD-KOBI-Snake-Design-and-Reference-Pack.txt`.
 
+## Setup and scripts
+Node 20 (`.nvmrc`). Run `npm install` once per worktree — `node_modules` is not shared between worktrees.
+
+| Script | What it does |
+|---|---|
+| `npm run dev` | Vite dev server, http://localhost:5173 |
+| `npm run build` | Vite build → `dist/` |
+| `npm run preview` | Serves the built `dist/` |
+| `npm run lint` | ESLint (flat config) |
+| `npm run format` | Prettier `--write .` — always safe; `.prettierignore` excludes `docs/**` and `*.md` |
+| `npm run typecheck` | `tsc --noEmit -p jsconfig.json` |
+| `npm run test:unit` | Vitest — runs `tests/unit/**` **and** `tests/sim/**` together; coverage always on |
+| `npm run test:e2e` | Playwright — `tests/e2e/**`, including the offline/zero-network-request check |
+| `npm run test:visual` | Playwright — `tests/visual/**` against `tests/visual/__baselines__/` |
+
+There is no `test:sim` script: simulation tests live in `tests/sim/` but run under `npm run test:unit`.
+
 ## The never list
 - Never load anything from a CDN or external URL. three.js comes from npm and is bundled. The built site makes
   zero network requests after load; a test enforces this.
@@ -22,7 +39,9 @@ engineering and reviews every PR, **Sonnet** implements tickets and writes tests
 - Never put DOM or three.js code in `src/core/`. It is pure simulation and must run in Node.
 - Never write a hex colour outside `src/render/materials.js` / `src/ui/tokens.css`.
 - Never invent a mechanic, screen, option or rule that is not in the ticket. File an issue instead.
-- Never put model names in commits, code or comments.
+- Never put model names in commits, code or comments (this governs what you author — commit subject/body, code,
+  comments, PR text — not the harness's automatic `Co-Authored-By:` trailer, which is attribution metadata you
+  cannot suppress, not authored content).
 
 ## Conventions
 - Plain JavaScript ES modules. `// @ts-check` at the top of every file in `src/core/` and `src/game/`, with
@@ -38,8 +57,13 @@ engineering and reviews every PR, **Sonnet** implements tickets and writes tests
   `window.__kobi`; they never sleep.
 
 ## Test layers (all wired in CI from Sprint 01)
-`tests/unit` (Vitest, ≥ 90 % on `src/core`), `tests/sim` (headless rounds, bots, replays), `tests/e2e`
-(Playwright), `tests/visual` (screenshot baselines, seed 1, `?reducedFx=1`), `tests/perf`, offline check.
+- `tests/unit` — Vitest, ≥ 90 % coverage on `src/core`. Run with `npm run test:unit`.
+- `tests/sim` — headless whole-round/match simulations, bots, replays; Vitest too, same `npm run test:unit`
+  command. Currently holds only a README — Sprint 02 fills it in.
+- `tests/e2e` — Playwright, `npm run test:e2e`. Includes the offline/zero-network-request check.
+- `tests/visual` — Playwright screenshots vs `tests/visual/__baselines__/`, seed 1, `?reducedFx=1`. Run with
+  `npm run test:visual`.
+- `tests/perf` — frame-time, draw-call and bundle-size budgets. Does not exist yet; arrives in Sprint 16.
 
 ## When blocked
 Post `BLOCKED: <what you need> <from whom>` on your issue and pick up another ticket of yours.
