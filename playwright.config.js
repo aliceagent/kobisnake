@@ -17,7 +17,11 @@ export default defineConfig({
   testMatch: '**/*.spec.js',
   fullyParallel: true,
   forbidOnly: !!process.env.CI,
-  retries: process.env.CI ? 1 : 0,
+  // No retries: a test that fails once and passes on retry reports green while hiding the flake from
+  // everybody, which is exactly what CLAUDE.md's "never quarantine a flaky test, say so and file it" rule
+  // exists to prevent. This governs every sprint through S20, including visual baselines whose cross-machine
+  // stability is not yet proven — a retry must never paper over that.
+  retries: 0,
   reporter: process.env.CI ? [['html', { open: 'never' }]] : 'list',
   // Baselines are compared with a 0.2% pixel-diff budget (QA-STRATEGY §1) so the same software-rendered
   // WebGL frame travels between machines without either widening the threshold or being flaky.
@@ -31,7 +35,9 @@ export default defineConfig({
     baseURL: `http://localhost:${PORT}`,
     viewport: { width: 1280, height: 720 },
     deviceScaleFactor: 1,
-    trace: 'on-first-retry',
+    // Retries are off, so 'on-first-retry' would never capture anything; keep the trace from the one and
+    // only failing run instead.
+    trace: 'retain-on-failure',
   },
   projects: [
     {
