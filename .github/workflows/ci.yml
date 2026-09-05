@@ -1,0 +1,157 @@
+# KS-01-04: CI that runs on every PR and every push to main.
+#
+# Job ids are pinned exactly to `lint`, `typecheck`, `unit`, `build`, `browser` (see KS-01-06's
+# branch-protection checklist, which names these as the required status checks). They are five
+# separate jobs — not steps in one job — because a GitHub required status check is a job's check
+# run, not a step inside it; splitting them also runs lint/typecheck/unit/build in parallel, which
+# is what keeps the whole workflow inside the ticket's 6-minute budget even though every job pays
+# its own `npm ci`.
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+# One concurrency group per ref: a PR's ref is unique to that PR, so new pushes to the same PR
+# cancel whatever CI run was still going for its previous commit. `main`'s ref never changes, so
+# giving pushes to main `cancel-in-progress: false` means two close-together merges both run to
+# completion instead of the first being cancelled mid-way — main's CI result is the thing branch
+# protection and deploys key off, so it should never be silently abandoned.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+env:
+  NODE_VERSION: '20'
+
+jobs:
+  lint:
+    name: lint
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+      - run: npm ci
+      - run: npm run lint
+
+  typecheck:
+    name: typecheck
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+      - run: npm ci
+      - run: npm run typecheck
+
+  unit:
+    name: unit
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+      - run: npm ci
+      - run: npm run test:unit
+      # `if: always()` so a red run (KS-01-04 AC1) still uploads the coverage report that explains
+      # it — coverage/ is written by vitest.config.js's v8 provider before the process exits either
+      # way, it is only *skipped* if the step above never got to run npm's own script at all.
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: coverage
+          path: coverage/
+          retention-days: 14
+
+  build:
+    name: build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+      - run: npm ci
+      - run: npm run build
+      - uses: actions/upload-artifact@v4
+        with:
+          name: dist
+          path: dist/
+          retention-days: 14
+
+  # e2e + visual, Chromium only — Firefox and WebKit run nightly (nightly.yml) so PRs stay fast.
+  # `tests/e2e` includes `offline.spec.js` (KS-01-03), which is the ticket's "offline" step: there
+  # is no separate offline script to wire, it rides along with the e2e run.
+  browser:
+    name: browser
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+      - run: npm ci
+
+      - name: Read installed Playwright version
+        id: playwright-version
+        run: |
+          version=$(node -p "require('./package-lock.json').packages['node_modules/@playwright/test'].version")
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+
+      # GitHub Actions runners don't ship browsers preinstalled, so `playwright install` has to run
+      # here. It is not the no-CDN rule's "shipped site" — nothing built downloads anything, this is
+      # CI tooling fetching its own test browser. Caching the binaries keyed on the exact
+      # @playwright/test version (bumping the dependency invalidates the cache automatically) means
+      # a cache hit skips the download; `--with-deps` still installs the OS packages Chromium needs
+      # to run headless on the runner.
+      - uses: actions/cache@v4
+        id: playwright-cache
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-chromium-${{ runner.os }}-${{ steps.playwright-version.outputs.version }}
+      - run: npx playwright install --with-deps chromium
+
+      # Each npm script is its own Playwright invocation (they target different testDirs), so each
+      # gets its own HTML report folder via PLAYWRIGHT_HTML_REPORT — otherwise the second run would
+      # overwrite the first's report before it could be uploaded. `continue-on-error` on both lets
+      # the visual suite still run (and its report still get produced) even if e2e fails first, so a
+      # single failing suite doesn't hide the other's result; the step after fails the job for real.
+      - name: e2e
+        id: e2e
+        continue-on-error: true
+        env:
+          PLAYWRIGHT_HTML_REPORT: playwright-report/e2e
+        run: npm run test:e2e
+      - name: visual
+        id: visual
+        continue-on-error: true
+        env:
+          PLAYWRIGHT_HTML_REPORT: playwright-report/visual
+        run: npm run test:visual
+      - name: Fail the job if either suite failed
+        if: steps.e2e.outcome == 'failure' || steps.visual.outcome == 'failure'
+        run: |
+          echo "e2e outcome: ${{ steps.e2e.outcome }}"
+          echo "visual outcome: ${{ steps.visual.outcome }}"
+          exit 1
+
+      # KS-01-04 AC3: downloadable on failure. `test-results/` carries the traces
+      # (`trace: 'retain-on-failure'` in playwright.config.js) and any visual diff images.
+      - uses: actions/upload-artifact@v4
+        if: failure()
+        with:
+          name: playwright-report
+          path: |
+            playwright-report/
+            test-results/
+          retention-days: 14

@@ -1,0 +1,75 @@
+# KS-01-04: cross-browser + perf coverage that is too slow (or, for perf, not written yet) to put
+# on every PR. `ci.yml` already runs the full e2e + visual suite on Chromium for every PR and push
+# to main; this workflow adds the two browser engines Chromium can't stand in for, plus a slot for
+# the perf specs Sprint 16 will add.
+name: Nightly
+
+on:
+  schedule:
+    # 04:00 UTC daily — outside any sprint's normal working hours, after the day's PRs have landed.
+    - cron: '0 4 * * *'
+  # Lets a human (or this ticket's QA step) fire the workflow on demand instead of waiting for 04:00.
+  workflow_dispatch: {}
+
+env:
+  NODE_VERSION: '20'
+
+jobs:
+  e2e-cross-browser:
+    name: e2e (${{ matrix.browser }})
+    runs-on: ubuntu-latest
+    strategy:
+      # One engine failing (e.g. a real WebKit rendering gap) shouldn't cancel the other's run.
+      fail-fast: false
+      matrix:
+        browser: [firefox, webkit]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+      - run: npm ci
+
+      - name: Read installed Playwright version
+        id: playwright-version
+        run: |
+          version=$(node -p "require('./package-lock.json').packages['node_modules/@playwright/test'].version")
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+
+      - uses: actions/cache@v4
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-${{ matrix.browser }}-${{ runner.os }}-${{ steps.playwright-version.outputs.version }}
+      - run: npx playwright install --with-deps ${{ matrix.browser }}
+
+      # playwright.config.js defines only a `chromium` project (that's the PR-blocking suite in
+      # ci.yml); `--browser` swaps the engine for this run without editing that config, which is
+      # outside this ticket's Files list. Visual baselines are Chromium/SwiftShader-specific
+      # (see the scaffold's known baseline caveat), so only e2e runs cross-browser here.
+      - name: e2e
+        env:
+          PLAYWRIGHT_HTML_REPORT: playwright-report/${{ matrix.browser }}
+        run: npx playwright test tests/e2e --browser=${{ matrix.browser }}
+
+      - uses: actions/upload-artifact@v4
+        if: failure()
+        with:
+          name: playwright-report-${{ matrix.browser }}
+          path: |
+            playwright-report/
+            test-results/
+          retention-days: 14
+
+  perf:
+    name: perf
+    runs-on: ubuntu-latest
+    steps:
+      # `tests/perf/` doesn't exist yet — it's Sprint 16's (docs/sprints/README.md). This job is the
+      # placeholder the ticket asks for so `nightly.yml` already has a slot named `perf` that
+      # Sprint 16 turns into a real step, without this ticket creating tests/perf files itself
+      # (outside KS-01-04's Files list).
+      - name: Perf specs not written yet (Sprint 16)
+        run: |
+          echo "tests/perf/ does not exist yet — Sprint 16 (Hardening: Performance) adds the specs."
+          echo "This step is an intentional placeholder; see docs/sprints/sprint-16-hardening-performance-browsers-accessibility.md"
