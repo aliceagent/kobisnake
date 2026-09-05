@@ -9,6 +9,7 @@
  */
 
 import { cellKey, chebyshev, inBounds } from './grid.js';
+import { SETTINGS } from './settings.js';
 
 /**
  * @typedef {import('./grid.js').Cell} Cell
@@ -56,8 +57,7 @@ function noDeadZone() {
  *   to a predicate that always returns `false` (Sprint 02 has no lasers yet)
  * @param {Rng} params.rng
  * @param {number} [params.minDistance] - minimum Chebyshev distance from every head; defaults to
- *   `SETTINGS.foodMinDistanceFromHead` (2), passed explicitly here to keep this module free of a dependency
- *   on `settings.js` for a single number the caller already has
+ *   `SETTINGS.foodMinDistanceFromHead`
  * @returns {Cell}
  * @throws {NoFreeCellError} when no cell satisfies every constraint
  */
@@ -67,7 +67,7 @@ export function placeFood({
   heads = [],
   deadZone = noDeadZone,
   rng,
-  minDistance = 2,
+  minDistance = SETTINGS.foodMinDistanceFromHead,
 }) {
   const candidates = [];
   for (let x = 0; x < grid.width; x += 1) {
@@ -119,7 +119,14 @@ export class FoodState {
    * @param {Rng} params.rng
    * @param {number} [params.minDistance]
    */
-  fill({ grid, occupied, heads = [], deadZone = noDeadZone, rng, minDistance = 2 }) {
+  fill({
+    grid,
+    occupied,
+    heads = [],
+    deadZone = noDeadZone,
+    rng,
+    minDistance = SETTINGS.foodMinDistanceFromHead,
+  }) {
     const working = new Set(occupied);
     this.apples = [];
     for (let i = 0; i < this.foodCount; i += 1) {
@@ -143,7 +150,17 @@ export class FoodState {
    * @param {Rng} params.rng
    * @param {number} [params.minDistance]
    */
-  respawn(index, { grid, occupied, heads = [], deadZone = noDeadZone, rng, minDistance = 2 }) {
+  respawn(
+    index,
+    {
+      grid,
+      occupied,
+      heads = [],
+      deadZone = noDeadZone,
+      rng,
+      minDistance = SETTINGS.foodMinDistanceFromHead,
+    },
+  ) {
     // The other apples still on the board must stay off-limits, or two apples could land on the same cell.
     const working = new Set(occupied);
     for (let i = 0; i < this.apples.length; i += 1) {

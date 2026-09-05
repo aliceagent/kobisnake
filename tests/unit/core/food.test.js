@@ -3,6 +3,7 @@ import { describe, expect, it } from 'vitest';
 import { FoodState, NoFreeCellError, placeFood } from '../../../src/core/food.js';
 import { cellKey } from '../../../src/core/grid.js';
 import { createRng } from '../../../src/core/rng.js';
+import { SETTINGS } from '../../../src/core/settings.js';
 
 const GRID_6X6 = { width: 6, height: 6 };
 
@@ -54,12 +55,17 @@ describe('KS-02-03 placeFood', () => {
     }
   });
 
-  it('KS-02-03 AC2: minDistance defaults to 2 when omitted', () => {
+  it('KS-02-03 AC2: minDistance defaults to SETTINGS.foodMinDistanceFromHead when omitted', () => {
+    // Asserts against the design value, not a literal, so this stays a test of "the default tracks
+    // SETTINGS" rather than a test that would keep passing (and lying) if Fable retunes the number at
+    // Playtest Gate 1 and food.js's default silently did not follow.
     const heads = [{ x: 2, y: 2 }];
     const occupied = new Set();
     const rng = createRng(1);
     const cell = placeFood({ grid: GRID_6X6, occupied, heads, rng });
-    expect(Math.max(Math.abs(cell.x - 2), Math.abs(cell.y - 2))).toBeGreaterThanOrEqual(2);
+    expect(Math.max(Math.abs(cell.x - 2), Math.abs(cell.y - 2))).toBeGreaterThanOrEqual(
+      SETTINGS.foodMinDistanceFromHead,
+    );
   });
 
   it('KS-02-03 AC3: throws NoFreeCellError when every cell is occupied', () => {
