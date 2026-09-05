@@ -43,14 +43,26 @@ jobs:
           key: playwright-${{ matrix.browser }}-${{ runner.os }}-${{ steps.playwright-version.outputs.version }}
       - run: npx playwright install --with-deps ${{ matrix.browser }}
 
-      # playwright.config.js defines only a `chromium` project (that's the PR-blocking suite in
-      # ci.yml); `--browser` swaps the engine for this run without editing that config, which is
-      # outside this ticket's Files list. Visual baselines are Chromium/SwiftShader-specific
-      # (see the scaffold's known baseline caveat), so only e2e runs cross-browser here.
+      # Chromium ships SwiftShader and renders WebGL on a GPU-less runner out of the box. Firefox does not:
+      # it looks for a system GL driver, finds none, and reports "Exhausted GL driver options", so every
+      # WebGL page fails before the game gets a chance to be wrong. Installing Mesa's rasteriser did NOT fix
+      # it (issue #23) — an X display via xvfb is the next thing to try. Kept so the next attempt starts one
+      # step further along. Firefox-only; WebKit passes all three specs.
+      - name: Install a software GL driver for Firefox
+        if: matrix.browser == 'firefox'
+        run: sudo apt-get update && sudo apt-get install -y libgl1-mesa-dri mesa-utils
+
+      # playwright.config.js defines a project per engine, so the engine is selected with `--project`.
+      # `--browser` cannot be used here: Playwright rejects it outright whenever the config defines any
+      # project ("Cannot use --browser option when configuration file defines projects"), which is what
+      # issue #21 was. Visual baselines are Chromium-specific, so only e2e runs cross-browser.
       - name: e2e
         env:
           PLAYWRIGHT_HTML_REPORT: playwright-report/${{ matrix.browser }}
-        run: npx playwright test tests/e2e --browser=${{ matrix.browser }}
+          # Mesa's software rasteriser, for the same reason as the Firefox prefs in playwright.config.js:
+          # these runners have no GPU and Firefox, unlike Chromium, ships no software WebGL of its own.
+          LIBGL_ALWAYS_SOFTWARE: '1'
+        run: npx playwright test tests/e2e --project=${{ matrix.browser }}
 
       - uses: actions/upload-artifact@v4
         if: failure()
