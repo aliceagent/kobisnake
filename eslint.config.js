@@ -20,6 +20,7 @@ export default [
       'coverage/**',
       'playwright-report/**',
       'test-results/**',
+      '.claude/**',
     ],
   },
   js.configs.recommended,
