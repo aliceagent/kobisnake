@@ -9,7 +9,9 @@ import { describe, expect, it } from 'vitest';
  */
 describe('KS-01-03 test harness placeholder', () => {
   it('KS-01-03 AC1: npm run test:unit runs and reports a passing assertion', () => {
-    expect(1 + 1).toBe(2);
+    // KS-01-04 AC1 verification: deliberately wrong assertion. This branch is a throwaway used only
+    // to prove CI shows a red check on a failing unit test; it is never merged.
+    expect(1 + 1).toBe(3);
   });
 
   it('KS-01-03 AC1: npm run test:unit resolves plain ES module imports', async () => {
