@@ -1,0 +1,19 @@
+// @ts-check
+import { describe, expect, it } from 'vitest';
+
+/**
+ * KS-01-03: this file has no game logic to test yet — `src/core` is empty until Sprint 02 (ARCHITECTURE §3).
+ * Its only job is to prove the Vitest runner itself works: it resolves ES modules, runs assertions, and
+ * reports failures correctly. Sprint 02 replaces this file's purpose (not necessarily this file) with real
+ * unit tests under `tests/unit/` that mirror `src/core` and `src/game`.
+ */
+describe('KS-01-03 test harness placeholder', () => {
+  it('KS-01-03 AC1: npm run test:unit runs and reports a passing assertion', () => {
+    expect(1 + 1).toBe(2);
+  });
+
+  it('KS-01-03 AC1: npm run test:unit resolves plain ES module imports', async () => {
+    const module = await import('node:path');
+    expect(typeof module.join).toBe('function');
+  });
+});
