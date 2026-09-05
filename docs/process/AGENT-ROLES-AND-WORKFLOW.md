@@ -68,8 +68,12 @@ QA: the tests this ticket must add or make pass
 
 ## 4. Git and GitHub conventions
 
-- Repository: `aliceagent/kobisnake`. Default branch `main` is protected: PR required, CI required, one Opus
-  approval required, Fable approval required when `needs-design-review` is present, linear history (squash merge).
+- Repository: `aliceagent/kobisnake`. Default branch `main` is protected: PR required, CI required, linear
+  history (squash merge), force-pushes and deletions blocked. **Approvals are not enforced by GitHub** while every
+  agent pushes as the single `aliceagent` account (GitHub forbids self-approval, so a required-approval rule would
+  stop all merges). Opus's review and Fable's design review are therefore written as PR comments and are still
+  mandatory before merge; if separate reviewer accounts are created later, turn on "require 1 approval" and
+  "require review from Code Owners".
 - Branch names: `s{NN}/{ticket-id}-{slug}`, e.g. `s03/ks-03-02-laser-schedule`. QA branches `qa/s{NN}-{slug}`.
 - Commit messages: imperative, ≤ 72 chars subject, body explains why. Ticket ID in the subject.
 - Squash-merge title = PR title = `KS-NN-TT: description`.

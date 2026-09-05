@@ -132,7 +132,9 @@ purposes; the simulation keeps running.
 - Geometry budget: arena + walls + decorations are **merged or instanced** (≤ 60 draw calls at rest). Snake
   segments use `InstancedMesh` per colour. Target **60 fps on an integrated GPU laptop at 1080p**; pixel ratio
   capped at 2.
-- Shadows: one directional shadow-casting light, 2048 map, PCFSoft. Nothing else casts.
+- Shadows: one directional shadow-casting light, 2048 map, `PCFShadowMap` with `light.shadow.radius` ≈ 2 for
+  softness (three has deprecated `PCFSoftShadowMap`; see issue #10). Sprint 09 may switch to `VSMShadowMap` if
+  PCF looks too harsh on the studs, recorded as a tuning-proposal. Nothing else casts.
 - Post-processing: none in V1. Laser glow is done with emissive materials + additive floor quads, not bloom.
 - All colours come from `SETTINGS.colors` / `materials.js`; no hex literals in view code.
 

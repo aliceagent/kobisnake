@@ -47,7 +47,9 @@ Full test-layer detail (what each layer covers, gates, bots): `docs/qa/QA-STRATE
 
 ## How it will be built and hosted
 
-- Code lives on GitHub (`aliceagent/kobisnake`). `main` is protected; every change is a pull request with CI.
+- Code lives on GitHub (`aliceagent/kobisnake`). Every change is a pull request with CI. Branch protection on
+  `main` is applied by the owner from the checklist in the Sprint 01 tracking issue (agents cannot write
+  repository settings).
 - Sprint 01 builds the toolchain and delivery pipeline described above and in `docs/design/ARCHITECTURE.md`.
 
 ## Deployment

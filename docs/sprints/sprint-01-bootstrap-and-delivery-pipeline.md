@@ -40,7 +40,7 @@ at 2. Resize handled.
 Acceptance criteria:
 - [ ] AC1 `npm run dev` serves the page; `npm run build` produces `dist/` with no warnings.
 - [ ] AC2 The built page renders the plane and cube with zero console errors.
-- [ ] AC3 `dist/` contains no absolute external URLs (grep for `https://` returns only source-map comments or nothing).
+- [ ] AC3 The built page loads no external resource: zero requests leave the page's origin (enforced by `tests/e2e/offline.spec.js`). A literal grep of `dist/` for `https://` may hit comments inside bundled three.js source (e.g. a paper citation in a shader) and those do not count. *(Reworded by the design lead on 2026-09-05; the original grep wording could never be clean while three.js is bundled from npm.)*
 - [ ] AC4 `jsconfig.json` enables `checkJs` for `src/core` and `src/game`.
 QA: e2e smoke `tests/e2e/smoke.spec.js` loads the page, asserts canvas exists and no console errors.
 

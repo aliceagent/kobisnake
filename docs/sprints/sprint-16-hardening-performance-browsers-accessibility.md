@@ -34,7 +34,9 @@ QA: perf specs + e2e.
 ### KS-16-02 · Cross-browser and input-device matrix
 Owner: Sonnet-QA · Size: M · Depends on: —
 Files: `playwright.config.js`, `tests/e2e/**`, `docs/qa/browser-matrix.md`
-Spec: Full e2e suite on Chromium, Firefox and WebKit in CI for this sprint (then nightly). Manual verification on
+Spec: Full e2e suite on Chromium, Firefox and WebKit in CI for this sprint (then nightly). Re-enable the Firefox
+nightly leg that Sprint 01 removed (issue #23: headless Firefox cannot create a WebGL context on GitHub runners;
+try `xvfb-run`, `MOZ_` environment variables, or a headed run under Xvfb). Manual verification on
 Safari macOS, Edge Windows, Chrome Windows/macOS/Linux: WebGL2, keyboard events for arrows/WASD including
 simultaneous keys from two players (verify n-key rollover on at least two physical keyboards; document ghosting
 caveats), fullscreen, audio unlock, localStorage.
@@ -75,10 +77,12 @@ Acceptance criteria:
 - [ ] AC1 Full match, tutorial, shop and settings produce zero console output above `info`.
 QA: —
 
-### KS-16-06 · Hardening bug fixes
+### KS-16-06 · Hardening bug fixes and toolchain upgrade
 Owner: Opus + Sonnet · Size: M · Depends on: KS-16-01..05
-Files: as needed
-Spec: Fix everything the tickets above surface. No feature work.
+Files: as needed; `package.json`, `package-lock.json`, `vite.config.js`, `docs/design/ARCHITECTURE.md §2`
+Spec: Fix everything the tickets above surface. No feature work. Also take the Vite major upgrade deferred from
+Sprint 01 (issue #11: esbuild dev-server advisory reaches us through Vite 5); re-pin `ARCHITECTURE §2`, re-run
+`npm audit` and the full test matrix.
 Acceptance criteria:
 - [ ] AC1 Zero open `blocker`/`major` issues labelled `sprint:16`.
 QA: —

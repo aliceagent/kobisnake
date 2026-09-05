@@ -75,3 +75,4 @@ Fable appends a row here at each sign-off.
 
 | Sprint | Tag | Date | Notes |
 |---|---|---|---|
+| 01 | *(pending)* | 2026-09-05 | All 7 implementable tickets merged, CI green, QA report posted. Tag withheld until (a) the first Vercel deployment succeeds after the quota reset on 2026-09-06 and (b) the owner applies branch protection. **Sprint 02 conditionally started** because it has no dependency on either. |
