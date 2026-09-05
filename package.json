@@ -10,13 +10,21 @@
   "scripts": {
     "dev": "vite",
     "build": "vite build",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "lint": "eslint .",
+    "format": "prettier --write .",
+    "typecheck": "tsc --noEmit -p jsconfig.json"
   },
   "dependencies": {
     "three": "0.185.1"
   },
   "devDependencies": {
+    "@eslint/js": "9.39.5",
     "@types/three": "0.185.4",
+    "eslint": "9.39.5",
+    "eslint-config-prettier": "10.1.8",
+    "eslint-plugin-import": "2.32.0",
+    "prettier": "3.9.6",
     "typescript": "5.9.3",
     "vite": "5.4.21"
   }
