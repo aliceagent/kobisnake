@@ -5,8 +5,32 @@ in a square brick arena; in the last 30 seconds of every 90-second round four la
 somebody crashes. Built with HTML, CSS, JavaScript and three.js, no server, no accounts, works offline after
 the first load. Designed so an 11-year-old developer can read, change and extend it.
 
-**Status:** planning complete, build not started. This repository currently contains the complete design pack,
-the reference concept images, and an 18-sprint plan for a multi-agent build.
+**Status:** build under way (Sprint 01 of 20). This repository contains the complete design pack, the reference
+concept images, and a 20-sprint plan (`docs/sprints/README.md`) for a multi-agent build.
+
+## How to run
+
+```
+npm install
+npm run dev       # dev server at http://localhost:5173
+npm run build     # production build to dist/
+npm run preview   # serve the dist/ build locally
+```
+
+Requires Node 20 (`.nvmrc`).
+
+## How to test
+
+```
+npm run lint         # ESLint
+npm run format       # Prettier --write . (safe — .prettierignore excludes docs/** and *.md)
+npm run typecheck    # tsc --noEmit -p jsconfig.json
+npm run test:unit    # Vitest: tests/unit/** and tests/sim/**, coverage always on
+npm run test:e2e     # Playwright: tests/e2e/**, includes the offline/zero-network check
+npm run test:visual  # Playwright: tests/visual/** against tests/visual/__baselines__/
+```
+
+Full test-layer detail (what each layer covers, gates, bots): `docs/qa/QA-STRATEGY.md`.
 
 ## Where things are
 
@@ -24,7 +48,7 @@ the reference concept images, and an 18-sprint plan for a multi-agent build.
 ## How it will be built and hosted
 
 - Code lives on GitHub (`aliceagent/kobisnake`). `main` is protected; every change is a pull request with CI.
-- Sprint 01 creates the toolchain (`npm run dev | build | lint | typecheck | test:unit | test:e2e | test:visual`).
+- Sprint 01 builds the toolchain and delivery pipeline described above and in `docs/design/ARCHITECTURE.md`.
 
 ## Deployment
 
