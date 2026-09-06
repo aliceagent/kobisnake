@@ -83,6 +83,10 @@ export default [
         vi: 'readonly',
         // Node globals a Playwright spec file genuinely runs under (the file itself executes in Node).
         URL: 'readonly',
+        // `tests/sim/stats.test.js` (KS-02-06) times bot rounds and prints the QA-STRATEGY §4 statistics
+        // table — both Node-standard globals, already whitelisted the same way for `src/**/*.js` above.
+        performance: 'readonly',
+        console: 'readonly',
         // NOT a Node global: this exists so `page.evaluate(() => ... requestAnimationFrame ...)` lints
         // clean. That arrow function's *body* is serialised and runs inside the browser page, not in Node,
         // even though it is written inline in this Node-executed file — the one place in `tests/**` where
