@@ -42,12 +42,22 @@ function pressEnter(target) {
 }
 
 function createFakeRenderer() {
-  return { render: vi.fn(), resize: vi.fn() };
+  // KS-04-03: a fake `camera` alongside `render`/`resize`, exactly the shape `SessionRenderer`'s optional
+  // `camera` field describes — real ones only come from `render/renderer.js`, which `session.js` cannot
+  // import (`ARCHITECTURE §3`), so a test fake is the only `camera` this file ever sees.
+  return { render: vi.fn(), resize: vi.fn(), camera: { pulseLaserWarning: vi.fn() } };
 }
 
 function createFakeUi() {
   return {
-    hud: { setTime: vi.fn(), setLengths: vi.fn() },
+    hud: {
+      setTime: vi.fn(),
+      setLengths: vi.fn(),
+      // KS-04-03: the laser-warning banner/timer methods `session.js` now drives.
+      showLaserWarning: vi.fn(),
+      tick: vi.fn(),
+      resetWarning: vi.fn(),
+    },
     showOverlay: vi.fn(),
     hideOverlay: vi.fn(),
   };
@@ -423,6 +433,88 @@ describe('createSession', () => {
       const round2Apples = session.getSim()?.getState().apples;
 
       expect(round2Apples).not.toEqual(round1Apples);
+    });
+  });
+
+  describe('KS-04-03: LASER_WARNING wiring', () => {
+    // Every test here shrinks `roundDuration` well below the default `laserStartTime` (30 s remaining) so
+    // `LASER_WARNING` — and, for the short round below, several `LASER_STEP`s with it — fires on the very
+    // first `sim.advance()` call, the same `withOverrides({ godMode: true })` pattern KS-04-01 already put
+    // in this file's own 0:00-timer tests (immortal snakes so nothing dies before the assertions run).
+    // `session.js` is not on this ticket's `Files:` list; wiring `LASER_WARNING` into the HUD and the
+    // camera needed a few lines there regardless (declared in the PR description, as the tech-lead notes
+    // said it would).
+
+    it('calls ui.hud.showLaserWarning with SETTINGS.laserWarningDuration and pulses the camera once', () => {
+      const settings = withOverrides({ roundDuration: 10, foodCount: 0, godMode: true });
+      const { session, ui, renderer, target } = buildSession({ settings });
+
+      pressEnter(target);
+      session.loop.step(0.1);
+
+      expect(ui.hud.showLaserWarning).toHaveBeenCalledTimes(1);
+      expect(ui.hud.showLaserWarning).toHaveBeenCalledWith(settings.laserWarningDuration);
+      expect(renderer.camera.pulseLaserWarning).toHaveBeenCalledTimes(1);
+    });
+
+    it('does not throw when the renderer has no camera (an optional field of SessionRenderer)', () => {
+      const settings = withOverrides({ roundDuration: 10, foodCount: 0, godMode: true });
+      const renderer = { render: vi.fn(), resize: vi.fn() };
+      const ui = createFakeUi();
+      const target = new NodeEventTarget();
+      const session = createSession({
+        renderer,
+        ui,
+        seed: 1,
+        settings,
+        inputTarget: target,
+        requestFrame: () => 0,
+        cancelFrame: () => {},
+        visibilitySource: null,
+      });
+
+      pressEnter(target);
+      expect(() => session.loop.step(0.1)).not.toThrow();
+      expect(ui.hud.showLaserWarning).toHaveBeenCalledTimes(1);
+    });
+
+    it('ticks the HUD once per frame with that frame’s own dt', () => {
+      const { session, ui, target } = buildSession();
+
+      pressEnter(target);
+      ui.hud.tick.mockClear();
+      session.loop.step(0.03);
+
+      expect(ui.hud.tick).toHaveBeenCalledWith(0.03);
+    });
+
+    it('KS-04-03 AC2: never resets the warning mid-round — only the next round start may', () => {
+      const settings = withOverrides({ roundDuration: 10, foodCount: 0, godMode: true });
+      const { session, ui, target } = buildSession({ settings });
+
+      pressEnter(target);
+      ui.hud.resetWarning.mockClear(); // drop the call `startRound()` itself makes before anything plays
+
+      // Steps through the whole 10 s round, past every LASER_STEP, to ROUND_OVER.
+      for (let i = 0; i < 100; i += 1) session.loop.step(0.1);
+
+      expect(session.getPhase()).toBe('roundOver');
+      expect(ui.hud.showLaserWarning).toHaveBeenCalledTimes(1);
+      expect(ui.hud.resetWarning).not.toHaveBeenCalled();
+    });
+
+    it('resets the banner/timer state at the start of every round, including the very first', () => {
+      const settings = withOverrides({ roundDuration: 10, foodCount: 0, godMode: true });
+      const { session, ui, target } = buildSession({ settings });
+
+      pressEnter(target);
+      expect(ui.hud.resetWarning).toHaveBeenCalledTimes(1);
+
+      for (let i = 0; i < 100; i += 1) session.loop.step(0.1);
+      expect(session.getPhase()).toBe('roundOver');
+
+      pressEnter(target);
+      expect(ui.hud.resetWarning).toHaveBeenCalledTimes(2);
     });
   });
 

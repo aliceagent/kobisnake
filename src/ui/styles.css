@@ -60,10 +60,20 @@ body {
   left: 0;
   right: 0;
   display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 1rem 1.5rem;
+}
+
+/* The player-pills-and-timer row (everything the original `.hud` was before KS-04-03 added the banner below
+   it); pulled out to its own class so the banner can sit under it while still centred by `.hud`. */
+.hud-row {
+  display: flex;
   align-items: flex-start;
   justify-content: space-between;
   gap: 1rem;
-  padding: 1rem 1.5rem;
+  width: 100%;
   font-size: 1.25rem;
   font-weight: 600;
 }
@@ -93,4 +103,29 @@ body {
   background: rgba(20, 22, 28, 0.85);
   font-size: 1.5rem;
   text-align: center;
+}
+
+/* KS-04-03 AC2: the timer turns red on `LASER_WARNING` and stays that way for the rest of the round. Same
+   red as the P1 pill's border above, so the warning colour is not a new one invented just for this. */
+.hud-timer--warning {
+  color: #e3261b;
+}
+
+/* KS-04-03: the "LASERS CLOSING!" banner (`docs/reference/images/05-laser-closing-phase.png`). Grey-box only
+   — a plain styled div, legible, not the final hazard-stripe/toy-brick treatment (Sprint 11's job). */
+.hud-laser-banner {
+  padding: 0.5rem 2rem;
+  border: 0.15rem solid #e3261b;
+  border-radius: 0.5rem;
+  background: #7a1410;
+  color: #ffffff;
+  font-size: 1.5rem;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  text-align: center;
+  text-transform: uppercase;
+}
+
+.hud-laser-banner[hidden] {
+  display: none;
 }
