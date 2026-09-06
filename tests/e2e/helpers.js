@@ -48,7 +48,8 @@ export function startMatchInPage() {
   // that ends the countdown gives the round nothing — `session.js`'s `advanceCountdown` dispatches
   // COUNTDOWN_DONE and returns — so the loop leaves the round at tick 0 exactly, as it always did. The bound
   // is nearly twice the countdown's own 3.2 s, so it can only be reached if the countdown is truly stuck.
-  for (let i = 0; i < 60 && kobi.getState() === 'COUNTDOWN'; i += 1) kobi.fastForward(0.1);
+  for (let i = 0; i < 60 && kobi.getState() === 'COUNTDOWN'; i += 1) kobi.advance(0.1);
+  kobi.fastForward(0); // one frame for the whole countdown, not one per step (KS-06-06)
   return kobi.getState();
 }
 
@@ -61,7 +62,8 @@ export function startMatchInPage() {
  */
 export function playCountdownInPage() {
   const kobi = /** @type {any} */ (globalThis).__kobi;
-  for (let i = 0; i < 60 && kobi.getState() === 'COUNTDOWN'; i += 1) kobi.fastForward(0.1);
+  for (let i = 0; i < 60 && kobi.getState() === 'COUNTDOWN'; i += 1) kobi.advance(0.1);
+  kobi.fastForward(0); // one frame for the whole countdown, not one per step (KS-06-06)
   return kobi.getState();
 }
 
@@ -87,7 +89,8 @@ export function playCountdownInPage() {
 export function startMatchAndPauseInPage() {
   const kobi = /** @type {any} */ (globalThis).__kobi;
   kobi.startMatch();
-  for (let i = 0; i < 60 && kobi.getState() === 'COUNTDOWN'; i += 1) kobi.fastForward(0.1);
+  for (let i = 0; i < 60 && kobi.getState() === 'COUNTDOWN'; i += 1) kobi.advance(0.1);
+  kobi.fastForward(0); // one frame for the whole countdown, not one per step (KS-06-06)
   kobi.pause();
   kobi.fastForward(0);
   return kobi.sim.tick;
@@ -137,7 +140,8 @@ export function nextRoundInPage() {
   // and the countdown's leftover ran on into the round, so the second round of a match started roughly half
   // a second in — enough to change which snake reached a wall first, and how `match-flow.spec.js`'s Bo3 came
   // out. Stepping to each state boundary is both faithful to real time and exact.
-  for (let i = 0; i < 60 && kobi.getState() === 'ROUND_OVER'; i += 1) kobi.fastForward(0.1);
-  for (let i = 0; i < 60 && kobi.getState() === 'COUNTDOWN'; i += 1) kobi.fastForward(0.1);
+  for (let i = 0; i < 60 && kobi.getState() === 'ROUND_OVER'; i += 1) kobi.advance(0.1);
+  for (let i = 0; i < 60 && kobi.getState() === 'COUNTDOWN'; i += 1) kobi.advance(0.1);
+  kobi.fastForward(0); // one frame for the whole countdown, not one per step (KS-06-06)
   return kobi.getState();
 }

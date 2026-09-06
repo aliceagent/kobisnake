@@ -112,7 +112,8 @@ test.describe('KS-05-05 screen baselines', () => {
       // by stepping until it hands the round over, rather than by one fixed 3.21 s call — which would spill
       // its last hundredth of a second into the round and start it at tick 1 instead of tick 0. The bound is
       // nearly twice the countdown's own 3.2 s, so it can only be reached if the countdown is truly stuck.
-      for (let i = 0; i < 60 && kobi.getState() === 'COUNTDOWN'; i += 1) kobi.fastForward(0.1);
+      for (let i = 0; i < 60 && kobi.getState() === 'COUNTDOWN'; i += 1) kobi.advance(0.1);
+      kobi.fastForward(0); // one frame for the whole countdown, not one per step (KS-06-06)
       // P1 spawns at (5, 12) heading RIGHT and turning UP kills it on the top wall at 2.0 s
       // (`DESIGN-DECISIONS §2.3`); P2 is unsteered and does not reach its own wall until ≈ 3.167 s, so P1
       // dies alone and P2 takes the round. Three seconds covers the crash and the 0.6 s slow-mo beat.
@@ -145,7 +146,8 @@ test.describe('KS-05-05 screen baselines', () => {
       // by stepping until it hands the round over, rather than by one fixed 3.21 s call — which would spill
       // its last hundredth of a second into the round and start it at tick 1 instead of tick 0. The bound is
       // nearly twice the countdown's own 3.2 s, so it can only be reached if the countdown is truly stuck.
-      for (let i = 0; i < 60 && kobi.getState() === 'COUNTDOWN'; i += 1) kobi.fastForward(0.1);
+      for (let i = 0; i < 60 && kobi.getState() === 'COUNTDOWN'; i += 1) kobi.advance(0.1);
+      kobi.fastForward(0); // one frame for the whole countdown, not one per step (KS-06-06)
       kobi.pressKey(1, 'UP');
       kobi.fastForward(3); // crash + slow-mo -> ROUND_OVER
       kobi.fastForward(3); // scoreboardSeconds (2.5 s) -> MATCH_OVER, decided

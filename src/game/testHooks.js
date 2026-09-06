@@ -84,6 +84,8 @@ import { DIRECTIONS } from '../core/grid.js';
  * @property {() => object} getMatchSettings
  * @property {(seconds: number) => void} fastForward - advances `seconds` of wall time through the session's
  *   own update path in frame-sized chunks with no render in between, then draws exactly one frame.
+ * @property {(seconds: number) => void} advance - the same advance with **no render at all**. For a spec that
+ *   steps to a state boundary in a loop and only wants a frame at the end (KS-06-06).
  * @property {() => number} getTimeScale - the loop's `timeScale` right now: 1 in ordinary play, 0.25 inside
  *   the crash slow-mo beat, 0 while paused.
  * @property {() => object | null} getSnapshot - `session.getSim()?.getState() ?? null`.
@@ -204,6 +206,25 @@ export function createTestHooks({ session, renderer, eventTarget, KeyboardEventC
    * @param {number} seconds
    */
   function fastForward(seconds) {
+    advance(seconds);
+    session.renderFrame();
+  }
+
+  /**
+   * {@link fastForward}'s advance without its render.
+   *
+   * A spec that steps to a state boundary — "keep going while the game is still counting down" — calls this
+   * in a loop and then draws one frame at the end, instead of paying for a full three.js draw on every step.
+   * That matters more than it sounds: `fastForward` renders once *per call*, so a loop of 60 calls is 60
+   * renders, and `tests/e2e/helpers.js`'s `nextRoundInPage` went from 2 renders to as many as 120 when
+   * KS-06-00 made those loops necessary. It roughly doubled the e2e suite's wall time (1m40s to 3.5 min on
+   * CI) and pushed the two heaviest specs past Playwright's 30 s per-test budget. Splitting the render off
+   * gives a stepping loop the cost it always should have had, and changes nothing about what it observes:
+   * the session's update path is identical either way, and rendering has no effect on simulation state.
+   *
+   * @param {number} seconds
+   */
+  function advance(seconds) {
     let remaining = seconds;
     // Guarded against a float residue rather than `> 0`: subtracting 0.1 from a float nine hundred times
     // does not land on exactly zero, and a final chunk of 1e-14 seconds is a frame no browser would ever
@@ -213,7 +234,6 @@ export function createTestHooks({ session, renderer, eventTarget, KeyboardEventC
       session.advanceSimulation(chunk);
       remaining -= chunk;
     }
-    session.renderFrame();
   }
 
   return {
@@ -261,6 +281,7 @@ export function createTestHooks({ session, renderer, eventTarget, KeyboardEventC
       return session.getMatchSettings();
     },
     fastForward,
+    advance,
     getTimeScale() {
       return session.getTimeScale();
     },
