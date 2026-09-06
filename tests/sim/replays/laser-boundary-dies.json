@@ -3,7 +3,7 @@
   "settingsOverrides": {
     "roundDuration": 2,
     "laserStartTime": 2,
-    "laserWarningDuration": 1,
+    "laserWarningDuration": 1.1666666666666667,
     "laserStepInterval": 10
   },
   "inputs": [
@@ -66,14 +66,14 @@
     },
     {
       "type": "LASER_STEP",
-      "tick": 120,
-      "t": 1,
+      "tick": 140,
+      "t": 1.1666666666666667,
       "inset": 1
     },
     {
       "type": "SNAKE_DIED",
-      "tick": 120,
-      "t": 1,
+      "tick": 140,
+      "t": 1.1666666666666667,
       "snakeId": "p1",
       "cause": "LASER",
       "cell": {
@@ -83,8 +83,8 @@
     },
     {
       "type": "ROUND_OVER",
-      "tick": 120,
-      "t": 1,
+      "tick": 140,
+      "t": 1.1666666666666667,
       "result": "P2_WIN",
       "reason": "DEATH",
       "winnerId": "p2",

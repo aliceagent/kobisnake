@@ -18,11 +18,17 @@ import { runRound } from './harness.js';
  * **Sprint 04 gave this table its missing column.** Written in Sprint 02 against an inactive laser stub, it
  * could only report "before 0:30 / after 0:30 / timeout" with nothing ever happening at 0:30; now the lasers
  * are real, the `ends 0:30-0:00` column really is "ends during lasers" and is directly comparable with
- * `docs/qa/reports/2026-09-05-pre-sprint-validation.md §1`. The bots here are deliberately **not**
- * laser-aware — that is KS-04-04's `survivorBot` and its own `laserStats.test.js` — so the draw rate in this
- * table is what two snakes that ignore the beams do, and is expected to be far above the pre-sprint model's.
- * Read the numbers here as the "no bot knows about lasers" control, and `laserStats.test.js` as the
- * measurement. `power-up pickup rate` stays N/A until Sprint 06.
+ * `docs/qa/reports/2026-09-05-pre-sprint-validation.md §1`.
+ *
+ * **This is Sprint 02's table, not a laser-blind control.** It was written when `survivorBot` did not know
+ * the beams existed, but `survivorBot` is imported straight from `tests/sim/bots/survivorBot.js`, and KS-04-04
+ * made *that file* laser-aware — there is only one `survivorBot`, and this file and `laserStats.test.js` both
+ * run it. So this table's own numbers now resemble `laserStats.test.js`'s measurement rather than contrast
+ * with it (same bots, same design; this file just runs 200 rounds at its own Sprint 02 seed offsets, where
+ * `laserStats.test.js` runs 500 at its own). Read `laserStats.test.js`'s table as the sprint's measurement of
+ * record for the closing phase; this one is kept, unmodified per KS-04-04's ticket scope, for KS-02-06's own
+ * acceptance criteria (AC1's runtime budget, AC2's "every column present, every round ends") named in the
+ * tests below. `power-up pickup rate` stays N/A until Sprint 06.
  *
  * A large deviation from the pre-sprint model is a finding for the sprint QA report, not something to tune
  * the bots against until it matches.
@@ -153,12 +159,12 @@ describe('KS-02-06 bot statistics', () => {
     );
     console.table(rows);
     console.log(
-      'Note: from Sprint 04 the lasers are real, so "ends 0:30-0:00" is "ends during lasers". These bots are ' +
-        'NOT laser-aware (that is KS-04-04 survivorBot and tests/sim/laserStats.test.js), so this table is ' +
-        'the control: two snakes that ignore the beams and are killed by the same step draw. "power-up ' +
-        'pickup rate" is N/A until Sprint 06 (src/core/powerups.js is still an inactive stub). Compare ' +
-        'against docs/qa/reports/2026-09-05-pre-sprint-validation.md §1; a large deviation is a finding to ' +
-        'report, not something to tune the bots to match.',
+      'Note: from Sprint 04 the lasers are real, so "ends 0:30-0:00" is "ends during lasers". survivorBot is ' +
+        'the same laser-aware bot as tests/sim/laserStats.test.js (KS-04-04) — this table is Sprint 02\'s own ' +
+        '200-round run, not a laser-blind control; read laserStats.test.js\'s table as the measurement of ' +
+        'record for the closing phase. "power-up pickup rate" is N/A until Sprint 06 (src/core/powerups.js is ' +
+        'still an inactive stub). Compare against docs/qa/reports/2026-09-05-pre-sprint-validation.md §1; a ' +
+        'large deviation is a finding to report, not something to tune the bots to match.',
     );
 
     // Sanity only, per this test's own name and CLAUDE.md/KS-02-06 point 10 — never a win-rate or draw-rate

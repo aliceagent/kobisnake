@@ -4,7 +4,9 @@ import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { beforeAll, describe, expect, it } from 'vitest';
 import { CAUSES } from '../../src/core/collisions.js';
-import { END_REASONS, EVENTS, RESULTS } from '../../src/core/events.js';
+import { END_REASONS, EVENTS, PHASES, RESULTS } from '../../src/core/events.js';
+import { DIRECTIONS } from '../../src/core/grid.js';
+import { RoundSimulation } from '../../src/core/round.js';
 import { SETTINGS, withOverrides } from '../../src/core/settings.js';
 import { greedyBot } from './bots/greedyBot.js';
 import { survivorBot } from './bots/survivorBot.js';
@@ -253,6 +255,25 @@ describe('KS-04-04 closing-phase statistics and fairness', () => {
   });
 });
 
+/**
+ * Which laser-death path each fixture pins (Opus's PR #69 review): `round.js` has *two* ways a `SNAKE_DIED`
+ * can carry cause `LASER`. `killHeadsInDeadZone` kills a head already **standing** in a cell the beam has
+ * just swept, before that snake's own step (if any) is even resolved this tick; `deadlyCause`, inside the
+ * ordinary per-tick step resolution, kills a head that **moves into** a cell the same `LASER_STEP` just made
+ * deadly. KS-04-05's fuzz invariants (`tests/sim/laserFuzz.test.js`) pass even with `killHeadsInDeadZone`
+ * deleted, and 462 of 532 laser deaths in a full run take that path, so a replay suite that only ever pins
+ * the "moving into" case would leave the common path completely unpinned. Each fixture below is named for,
+ * and asserted against, exactly one of the two:
+ *
+ * - `laser-inside-survives.json` — neither path: the head is one cell inside the new safe square and the
+ *   step passes it by.
+ * - `laser-boundary-dies.json` — **standing**: the head is already on the cell the beam sweeps.
+ * - `laser-turns-into-beam.json` — **moving**: the head steps into a cell the same tick's `LASER_STEP` just
+ *   made deadly (KS-04-01 AC3's "head moving into x = inset−1 dies with LASER", as a whole-round replay).
+ * - `laser-both-heads-draw.json` — **standing**, both snakes: preferred over the moving variant per the
+ *   review, since "both heads killed by the same step" reads most naturally as the beam closing over both.
+ */
+
 describe('KS-04-04 AC3 laser replay fixtures', () => {
   const REPLAYS_DIR = join(dirname(fileURLToPath(import.meta.url)), 'replays');
 
@@ -266,7 +287,7 @@ describe('KS-04-04 AC3 laser replay fixtures', () => {
    * (`tests/sim/replays/README.md`), returning both the fixture and the live result so a test here can assert
    * the scenario the fixture is *named* for, not only that it replays byte-for-byte — `replay.test.js` already
    * covers the latter generically for every file in the directory, this file's own AC3 tests are about the
-   * three specific scenarios the ticket asks for.
+   * specific scenarios the ticket (and the review above) asks for.
    *
    * @param {string} file
    */
@@ -279,7 +300,37 @@ describe('KS-04-04 AC3 laser replay fixtures', () => {
       settings,
       inputLog: replay.inputs,
     });
-    return { replay, outcome };
+    return { replay, outcome, settings };
+  }
+
+  /**
+   * Steps a *fresh* `RoundSimulation` — driven by the same seed, settings and input log as a fixture, but not
+   * through `runRound` — up to (not through) `targetTick`, and returns the head cell of every player at that
+   * point. This is the pin for the standing/moving distinction above: it answers "where was the head, one
+   * tick before the beam swept" independently of the fixture's own recorded `expectedEvents`, so a test that
+   * compares this against a `SNAKE_DIED` cell is checking the *mechanism*, not just replaying a number back at
+   * itself.
+   *
+   * @param {import('../../src/core/settings.js').Settings} settings
+   * @param {number} seed
+   * @param {{t: number, player: string, dir: 'UP'|'DOWN'|'LEFT'|'RIGHT'}[]} inputs
+   * @param {number} targetTick
+   * @returns {Record<string, import('../../src/core/grid.js').Cell>}
+   */
+  function headsBeforeTick(settings, seed, inputs, targetTick) {
+    const sim = new RoundSimulation({ settings, seed, players: [{ id: 'p1' }, { id: 'p2' }] });
+    const pending = inputs
+      .map((entry) => ({ ...entry, tick: Math.round(entry.t * settings.simHz) }))
+      .sort((a, b) => a.tick - b.tick);
+    const dt = 1 / settings.simHz;
+    while (sim.tick < targetTick && sim.phase === PHASES.PLAYING) {
+      while (pending.length > 0 && pending[0].tick <= sim.tick) {
+        const input = /** @type {any} */ (pending.shift());
+        sim.applyInput(input.player, DIRECTIONS[input.dir]);
+      }
+      sim.advance(dt);
+    }
+    return Object.fromEntries(sim.snakes.map((snake) => [snake.id, { ...snake.head }]));
   }
 
   it('KS-04-04 AC3: laser-inside-survives.json — a head one cell inside the safe square survives the step', () => {
@@ -290,22 +341,57 @@ describe('KS-04-04 AC3 laser replay fixtures', () => {
     expect(outcome.events).toEqual(replay.expectedEvents);
   });
 
-  it('KS-04-04 AC3: laser-boundary-dies.json — a head on the boundary dies with cause LASER', () => {
-    const { replay, outcome } = replayLaserFixture('laser-boundary-dies.json');
+  it('KS-04-04 AC3: laser-boundary-dies.json — a head already standing on the boundary dies when the beam sweeps it (killHeadsInDeadZone)', () => {
+    const { replay, outcome, settings } = replayLaserFixture('laser-boundary-dies.json');
     expect(outcome.cause).toEqual([{ snakeId: 'p1', cause: CAUSES.LASER }]);
     expect(outcome.reason).toBe(END_REASONS.DEATH);
     expect(outcome.result).toBe(RESULTS.P2_WIN);
+
+    const step = /** @type {any} */ (outcome.events.find((e) => e.type === EVENTS.LASER_STEP));
+    const died = /** @type {any} */ (outcome.events.find((e) => e.type === EVENTS.SNAKE_DIED));
+    // The pin: p1's head, one tick before the beam stepped, already equals the death cell — it was standing
+    // there, not moving into it this tick (contrast laser-turns-into-beam.json below).
+    const before = headsBeforeTick(settings, replay.seed, replay.inputs, step.tick - 1);
+    expect(before.p1).toEqual(died.cell);
+    expect(died.tick).toBe(step.tick);
+
     expect(outcome.events).toEqual(replay.expectedEvents);
   });
 
-  it('KS-04-04 AC3: laser-both-heads-draw.json — both heads killed by the same step is a DRAW', () => {
-    const { replay, outcome } = replayLaserFixture('laser-both-heads-draw.json');
+  it('KS-04-04 AC3: laser-turns-into-beam.json — a head moving into the new dead zone dies the same tick the beam steps', () => {
+    const { replay, outcome, settings } = replayLaserFixture('laser-turns-into-beam.json');
+    expect(outcome.cause).toEqual([{ snakeId: 'p1', cause: CAUSES.LASER }]);
+    expect(outcome.reason).toBe(END_REASONS.DEATH);
+    expect(outcome.result).toBe(RESULTS.P2_WIN);
+
+    const step = /** @type {any} */ (outcome.events.find((e) => e.type === EVENTS.LASER_STEP));
+    const died = /** @type {any} */ (outcome.events.find((e) => e.type === EVENTS.SNAKE_DIED));
+    // The pin, the mirror of the previous test: p1's head, one tick before the beam stepped, is NOT yet the
+    // death cell — it moves into it as part of this very tick's step, one cell away from where it died.
+    const before = headsBeforeTick(settings, replay.seed, replay.inputs, step.tick - 1);
+    expect(before.p1).not.toEqual(died.cell);
+    expect(died.tick).toBe(step.tick);
+
+    expect(outcome.events).toEqual(replay.expectedEvents);
+  });
+
+  it('KS-04-04 AC3: laser-both-heads-draw.json — both heads already standing when the same step sweeps both is a DRAW', () => {
+    const { replay, outcome, settings } = replayLaserFixture('laser-both-heads-draw.json');
     expect(outcome.cause).toEqual([
       { snakeId: 'p1', cause: CAUSES.LASER },
       { snakeId: 'p2', cause: CAUSES.LASER },
     ]);
     expect(outcome.result).toBe(RESULTS.DRAW);
     expect(outcome.reason).toBe(END_REASONS.DEATH);
+
+    const step = /** @type {any} */ (outcome.events.find((e) => e.type === EVENTS.LASER_STEP));
+    const before = headsBeforeTick(settings, replay.seed, replay.inputs, step.tick - 1);
+    for (const died of /** @type {any[]} */ (
+      outcome.events.filter((e) => e.type === EVENTS.SNAKE_DIED)
+    )) {
+      expect(before[died.snakeId]).toEqual(died.cell);
+    }
+
     expect(outcome.events).toEqual(replay.expectedEvents);
   });
 });

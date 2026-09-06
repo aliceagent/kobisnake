@@ -1,9 +1,9 @@
 {
-  "seed": 4,
+  "seed": 101,
   "settingsOverrides": {
     "roundDuration": 2,
     "laserStartTime": 2,
-    "laserWarningDuration": 1.1666666666666667,
+    "laserWarningDuration": 1,
     "laserStepInterval": 10
   },
   "inputs": [
@@ -16,16 +16,6 @@
       "t": 0.2,
       "player": "p1",
       "dir": "LEFT"
-    },
-    {
-      "t": 0,
-      "player": "p2",
-      "dir": "UP"
-    },
-    {
-      "t": 0.2,
-      "player": "p2",
-      "dir": "RIGHT"
     }
   ],
   "expectedEvents": [
@@ -35,8 +25,8 @@
       "t": 0,
       "index": 0,
       "cell": {
-        "x": 22,
-        "y": 5
+        "x": 3,
+        "y": 4
       }
     },
     {
@@ -45,8 +35,8 @@
       "t": 0,
       "index": 1,
       "cell": {
-        "x": 8,
-        "y": 3
+        "x": 18,
+        "y": 5
       }
     },
     {
@@ -55,8 +45,8 @@
       "t": 0,
       "index": 2,
       "cell": {
-        "x": 5,
-        "y": 7
+        "x": 12,
+        "y": 22
       }
     },
     {
@@ -65,8 +55,8 @@
       "t": 0,
       "index": 3,
       "cell": {
-        "x": 1,
-        "y": 21
+        "x": 15,
+        "y": 7
       }
     },
     {
@@ -76,14 +66,14 @@
     },
     {
       "type": "LASER_STEP",
-      "tick": 140,
-      "t": 1.1666666666666667,
+      "tick": 120,
+      "t": 1,
       "inset": 1
     },
     {
       "type": "SNAKE_DIED",
-      "tick": 140,
-      "t": 1.1666666666666667,
+      "tick": 120,
+      "t": 1,
       "snakeId": "p1",
       "cause": "LASER",
       "cell": {
@@ -92,23 +82,12 @@
       }
     },
     {
-      "type": "SNAKE_DIED",
-      "tick": 140,
-      "t": 1.1666666666666667,
-      "snakeId": "p2",
-      "cause": "LASER",
-      "cell": {
-        "x": 23,
-        "y": 12
-      }
-    },
-    {
       "type": "ROUND_OVER",
-      "tick": 140,
-      "t": 1.1666666666666667,
-      "result": "DRAW",
+      "tick": 120,
+      "t": 1,
+      "result": "P2_WIN",
       "reason": "DEATH",
-      "winnerId": null,
+      "winnerId": "p2",
       "lengths": [
         4,
         4
