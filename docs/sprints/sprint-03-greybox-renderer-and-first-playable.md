@@ -55,7 +55,7 @@ decay; both are no-ops when `?reducedFx=1`. Match panel C of `03-camera-angle-co
 visible.
 Acceptance criteria:
 - [ ] AC1 At 16:9 the projected arena corners lie within the viewport with the specified margin (assert by projecting the four floor corners).
-- [ ] AC2 At 4:3 the arena still fits (distance grows).
+- [ ] AC2 At 4:3 the arena still fits. (Amended after KS-03-03: with a fixed 32° vertical FOV the width constraint only binds below an aspect of ≈ 1.02, so 21:9, 16:9 and 4:3 share one distance; distance grows strictly at 1:1 and 3:4. Tests assert fit, monotonicity and the crossover.)
 - [ ] AC3 Pitch is exactly 78° (dot product of forward vector with down).
 QA: unit tests with `three` in node (no WebGL needed for matrix maths).
 

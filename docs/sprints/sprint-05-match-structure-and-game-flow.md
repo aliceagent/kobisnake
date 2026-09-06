@@ -53,7 +53,7 @@ index), snakes frozen, HUD shows 3/2/1/GO at `countdownStepSeconds` each; inputs
 PLAYING: loop runs; `LASER_WARNING` event → machine event; `SNAKE_DIED` → `timeScale = crashSlowMo.scale` for
 `crashSlowMo.duration` of wall time → `ROUND_OVER`. ROUND_OVER: scoreboard for `scoreboardSeconds`, Enter after
 1 s skips; then `NEXT_ROUND` or `MATCH_OVER`. MATCH_OVER: winner + keys earned (display only) + REMATCH / MENU.
-Esc during PLAYING → PAUSE; `loop.onAutoPause` → AUTO_PAUSE. Round seeds are exposed via `__kobi` for replays.
+Esc during PLAYING → PAUSE; `loop.onAutoPause` → AUTO_PAUSE; window `blur` also → AUTO_PAUSE per `DESIGN-DECISIONS §2.8` (carried from Sprint 03). Expose `__kobi.pause()` / `__kobi.resume()` on the real PAUSE state and migrate the three Sprint 03 specs that fake `visibilitychange` to use them. Round seeds are exposed via `__kobi` for replays.
 Acceptance criteria:
 - [ ] AC1 Full Bo3 played by e2e with scripted crashes: 2 rounds → MATCH_OVER with winner and 1 key shown.
 - [ ] AC2 A DRAW round shows "DRAW — REPLAY" and does not change wins.

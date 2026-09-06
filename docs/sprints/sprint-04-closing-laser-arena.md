@@ -17,6 +17,14 @@ Final laser art, sparks, floor glow (S10), warning music (S12), HUD styling (S11
 
 ## Tickets
 
+### KS-04-00 · Housekeeping
+Owner: Opus · Size: S · Depends on: —
+Files: `vitest.config.js`
+Spec: Add `src/render/**` to the per-file coverage thresholds at 75 % (QA-STRATEGY §1), excluding by name only the WebGL entry points that cannot run in Node (`renderer.js`). Any file that fails the floor gets tests in this PR, not an exclusion.
+Acceptance criteria:
+- [ ] AC1 CI unit job fails when a `src/render` view module drops below 75 % (demonstrated once in a draft PR).
+QA: —
+
 ### KS-04-01 · Laser schedule in the simulation
 Owner: Opus · Size: M · Depends on: —
 Files: `src/core/lasers.js`, `src/core/round.js`, `tests/unit/core/lasers.test.js`

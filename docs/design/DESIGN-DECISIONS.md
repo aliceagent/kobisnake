@@ -34,7 +34,7 @@ file is the authority on numbers and edge cases.
 | 18 | Food persistence | **Persists until collected.** Never despawns. | Simplicity; encourages movement. |
 | 19 | Food items active at once | **4** apples always present; a collected apple respawns immediately at a random free cell. | Concept images show 4–6; 4 keeps the arena uncluttered. |
 | 20 | Power-up visuals | Speed = yellow lightning bolt over a blue two-tier pedestal inside a cyan ring. Slow = white snowflake over an ice-white pedestal inside a pale-blue ring. Different silhouette, icon, colour and pedestal. | GDD: never rely on colour alone. |
-| 24 | Camera | **Perspective camera, vertical FOV 32°, pitch 78° below horizontal** (image 03 panel C), yaw 0, fixed position framing the whole arena plus one wall thickness of margin. Small shake on crash, ≤ 2 % zoom pulse on laser warning, no rotation. | Locked by the camera comparison sheet. |
+| 24 | Camera | **Perspective camera, vertical FOV 32°, pitch 78° below horizontal** (image 03 panel C), yaw 0, fixed position framing the whole arena plus one wall thickness of margin. Small shake on crash, ≤ 2 % zoom pulse on laser warning, no rotation. **Confirmed picture (Sprint 03):** at 16:9 the arena fills ≈ 84 % of the frame height and ≈ 48 % of its width; the flanks carry Sprint 09's decoration, as in panel C, not the wider board of image 02. | Locked by the camera comparison sheet. |
 | 25 | Music production | **Composed in-repo as note-sequence data and played by a small Web Audio synth sequencer.** No audio files, no CDN. SFX are synthesised the same way. | Offline by construction, licence-free, tiny, and an 11-year-old can edit a melody array. |
 
 ## 2. Rules the GDD left implicit

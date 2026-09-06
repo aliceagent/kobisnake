@@ -8,7 +8,7 @@ review against the reference images. This document defines the layers, the tooli
 
 | Layer | Tool | Lives in | Runs | Purpose |
 |---|---|---|---|---|
-| Unit | Vitest | `tests/unit/` | every PR, < 30 s | Every rule in `src/core/` and `src/game/` in isolation. Coverage gate: **≥ 90 % lines on `src/core/`**, ≥ 75 % on `src/game/`. |
+| Unit | Vitest | `tests/unit/` | every PR, < 30 s | Every rule in `src/core/` and `src/game/` in isolation. Coverage gate, per file: **≥ 90 % lines on `src/core/`**, ≥ 75 % on `src/game/` and, from Sprint 04, ≥ 75 % on `src/render/` (view modules are unit-testable in Node with three.js; renderer/WebGL entry points may be excluded by name). |
 | Simulation | Vitest | `tests/sim/` | every PR, < 2 min | Headless whole-round and whole-match runs with scripted or bot inputs. Determinism, timeline, statistics ("rounds decided before timeout"). |
 | Contract | Vitest | `tests/unit/` | every PR | State-machine transition table, save-data migration, settings schema, event names. |
 | End-to-end | Playwright (Chromium) | `tests/e2e/` | every PR, < 6 min | Real browser, real keyboard events, real UI. Uses `window.__kobi` hooks to fast-forward time. |
