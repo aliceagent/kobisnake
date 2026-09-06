@@ -29,6 +29,16 @@ import { DEFAULT_QUERY } from '../../playwright.config.js';
  * script anything. Scenario (a) below reads `__kobi.sim.tick` as the very first thing it does inside its
  * script and replays exactly that many ticks in the Node-side sim before applying the rest of the log, so the
  * comparison holds regardless of how large that gap turns out to be on a given run — see the comment there.
+ *
+ * The browser side of that same catch-up, inside `pressKey`/`fastForward` scripts elsewhere in this suite
+ * and in `interpolation.spec.js` and `gameplay.visual.spec.js`, is written as
+ * `fastForward((targetTick - sim.tick) / simHz)` — a division that would lose a tick for the same binary-
+ * float reason the Node-side comment below explains, except it is safe there: by the time any of those
+ * scripts run, real frames have already left an arbitrary fraction in the *browser's* accumulator, and
+ * losing a tick would need that leftover fraction to be under ~1e-13, which a real elapsed-time fraction
+ * essentially never is. The Node-side replay below has no such luck — its accumulator starts at exactly 0 —
+ * which is why it earns the more careful whole-tick loop instead. Keep this asymmetry in mind before
+ * "fixing" one to match the other, or copying the division pattern somewhere it is not safe.
  */
 
 /** The two players in `RoundSimulation`'s own id order, exactly as `session.js`'s `DEFAULT_PLAYERS` does. */
@@ -58,8 +68,18 @@ test.describe('KS-03-07 first playable', () => {
     // The Node-side replay: the same seed and players `session.js` uses, brought up to the exact same tick
     // the browser's sim happened to be at when our script began (see the module doc comment), then driven
     // through the identical log at the identical chunk boundaries.
+    //
+    // Advanced one whole tick at a time rather than `advance(startTick / SETTINGS.simHz)` — that division is
+    // safe on the browser side below (a real fractional accumulator absorbs the float error), but not here:
+    // this sim's accumulator starts at exactly 0, so `(startTick / simHz) * simHz` landing a hair under
+    // `startTick` in binary float (true for ~2% of tick counts) loses a whole tick with nothing to carry it,
+    // and every later comparison is one tick out of step. `advance(sim.tickDuration)` adds ~1.0 to an
+    // accumulator already below 1, so it can never overshoot the tick it is asking for.
     const sim = new RoundSimulation({ seed: 1, players: PLAYERS });
-    sim.advance(browserResult.startTick / SETTINGS.simHz);
+    while (sim.tick < browserResult.startTick) sim.advance(sim.tickDuration);
+    // A mismatch here is a broken setup, not a real disagreement — worth its own assertion so a failure says
+    // that plainly instead of surfacing as a wall of unrelated segment diffs below.
+    expect(sim.tick).toBe(browserResult.startTick);
     sim.applyInput('p1', DIRECTIONS.UP);
     sim.advance(1.9);
     sim.applyInput('p1', DIRECTIONS.LEFT);

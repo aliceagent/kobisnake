@@ -20,6 +20,13 @@ import { DEFAULT_QUERY } from '../../playwright.config.js';
  * doc comment for why) — and fast-forwarding by exactly enough simulation ticks to reach the target. A step
  * is 20 ticks at the base speed (`120 simHz / 6 cells-per-second`), so every multiple of 0.05 progress,
  * including 0.25/0.5/0.75, is landed on exactly rather than approximated.
+ *
+ * `deltaTicks / kobi.sim.settings.simHz` below is a division, not a whole-tick loop — safe here specifically
+ * because by the time this script runs, real frames have already left an arbitrary fraction in the browser's
+ * own accumulator, so losing a tick to binary-float rounding would need that leftover to be under ~1e-13
+ * (essentially never true of a real elapsed-time fraction). `first-playable.spec.js`'s module doc comment
+ * explains why the *Node-side* replay in its AC2 test cannot rely on the same safety margin and uses a
+ * whole-tick loop instead — the two are not interchangeable.
  */
 
 test.describe('KS-03-07 interpolation', () => {

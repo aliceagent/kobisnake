@@ -32,7 +32,10 @@ import { DEFAULT_QUERY } from '../../playwright.config.js';
  * — different enough, over 30 steps, to occasionally cross a different apple's cell and change the picture.
  * Reading `sim.tick` fresh before every phase and asking for exactly the ticks needed to reach the next
  * *absolute* target erases that gap instead of accumulating it, the same fix scenario (a) and
- * `interpolation.spec.js` use for the same underlying reason.
+ * `interpolation.spec.js` use for the same underlying reason. `advanceToTick`'s division is safe here for
+ * the same reason it is safe in those two — a real leftover fraction in the browser's own accumulator, not
+ * the zero-starting-point that makes the *Node-side* replay in `first-playable.spec.js`'s AC2 test need a
+ * whole-tick loop instead (see that file's module doc comment) — so do not "fix" this one to match that one.
  *
  * One more thing has to happen inside that same script, and it is the reason this file exists as its own
  * finding rather than a two-line addition: `page.expect(page).toHaveScreenshot()` does its own real
