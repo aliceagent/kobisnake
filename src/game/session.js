@@ -94,7 +94,10 @@ import { createLoop } from './loop.js';
  * @typedef {object} MatchSettings
  * @property {number} bestOf - one of `settings.bestOfOptions`
  * @property {boolean} powerUpsEnabled
- * @property {number} musicTrack - 1, 2 or 3 (`DESIGN-DECISIONS §3`, "MUSIC (three pills)")
+ * @property {string} musicTrack - one of `matchSetup.js`'s `MUSIC_TRACKS` (`DESIGN-DECISIONS §3`, "MUSIC
+ *   (three pills)"). A track *identifier* rather than a number, because `ARCHITECTURE §3` already names the
+ *   modules it will select — `src/audio/tracks/track1.js` … `track3.js` — and Sprint 12 should not have to
+ *   invent a mapping from 1/2/3 onto them.
  * @property {{1: string, 2: string}} colors - a colour name per player, from `SETTINGS.colors`
  */
 
@@ -198,7 +201,10 @@ function defaultMatchSettings(settings) {
   return {
     bestOf: settings.bestOfOptions[Math.floor(settings.bestOfOptions.length / 2)],
     powerUpsEnabled: settings.powerUpsEnabled,
-    musicTrack: 1,
+    // The first of `matchSetup.js`'s `MUSIC_TRACKS`. Not imported from there: `src/game/` must not depend on
+    // `src/ui/` (`ARCHITECTURE §3` runs the dependency the other way), and this is a default the session
+    // owns, not a catalogue — the setup screen owns the catalogue and cycles through it.
+    musicTrack: 'track1',
     colors: { 1: 'red', 2: 'blue' },
   };
 }

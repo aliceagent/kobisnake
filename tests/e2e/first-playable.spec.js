@@ -4,6 +4,7 @@ import { PHASES } from '../../src/core/events.js';
 import { DIRECTIONS } from '../../src/core/grid.js';
 import { RoundSimulation } from '../../src/core/round.js';
 import { SETTINGS } from '../../src/core/settings.js';
+import { roundSeedFor } from '../../src/game/session.js';
 import { DEFAULT_QUERY } from '../../playwright.config.js';
 import { COUNTDOWN_SECONDS, startMatchInPage } from './helpers.js';
 
@@ -52,11 +53,15 @@ import { COUNTDOWN_SECONDS, startMatchInPage } from './helpers.js';
  */
 
 /**
- * The two players in `RoundSimulation`'s own id order. From KS-05-03 the session names their colours from
- * the match-setup screen (P1 red, P2 blue by default); the colours change nothing about the simulation, so
- * the Node-side replay below needs only the ids.
+ * The two players in `RoundSimulation`'s own id order, with the colours the match-setup screen defaults to
+ * (`session.js`). The colours change nothing about the simulation — they ride along in the snapshot for the
+ * renderer — but the replay below is meant to be the same round the browser played, so it is built the same
+ * way rather than nearly the same way.
  */
-const PLAYERS = [{ id: 'p1' }, { id: 'p2' }];
+const PLAYERS = [
+  { id: 'p1', color: 'red' },
+  { id: 'p2', color: 'blue' },
+];
 
 test.describe('KS-03-07 first playable', () => {
   test('KS-03-07 AC2: the browser and the headless sim agree exactly on segment cells', async ({
@@ -76,8 +81,15 @@ test.describe('KS-03-07 first playable', () => {
       kobi.pressKey(1, 'LEFT');
       kobi.pressKey(2, 'DOWN');
       kobi.fastForward(0.1);
-      return { startTick, snapshot: kobi.getSnapshot() };
+      return { startTick, seeds: kobi.getSeeds(), snapshot: kobi.getSnapshot() };
     });
+
+    // KS-05-03: `?seed=1` now seeds the *match*, and each round derives its own seed from it plus the round
+    // index. So the replay below must be built on the round's seed, not the match's — and this asserts the
+    // browser really did derive it the documented way rather than taking the test's word for it.
+    expect(browserResult.seeds.matchSeed).toBe(1);
+    const roundSeed = roundSeedFor(1, 0);
+    expect(browserResult.seeds.roundSeeds[0]).toBe(roundSeed);
 
     // The Node-side replay: the same seed and players `session.js` uses, brought up to the exact same tick
     // the browser's sim happened to be at when our script began (see the module doc comment), then driven
@@ -89,7 +101,7 @@ test.describe('KS-03-07 first playable', () => {
     // `startTick` in binary float (true for ~2% of tick counts) loses a whole tick with nothing to carry it,
     // and every later comparison is one tick out of step. `advance(sim.tickDuration)` adds ~1.0 to an
     // accumulator already below 1, so it can never overshoot the tick it is asking for.
-    const sim = new RoundSimulation({ seed: 1, players: PLAYERS });
+    const sim = new RoundSimulation({ seed: roundSeed, players: PLAYERS });
     while (sim.tick < browserResult.startTick) sim.advance(sim.tickDuration);
     // A mismatch here is a broken setup, not a real disagreement — worth its own assertion so a failure says
     // that plainly instead of surfacing as a wall of unrelated segment diffs below.
