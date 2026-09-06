@@ -1,0 +1,49 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://kobisnake.internal/schemas/replay.schema.json",
+  "title": "KOBI Snake simulation replay",
+  "description": "A recorded two-player round (docs/sprints/sprint-02-core-simulation.md KS-02-06). Every file in tests/sim/replays/ except this schema itself is loaded and asserted by tests/sim/replay.test.js. See tests/sim/replays/README.md for how a file becomes a passing test.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["seed", "inputs", "expectedEvents"],
+  "properties": {
+    "seed": {
+      "type": "integer",
+      "description": "Passed straight to RoundSimulation/runRound as the round seed (src/core/rng.js). Only the low 32 bits are used."
+    },
+    "settingsOverrides": {
+      "type": "object",
+      "description": "Optional. Deep-merged onto the shipping SETTINGS via src/core/settings.js's withOverrides() before the round runs. Omit (or use {}) to run with the shipping defaults."
+    },
+    "inputs": {
+      "type": "array",
+      "description": "The recorded input log, in any order (replay.test.js/harness.js sort by tick before applying). Each entry's t is simulated seconds from round start and is resolved to an exact tick with Math.round(t * settings.simHz) before it is applied - never applied at a wall-clock time - because an input delivered at a frame boundary can land on a different tick under a different dt, and a replay must reproduce one specific tick, not one specific instant (tests/sim/determinism.test.js documents why). An empty array is a legal, and useful, replay: it reproduces the round with nobody touching a key.",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["t", "player", "dir"],
+        "properties": {
+          "t": {
+            "type": "number",
+            "minimum": 0,
+            "description": "Simulated seconds since round start. Resolved to a tick with Math.round(t * settings.simHz)."
+          },
+          "player": {
+            "type": "string",
+            "enum": ["p1", "p2"],
+            "description": "Matches the player id RoundSimulation assigns from the bots/players list order - p1 first, p2 second."
+          },
+          "dir": {
+            "type": "string",
+            "enum": ["UP", "DOWN", "LEFT", "RIGHT"],
+            "description": "One of src/core/grid.js's DIRECTIONS, by name. A direction that reverses the snake's current heading, or repeats it, is legal to record here but is silently dropped by Snake.queueDirection when applied (DESIGN-DECISIONS §2.2), exactly as a real keypress would be."
+          }
+        }
+      }
+    },
+    "expectedEvents": {
+      "type": "array",
+      "description": "The exact event log runRound({ seed, bots, settings, inputLog: inputs }).events must equal, in order. Each element is one simulation event as emitted by src/core/events.js: at minimum { type, tick, t, ...payload }."
+    }
+  }
+}
