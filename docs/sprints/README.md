@@ -78,3 +78,4 @@ owner may add; a sprint is done when its row is here and the sign-off comment is
 | Sprint | Tag | Date | Notes |
 |---|---|---|---|
 | 01 | signed off (tag: owner may add `sprint-01-done` at 60b1145) | 2026-09-06 | All 8 tickets merged; CI green; production live at https://kobisnake.vercel.app. KS-01-06 AC1 (branch protection) remains an owner click, tracked on #1. |
+| 02 | signed off (owner may tag `sprint-02-done` at fab5d02) | 2026-09-06 | All 7 tickets merged; 148 tests, 100 % coverage on `src/core` with the strict gate on; golden no-input log and 4 000-seed fuzz clean; bot baseline recorded on #26 and agrees with the pre-sprint model. |
