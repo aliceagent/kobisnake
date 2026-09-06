@@ -98,7 +98,8 @@ test.describe('KS-05-05 back navigation', () => {
       // by stepping until it hands the round over, rather than by one fixed 3.21 s call — which would spill
       // its last hundredth of a second into the round and start it at tick 1 instead of tick 0. The bound is
       // nearly twice the countdown's own 3.2 s, so it can only be reached if the countdown is truly stuck.
-      for (let i = 0; i < 60 && kobi.getState() === 'COUNTDOWN'; i += 1) kobi.fastForward(0.1);
+      for (let i = 0; i < 60 && kobi.getState() === 'COUNTDOWN'; i += 1) kobi.advance(0.1);
+      kobi.fastForward(0); // one frame for the whole countdown, not one per step (KS-06-06)
     });
 
     const crashed = await page.evaluate(crashPlayerOneInPage);
