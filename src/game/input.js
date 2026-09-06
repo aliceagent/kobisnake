@@ -10,7 +10,8 @@ import { DIRECTIONS } from '../core/grid.js';
  *   - `onDirection(playerId, dir)` — a gameplay steering input. `playerId` is the plain number `1` or `2`
  *     (not the `'p1'`/`'p2'` string ids `RoundSimulation` uses — mapping those together is left to whatever
  *     wires this module to a round, per the ticket's contract).
- *   - `onMenu(action)` — one of `'UP' | 'DOWN' | 'LEFT' | 'RIGHT' | 'CONFIRM' | 'BACK'`, for menu screens.
+ *   - `onMenu(action)` — one of `'UP' | 'DOWN' | 'LEFT' | 'RIGHT' | 'CONFIRM' | 'BACK' | 'PAUSE_TOGGLE'`,
+ *     for menu screens and the pause key.
  *
  * WASD always means player 1, the arrow keys always mean player 2 — except in `soloSteering` mode, where
  * both key sets steer player 1 (DESIGN-DECISIONS §2.2: single-player, practice and tutorial). `setMode`
@@ -20,7 +21,17 @@ import { DIRECTIONS } from '../core/grid.js';
  */
 
 /** @typedef {{dx: number, dy: number}} Direction */
-/** @typedef {'UP' | 'DOWN' | 'LEFT' | 'RIGHT' | 'CONFIRM' | 'BACK'} MenuAction */
+/**
+ * `PAUSE_TOGGLE` is `Space`, and only `Space` (`DESIGN-DECISIONS §2.8`, issue #103). It is deliberately not
+ * `BACK`: `§2.8` gives Space exactly one meaning — open the pause screen during a round, and resume from it
+ * — while Esc's `BACK` means "back" on *every* screen. Emitting `BACK` here would make Space back out of the
+ * main menu and the setup screen too, which `§2.8` says it must not do. Which states it acts in is knowledge
+ * `session.js` already has and this module does not, so this module reports the key and `session.js` decides:
+ * in PLAYING, LASER_WARNING and PAUSE it is treated as the `BACK` Esc would have produced, and everywhere
+ * else it is dropped. Space is never `CONFIRM` anywhere — Enter remains select on menus.
+ *
+ * @typedef {'UP' | 'DOWN' | 'LEFT' | 'RIGHT' | 'CONFIRM' | 'BACK' | 'PAUSE_TOGGLE'} MenuAction
+ */
 /** @typedef {'game' | 'menu' | 'both'} InputMode */
 
 /**
@@ -147,6 +158,8 @@ export function createInput(options = {}) {
         onMenu('CONFIRM');
       } else if (code === 'Escape') {
         onMenu('BACK');
+      } else if (code === 'Space') {
+        onMenu('PAUSE_TOGGLE');
       }
     }
   };

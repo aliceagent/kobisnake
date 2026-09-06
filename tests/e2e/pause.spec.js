@@ -187,3 +187,128 @@ test.describe('KS-06-00 Esc resumes from the pause screen (#82)', () => {
     expect(tick).toBeGreaterThan(0);
   });
 });
+
+test.describe('KS-07-00 Space pauses and resumes exactly like Esc (#103)', () => {
+  test('KS-07-00 AC3: Space during PLAYING opens PAUSE, and Space on PAUSE plays the READY? beat back into PLAYING', async ({
+    page,
+  }) => {
+    await page.goto(DEFAULT_QUERY);
+    await page.evaluate(startMatchInPage);
+    await expect(page.locator('[data-screen="PAUSE"]')).toBeHidden();
+
+    await page.keyboard.press('Space');
+
+    await expect(page.locator('[data-screen="PAUSE"]')).toBeVisible();
+    expect(await page.evaluate(() => /** @type {any} */ (globalThis).__kobi.getState())).toBe(
+      'PAUSE',
+    );
+
+    // The same key that opened it, and the same beat the RESUME item and Esc both play — `DESIGN-DECISIONS
+    // §2.8`: "Space behaves exactly like Esc for pausing... goes through the same READY? beat".
+    await page.keyboard.press('Space');
+
+    await expect(page.locator('[data-screen="COUNTDOWN"]')).toContainText('READY?');
+    await expect(page.locator('[data-screen="PAUSE"]')).toBeHidden();
+    await expect(page.locator('[data-screen="COUNTDOWN"]')).toBeHidden();
+    expect(await page.evaluate(() => /** @type {any} */ (globalThis).__kobi.getState())).toBe(
+      'PLAYING',
+    );
+  });
+
+  test('KS-07-00 AC3: Space and Esc are interchangeable — pause with one, resume with the other', async ({
+    page,
+  }) => {
+    // "Exactly like Esc" is a claim about one behaviour reached two ways, not two behaviours that happen to
+    // look alike, so the strongest test of it mixes the keys rather than repeating each on its own.
+    await page.goto(DEFAULT_QUERY);
+    await page.evaluate(startMatchInPage);
+
+    await page.keyboard.press('Space');
+    await expect(page.locator('[data-screen="PAUSE"]')).toBeVisible();
+    await page.keyboard.press('Escape');
+    await expect(page.locator('[data-screen="PAUSE"]')).toBeHidden();
+    await expect(page.locator('[data-screen="COUNTDOWN"]')).toBeHidden();
+
+    await page.keyboard.press('Escape');
+    await expect(page.locator('[data-screen="PAUSE"]')).toBeVisible();
+    await page.keyboard.press('Space');
+    await expect(page.locator('[data-screen="PAUSE"]')).toBeHidden();
+    await expect(page.locator('[data-screen="COUNTDOWN"]')).toBeHidden();
+
+    expect(await page.evaluate(() => /** @type {any} */ (globalThis).__kobi.getState())).toBe(
+      'PLAYING',
+    );
+  });
+
+  test('KS-07-00 AC3: Space does nothing on MAIN_MENU or MATCH_SETUP', async ({ page }) => {
+    // `§2.8`: "Space has no other meaning anywhere (Enter remains select on menus; Space on a menu does
+    // nothing)". The failure this guards against is Space arriving as CONFIRM — which on MAIN_MENU would
+    // start a match — or as BACK, which on MATCH_SETUP would leave the screen.
+    await page.goto(DEFAULT_QUERY);
+    await expect(page.locator('[data-screen="MAIN_MENU"]')).toBeVisible();
+
+    await page.keyboard.press('Space');
+    await page.keyboard.press('Space');
+
+    await expect(page.locator('[data-screen="MAIN_MENU"]')).toBeVisible();
+    expect(await page.evaluate(() => /** @type {any} */ (globalThis).__kobi.getState())).toBe(
+      'MAIN_MENU',
+    );
+
+    // Onto MATCH_SETUP with the key that does work there, then the same check.
+    await page.keyboard.press('Enter');
+    await expect(page.locator('[data-screen="MATCH_SETUP"]')).toBeVisible();
+
+    const before = await page.evaluate(() =>
+      /** @type {any} */ (globalThis).__kobi.getMatchSettings(),
+    );
+    await page.keyboard.press('Space');
+    await page.keyboard.press('Space');
+
+    await expect(page.locator('[data-screen="MATCH_SETUP"]')).toBeVisible();
+    expect(await page.evaluate(() => /** @type {any} */ (globalThis).__kobi.getState())).toBe(
+      'MATCH_SETUP',
+    );
+    expect(
+      await page.evaluate(() => /** @type {any} */ (globalThis).__kobi.getMatchSettings()),
+    ).toEqual(before);
+  });
+
+  test('KS-07-00 AC3: a held Space does not repeat-toggle the pause screen', async ({ page }) => {
+    // A browser re-fires `keydown` with `repeat: true` while a key is held. Without `input.js`'s repeat
+    // guard that is pause/resume/pause/resume at the auto-repeat rate.
+    //
+    // The repeats are dispatched rather than produced by `page.keyboard.down`, because **Playwright's
+    // `down()` does not auto-repeat**: with the guard deliberately bypassed for Space, a `down()` +
+    // 600 ms + `up()` version of this test still passed while the unit test failed. A test that cannot
+    // fail is worse than no test, so this sends the event the browser would actually send, through the
+    // same real listener `page.keyboard.press` reaches.
+    await page.goto(DEFAULT_QUERY);
+    await page.evaluate(startMatchInPage);
+
+    await page.keyboard.press('Space');
+    await expect(page.locator('[data-screen="PAUSE"]')).toBeVisible();
+
+    await page.evaluate(() => {
+      const g = /** @type {any} */ (globalThis);
+      for (let i = 0; i < 8; i += 1) {
+        g.window.dispatchEvent(
+          new g.KeyboardEvent('keydown', { code: 'Space', repeat: true, cancelable: true }),
+        );
+      }
+    });
+
+    // Eight repeats is an even number: were the guard missing, this would have toggled back to PAUSE and
+    // read as a pass. What proves it is the state *between* — so assert the screen never left, by checking
+    // that no READY? beat was ever played and the simulation is still frozen where the pause left it.
+    await expect(page.locator('[data-screen="COUNTDOWN"]')).toBeHidden();
+    await expect(page.locator('[data-screen="PAUSE"]')).toBeVisible();
+    expect(await page.evaluate(() => /** @type {any} */ (globalThis).__kobi.getState())).toBe(
+      'PAUSE',
+    );
+
+    const tick = await page.evaluate(() => /** @type {any} */ (globalThis).__kobi.sim.tick);
+    await page.waitForTimeout(200);
+    expect(await page.evaluate(() => /** @type {any} */ (globalThis).__kobi.sim.tick)).toBe(tick);
+  });
+});

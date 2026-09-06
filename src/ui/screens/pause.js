@@ -10,6 +10,10 @@ import { createFocusModel } from '../focus.js';
  * explicitly). `ARCHITECTURE §8` gives Esc one universal meaning — "back" — and back out of the pause screen
  * is back into the round, so `onBack` is routed to the same session handler as the RESUME item and gets the
  * same one-second READY? beat. A player who pressed Esc to pause presses it again to unpause.
+ *
+ * **Space resumes too** (KS-07-00, the owner's playtest, issue #103): `§2.8` now says Space behaves exactly
+ * like Esc for pausing. This screen needs no code for it — `session.js` translates Space into the same
+ * `BACK` before it reaches here, so both keys arrive as one action and cannot drift apart.
  */
 
 /** @typedef {import('../focus.js').MenuAction} MenuAction */
