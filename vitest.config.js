@@ -25,6 +25,11 @@ export default defineConfig({
       reportsDirectory: 'coverage',
       include: ['src/core/**/*.js', 'src/game/**/*.js'],
       thresholds: {
+        // Per-file, not aggregate. KS-02-07's review found that the aggregate gate needed eight untested
+        // functions to trip: `grid.js` alone sat at 38 % functions and 86 % statements while the whole of
+        // `src/core` was still just under the floor, so a single badly covered module hides behind its
+        // well-covered neighbours. Accepted by the design lead for Sprint 03 housekeeping (issue #26).
+        perFile: true,
         'src/core/**/*.js': {
           lines: CORE_THRESHOLD,
           statements: CORE_THRESHOLD,
