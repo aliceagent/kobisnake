@@ -3,6 +3,7 @@ import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 import { DIRECTIONS } from '../../../src/core/grid.js';
 import { EVENTS, PHASES } from '../../../src/core/events.js';
+import { LASER_PHASES } from '../../../src/core/lasers.js';
 import { POWERUP_TYPES, createPowerUps } from '../../../src/core/powerups.js';
 import { createRng } from '../../../src/core/rng.js';
 import { RoundSimulation } from '../../../src/core/round.js';
@@ -588,10 +589,11 @@ describe('KS-06-01 replays', () => {
       players: TWO_PLAYERS,
       mode: replay.mode ?? 'match',
     });
+    // Jumping `sim.tick` alone now moves the laser clock with it (KS-06-01 tech-lead review round 3):
+    // `laserTimeRemaining` is derived from `tick - laserTicksWithheld`, and `laserTicksWithheld` stays 0
+    // here since these fixtures never run the solo-SLOW rule — no second counter left to keep in sync.
     if (typeof replay.startTick === 'number') {
       sim.tick = replay.startTick;
-      sim.laserClockTicks = replay.startTick;
-      sim.laserClockCarry = 0;
     }
     if (replay.initialPickup) {
       sim.powerUps.pickups = [replay.initialPickup];
@@ -697,5 +699,62 @@ describe('KS-06-01 replays', () => {
     expect(ended[0].tick - second.tick).toBe(expectedTicks);
     // ...and specifically *not* 5 s after the first pickup, which is what "stacking" or "no refresh" would do.
     expect(ended[0].tick - first.tick).not.toBe(expectedTicks);
+  });
+});
+
+describe('KS-06-01 tech-lead review round 3 — the laser clock derives from tick, not a parallel counter', () => {
+  it('KS-06-01: setting sim.tick moves the laser clock with it, so a staged round still sees its lasers', () => {
+    // Mirrors `tests/visual/laser.visual.spec.js`'s own staging technique exactly — the regression this test
+    // exists for: jump `sim.tick` directly to 12 ticks short of a target `timeRemaining` (as a screenshot
+    // spec staging a mid-round frame does, and as `round.test.js` already does for `sim.lasers.inset`), then
+    // one ordinary `advance(0.1)` — 12 ticks at 120 Hz, one short of the 20 a step at `snakeSpeed` 6 needs, so
+    // neither snake actually moves — to fire whatever the clock says is now due.
+    //
+    // Before this fix, `laserTimeRemaining` read `laserClockTicks`, a second counter only `advanceLaserClock`
+    // ever advanced; jumping `sim.tick` left it at 0, `laserTimeRemaining` stayed at ~90 s, and the beams
+    // never fired regardless of where `sim.tick` was pointed — every checkpoint below read PARKED/inset 0.
+    //
+    // Both snakes are moved into the final 6×6 square first (`laserMinArena`, x, y ∈ [9, 15)) so they survive
+    // every checkpoint including the deepest one, the same arrangement `laser.visual.spec.js` uses — this test
+    // is about the clock reaching the schedule, not about death, and `killHeadsInDeadZone` ending the round
+    // partway through a coarse catch-up would stop the laser schedule short of the checkpoint being tested.
+    const p1Cells = [
+      { x: 12, y: 11 },
+      { x: 11, y: 11 },
+      { x: 10, y: 11 },
+      { x: 9, y: 11 },
+    ];
+    const p2Cells = [
+      { x: 9, y: 13 },
+      { x: 10, y: 13 },
+      { x: 11, y: 13 },
+      { x: 12, y: 13 },
+    ];
+
+    // The schedule itself is `lasers.test.js`'s to exhaustively cover; these four numbers are `DESIGN-
+    // DECISIONS §2.4`'s own checkpoints (matching `05-laser-closing-phase.png`'s t=30 warning and the ticket's
+    // KS-04-02 AC1 visual baselines), hand-verified once against `firstStepAt = laserStartTime -
+    // laserWarningDuration = 25` and `laserStepInterval = 2.5`.
+    const cases = [
+      { timeRemaining: 30, phase: LASER_PHASES.WARNING, inset: 0 },
+      { timeRemaining: 24, phase: LASER_PHASES.CLOSING, inset: 1 },
+      { timeRemaining: 10, phase: LASER_PHASES.CLOSING, inset: 7 },
+      { timeRemaining: 3, phase: LASER_PHASES.STOPPED, inset: 9 },
+    ];
+
+    for (const { timeRemaining, phase, inset } of cases) {
+      const sim = new RoundSimulation({ settings: SETTINGS, seed: 1, players: TWO_PLAYERS });
+      sim.snakes[0].segments = p1Cells.map((cell) => ({ ...cell }));
+      sim.snakes[0].direction = { dx: 1, dy: 0 };
+      sim.snakes[1].segments = p2Cells.map((cell) => ({ ...cell }));
+      sim.snakes[1].direction = { dx: -1, dy: 0 };
+
+      sim.tick = Math.round((SETTINGS.roundDuration - timeRemaining) * SETTINGS.simHz) - 12;
+      sim.advance(0.1);
+
+      expect(sim.lasers.phase).toBe(phase);
+      expect(sim.lasers.inset).toBe(inset);
+      expect(sim.snakes.every((snake) => snake.alive)).toBe(true);
+    }
   });
 });

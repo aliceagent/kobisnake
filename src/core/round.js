@@ -111,14 +111,16 @@ export class RoundSimulation {
     /** Leftover fraction of a tick from the last `advance`, in tick units. @type {number} */
     this.tickAccumulator = 0;
     /**
-     * The laser system's own clock, in whole ticks — `timeRemaining` unless the solo-SLOW rule is running
-     * (KS-06-01 Ruling 1, `powerups.js` module doc). See {@link advanceLaserClock}.
+     * Simulation ticks withheld from the laser clock by the solo-SLOW rule (KS-06-01 Ruling 1, `powerups.js`
+     * module doc) — 0 in every round that never runs it, so {@link laserTimeRemaining} equals
+     * {@link timeRemaining} by construction rather than by a second counter kept in step with `tick`. See
+     * {@link advanceLaserClock}.
      * @type {number}
      */
-    this.laserClockTicks = 0;
-    /** Fractional tick withheld from {@link laserClockTicks} so far, an integer count never a float sum.
+    this.laserTicksWithheld = 0;
+    /** Fractional tick owed to {@link laserTicksWithheld} so far, an integer carry never a float sum.
      * @type {number} */
-    this.laserClockCarry = 0;
+    this.laserWithholdCarry = 0;
     /** @type {Phase} */
     this.phase = PHASES.PLAYING;
     /** @type {RoundResult | null} */
@@ -193,15 +195,24 @@ export class RoundSimulation {
 
   /**
    * Seconds left on the **laser** clock — identical to {@link timeRemaining} unless the solo-SLOW rule
-   * (`powerups.js`) is currently running, in which case it lags behind it (KS-06-01 AC5). Derived from
-   * {@link laserClockTicks} the same way {@link timeRemaining} is derived from {@link tick}, so the two stay
-   * bit-for-bit identical on every tick a round never runs the rule on — see {@link advanceLaserClock}.
+   * (`powerups.js`) is currently running or has run, in which case it lags behind it by
+   * {@link laserTicksWithheld} ticks (KS-06-01 AC5).
+   *
+   * Deliberately **derived from `tick`**, not from a second counter kept in lockstep with it: an earlier
+   * version of this getter read a `laserClockTicks` field that only {@link advanceLaserClock} ever advanced,
+   * which agreed with `tick` for as long as nothing else moved it — but a test staging a mid-round board by
+   * assigning `sim.tick` directly (`round.test.js`'s own technique for `lasers.inset`, and
+   * `tests/visual/laser.visual.spec.js`'s for a whole frame) left that second counter behind, and the beams
+   * never fired. Subtracting {@link laserTicksWithheld} from the *live* `tick` instead means anything that
+   * moves `tick` — this getter included — carries the laser clock with it automatically, and the identity
+   * "equals `timeRemaining` when the rule never runs" holds by construction (`laserTicksWithheld` starts and
+   * stays at 0) rather than by a promise `advanceLaserClock` has to keep.
    *
    * @returns {number | null}
    */
   get laserTimeRemaining() {
     if (this.mode === 'practice') return null;
-    return this.settings.roundDuration - this.laserClockTicks / this.settings.simHz;
+    return this.settings.roundDuration - (this.tick - this.laserTicksWithheld) / this.settings.simHz;
   }
 
   /**
@@ -499,28 +510,30 @@ export class RoundSimulation {
   }
 
   /**
-   * Advances {@link laserClockTicks} by one *laser* tick, which is not always one simulation tick
-   * (KS-06-01 Ruling 1, `powerups.js` module doc: the solo-SLOW rule is a laser *clock*, not a mutated
-   * interval).
+   * Decides whether *this* simulation tick is withheld from the laser clock (KS-06-01 Ruling 1, `powerups.js`
+   * module doc: the solo-SLOW rule is a laser *clock*, not a mutated interval) — the only thing that ever
+   * changes {@link laserTicksWithheld}, which is what makes `laserTimeRemaining`'s derivation in terms of
+   * `tick` correct rather than merely convenient.
    *
    * `denom` is `1` normally and `laserMultiplierWhenSolo` (2 in the shipping settings) while the rule is
-   * running, read fresh off `this.powerUps.laserRateMultiplier` every tick. `laserClockCarry` and
-   * `laserClockTicks` are both integers incremented by exactly 1 or reset by exactly `denom` — "an integer
-   * count of ticks withheld from the laser clock, never a running float sum of seconds" — which is what keeps
-   * {@link laserTimeRemaining} bit-for-bit identical to {@link timeRemaining} on every tick of a round that
-   * never runs the rule: with `denom` always 1, every call below adds 1 to the carry and immediately takes
-   * it back off again, advancing `laserClockTicks` in permanent lockstep with `tick`.
+   * running, read fresh off `this.powerUps.laserRateMultiplier` every tick. `laserWithholdCarry` is an
+   * integer, incremented by exactly 1 every call; a tick is withheld exactly when the carry has *not* yet
+   * reached `denom` — "an integer count of ticks withheld from the laser clock, never a running float sum of
+   * seconds". With `denom` always 1 the carry reaches 1 on every single call and is immediately reset, so no
+   * tick is ever withheld: {@link laserTicksWithheld} stays 0 for the whole round, which is the *identity*
+   * `laserTimeRemaining === timeRemaining` promised for a round that never runs the rule (see that getter).
    *
-   * While the rule runs, the clock advances on only one tick in every `denom`, so it falls behind by exactly
-   * the ticks withheld — which is what shifts every later laser threshold later by that same amount once the
-   * rule ends (KS-06-01 AC5).
+   * While the rule runs, exactly one tick in every `denom` is withheld, so the clock falls behind by that
+   * fraction of real time — which is what shifts every later laser threshold later by the same amount once
+   * the rule ends (KS-06-01 AC5).
    */
   advanceLaserClock() {
     const denom = Math.round(1 / this.powerUps.laserRateMultiplier);
-    this.laserClockCarry += 1;
-    if (this.laserClockCarry >= denom) {
-      this.laserClockCarry -= denom;
-      this.laserClockTicks += 1;
+    this.laserWithholdCarry += 1;
+    if (this.laserWithholdCarry >= denom) {
+      this.laserWithholdCarry -= denom;
+    } else {
+      this.laserTicksWithheld += 1;
     }
   }
 
