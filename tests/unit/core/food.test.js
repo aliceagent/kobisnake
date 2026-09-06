@@ -443,7 +443,11 @@ describe('KS-07-00 AC1/AC2 "apples never line up" (DESIGN-DECISIONS §2.3, issue
       expect(state.present()).toHaveLength(SETTINGS.foodCount);
       expect(ruleViolations(state.getApples())).toEqual([]);
     }
-  });
+    // An explicit timeout, as every heavy test in `tests/sim` carries (`stats.test.js` 20 s / 45 s,
+    // `laserStats.test.js` 120 s): 500 fills of a 24x24 board is ~1.8 s of real work on a quiet machine and
+    // several times that on a loaded one, and Vitest's default is 5 s. See the sibling test below for the
+    // failure this prevents.
+  }, 60_000);
 
   it('KS-07-00 AC1: 10000 seeded respawns never violate the rule on a board with room', () => {
     // A 24x24 board with three other apples on it always has a legal cell, so this asserts the rule
@@ -462,7 +466,11 @@ describe('KS-07-00 AC1/AC2 "apples never line up" (DESIGN-DECISIONS §2.3, issue
       expect(cell).not.toBeNull();
       expect(ruleViolations(state.getApples())).toEqual([]);
     }
-  });
+    // 60 s, for a test that measures ~3.9 s on a quiet machine. It shipped without one and hit Vitest's 5 s
+    // default at 6.4 s the first time three agents shared this container's four cores — a false failure that
+    // looks exactly like a real one. The work is not reduced: the acceptance criterion says 10 000 seeded
+    // respawns, so 10 000 is what runs.
+  }, 60_000);
 
   it('KS-07-00 AC1: the ladder drops the row/column rule before it shortens the apple distance', () => {
     // Two free cells, each legal on exactly one rung: (0,3) shares a column with the apple at (0,0) but is
@@ -616,7 +624,7 @@ describe('KS-07-00 AC1/AC2 "apples never line up" (DESIGN-DECISIONS §2.3, issue
       sawALinedUpBoard = ruleViolations(sim.food.getApples()).length > 0;
     }
     expect(sawALinedUpBoard).toBe(true);
-  });
+  }, 60_000);
 
   it('KS-07-00 AC2: power-up placement is unchanged — no apples passed, no apple rules applied', () => {
     // `powerups.js` calls `placeFoodWithFallback` without `apples`, and §2.3's ruling is about apples
