@@ -21,8 +21,9 @@ Files: `src/core/powerups.js`, `src/core/snake.js` (effects), `src/core/round.js
 Spec: Types `SPEED` and `SLOW` chosen 50/50 by the round RNG. Timeline per `DESIGN-DECISIONS §2.4`: first spawn
 at `powerUpFirstSpawnAt`, then every `powerUpInterval` the uncollected one despawns (`POWERUP_DESPAWNED`) and a
 new one spawns (`POWERUP_SPAWNED { type, cell }`) at a valid cell (`§2.3`). No spawns at or after
-`laserStartTime`; an existing uncollected one is removed at the first `LASER_STEP` that covers it, or stays until
-collected otherwise. Pickup: head enters the cell → `POWERUP_COLLECTED { playerId, type }` → effect.
+`laserStartTime`; an existing uncollected one is removed at the first `LASER_STEP` that covers it (emit
+`POWERUP_REMOVED { cell }`; the sweep in `round.js` already filters `powerUps.pickups` but nothing exercises it,
+so this ticket adds the event and the test), or stays until collected otherwise. Pickup: head enters the cell → `POWERUP_COLLECTED { playerId, type }` → effect.
 Effects live on snakes: `effects: [{ type, remaining, multiplier }]`, `speedMultiplier` = product. SPEED: the
 collector ×1.5 for 5 s. SLOW: every other snake ×0.6 for 4 s; if there is no other snake (practice/solo), the
 laser step interval ×2 for 4 s instead. Re-collecting the same type refreshes the duration (no stacking).

@@ -202,6 +202,10 @@ export const SETTINGS = {
 };
 ```
 
+### 4.1 Test-only settings
+`godMode: true` exists in the `Settings` *type* only, is honoured only under `import.meta.env.TEST`, and is absent
+from `SETTINGS` (asserted). It exists so full-timeline golden logs can be recorded with immortal snakes.
+
 ## 5. Things Version 1 deliberately does NOT do
 - No single-player mode (menu item says COMING SOON) — Sprint 19.
 - No obstacles inside the arena — Sprint 20 backlog.

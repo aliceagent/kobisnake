@@ -13,6 +13,11 @@ signs the sprint off.
 3. The sprint's tracking issue exists (title `Sprint NN — <name>`, label `sprint:NN`), with one issue per
    ticket. If they do not exist, the Opus session creates them from the ticket blocks as its first action.
 
+## One tech-lead session per sprint
+Before creating a sprint's Opus session, check the sprint's tracking issue for an existing kick-off comment and
+`list_sessions` for a session tagged `sprint:NN`. Sprint 04 briefly had two; the second handed back cleanly,
+but it cost a duplicated merge and a red `main`.
+
 ## Kick-off prompt (paste into a new Opus session on `main`)
 
 ```
