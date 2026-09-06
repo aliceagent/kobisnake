@@ -16,6 +16,20 @@ Volume sliders (post-1.0), save persistence of settings (S13; this sprint keeps 
 
 ## Tickets
 
+### KS-12-00 · Freesound asset lane
+Owner: Sonnet · Size: M · Depends on: —
+Files: `public/audio/**`, `docs/design/AUDIO-ASSETS.md`, `src/audio/assets.js`, `src/audio/audioEngine.js`, `scripts/check-audio-assets.mjs`, `src/ui/screens/credits.js` (attribution list)
+Spec: Per `DESIGN-DECISIONS §1 row 25 (b)`. The owner drops Freesound files into `public/audio/` and adds a row per file to
+`AUDIO-ASSETS.md` (id, Freesound URL, author, licence, use). `assets.js` maps sound names to files; `audioEngine`
+plays a file if present and falls back to the synth recipe otherwise, so a missing file never means silence.
+`check-audio-assets.mjs` fails CI if a file lacks a manifest row, a manifest row lacks a file, a licence is not CC0 or
+CC-BY, or a file exceeds the size caps. Credits screen lists every CC-BY author. CSP `media-src 'self'` already allows it.
+Acceptance criteria:
+- [ ] AC1 A sound with a file plays the file; the same sound without a file plays the synth recipe (unit, fake context).
+- [ ] AC2 CI fails on a manifest/file mismatch or a disallowed licence (demonstrated once in a draft PR).
+- [ ] AC3 Zero network requests beyond `'self'` after load with assets present (offline spec).
+QA: unit + e2e.
+
 ### KS-12-01 · Audio engine, synth and sequencer
 Owner: Sonnet · Size: L · Depends on: —
 Files: `src/audio/audioEngine.js`, `src/audio/synth.js`, `src/audio/sequencer.js`, `tests/unit/audio/*.test.js`

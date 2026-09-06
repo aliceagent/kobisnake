@@ -35,7 +35,7 @@ file is the authority on numbers and edge cases.
 | 19 | Food items active at once | **4** apples always present; a collected apple respawns immediately at a random free cell. | Concept images show 4–6; 4 keeps the arena uncluttered. |
 | 20 | Power-up visuals | Speed = yellow lightning bolt over a blue two-tier pedestal inside a cyan ring. Slow = white snowflake over an ice-white pedestal inside a pale-blue ring. Different silhouette, icon, colour and pedestal. | GDD: never rely on colour alone. |
 | 24 | Camera | **Perspective camera, vertical FOV 32°, pitch 78° below horizontal** (image 03 panel C), yaw 0, fixed position framing the whole arena plus one wall thickness of margin. Small shake on crash, ≤ 2 % zoom pulse on laser warning, no rotation. **Confirmed picture (Sprint 03):** at 16:9 the arena fills ≈ 84 % of the frame height and ≈ 48 % of its width; the flanks carry Sprint 09's decoration, as in panel C, not the wider board of image 02. | Locked by the camera comparison sheet. |
-| 25 | Music production | **Composed in-repo as note-sequence data and played by a small Web Audio synth sequencer.** No audio files, no CDN. SFX are synthesised the same way. | Offline by construction, licence-free, tiny, and an 11-year-old can edit a melody array. |
+| 25 | Music production | **Two lanes.** (a) Synthesised in-repo (note data + Web Audio synth) as the guaranteed baseline. (b) **Freesound assets** chosen by the owner: CC0 preferred, CC-BY allowed with attribution in the credits screen, no NC/ND licences; files bundled under `public/audio/` (OGG + MP3, ≤ 300 kB each, music ≤ 1.5 MB per track), listed in `docs/design/AUDIO-ASSETS.md` with Freesound URL, author and licence. Agents cannot reach freesound.org; the owner supplies the files. Still no CDN, still offline after load. | Owner has a Freesound account and prefers real recordings; the synth lane guarantees the game is never silent. |
 
 ## 2. Rules the GDD left implicit
 
@@ -68,6 +68,10 @@ file is the authority on numbers and edge cases.
   then 0. If the safe square has no free cell at all, the slot stays empty and is retried every tick; in that
   state `foodCount` is a target, not an invariant. Power-ups relax 3 → 2 → 1 → 0 and otherwise skip that spawn
   cycle. Placement never throws inside a round.
+- **Apples never line up** (owner playtest, 2026-09-06): a new apple may not share a row or a column with any
+  existing apple, and must be ≥ `foodMinDistanceFromFood` (3) Chebyshev cells from every other apple. This
+  applies to the opening board too. Fallback ladder when nothing fits: drop the row/column rule, then apple
+  distance 2, 1, 0, then the head-distance ladder above.
 
 ### 2.4 Round timeline (simulated seconds remaining)
 | Time | Event |
@@ -112,7 +116,7 @@ head entering or being inside the dead zone when the laser steps onto it dies.
   Teal `#12B5B0`, Gold `#E8B028` with metallic sheen (roughness 0.25, metalness 0.6).
 
 ### 2.8 Pause and focus
-- `Esc` during PLAYING opens PAUSE (Resume / Restart match / Quit to menu). **`Esc` on the pause screen resumes** (Esc
+- `Esc` **or `Space`** during PLAYING opens PAUSE (Resume / Restart match / Quit to menu). **`Esc` or `Space` on the pause screen resumes** (Esc
   is "back" on every screen, `ARCHITECTURE §8`) and goes through the same READY? beat as Resume. Restart match
   reuses the REMATCH event. Simulation is frozen; music ducks.
 - Losing window focus pauses automatically. Resuming from pause shows a 1-second "READY?" then continues.
@@ -181,6 +185,8 @@ export const SETTINGS = {
 
   foodCount: 4,
   foodMinDistanceFromHead: 2,
+  foodMinDistanceFromFood: 3,
+  foodNoSharedRowOrColumn: true,
 
   powerUpsEnabled: true,
   powerUpFirstSpawnAt: 75,     // seconds remaining
