@@ -16,6 +16,19 @@ New features. Art. Anything not required to answer the gate question.
 
 ## Tickets
 
+### KS-07-00 · Owner playtest blockers from the grey-box build
+Owner: Opus · Size: M · Depends on: —
+Files: `src/core/settings.js`, `src/core/food.js`, `src/core/round.js`, `src/game/input.js`, `src/game/session.js`, `src/ui/screens/pause.js`, `tests/unit/core/food.test.js`, `tests/unit/core/__golden__/*`, `tests/unit/game/input.test.js`, `tests/e2e/pause.spec.js`
+Spec: Implement issues **#102** (apples never in a line: `foodNoSharedRowOrColumn`, `foodMinDistanceFromFood` 3, fallback
+ladder per `DESIGN-DECISIONS §2.3`; the opening board obeys it; regenerate the no-input golden log and say so — its
+timing, tick 380 DRAW, must not move) and **#103** (Space pauses and resumes exactly like Esc per `§2.8`, no other
+meaning). One PR each, `needs-design-review`. These come before every other ticket in this sprint.
+Acceptance criteria:
+- [ ] AC1 Opening board and 10 000 seeded respawns: no two apples share a row or column and all pairs are ≥ 3 apart whenever a legal cell exists; the ladder relaxes in the stated order; the #39 6×6 case never throws.
+- [ ] AC2 A failed placement draws no random number (rng stream unchanged when the ladder is not entered).
+- [ ] AC3 Space during PLAYING → PAUSE; Space on PAUSE → READY? → previous state; Space on menus does nothing; held Space does not repeat-toggle.
+QA: unit + e2e; visual baselines that show the opening board are regenerated under `needs-design-review`.
+
 ### KS-07-01 · Tuning build
 Owner: Sonnet · Size: M · Depends on: —
 Files: `src/game/tuning.js`, `src/game/session.js`, `src/ui/screens/tuning.js`
