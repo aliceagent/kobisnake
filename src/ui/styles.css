@@ -129,3 +129,104 @@ body {
 .hud-laser-banner[hidden] {
   display: none;
 }
+
+/* KS-05-04: grey-box menu screens (main menu, match setup, countdown, scoreboard, match over, pause), all
+   built on the shared focus model (src/ui/focus.js, ARCHITECTURE §8). Legibility only, unstyled beyond that
+   per the ticket's own spec — the toy panel look of docs/reference/images/14-main-menu.png is Sprint 11's
+   job. `#ui` itself is `pointer-events: none` (see above) so the game canvas keeps receiving clicks while no
+   screen is up; each screen re-enables pointer events for itself so its own buttons are clickable (AC1's
+   "mouse only" half). */
+.menu-screen {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 2rem;
+  background: rgba(10, 12, 16, 0.55);
+  pointer-events: auto;
+  text-align: center;
+}
+
+.menu-screen[hidden] {
+  display: none;
+}
+
+.menu-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  min-width: 22rem;
+  padding: 1.75rem;
+  border-radius: 1rem;
+  background: rgba(20, 22, 28, 0.9);
+}
+
+.menu-title {
+  font-size: 1.75rem;
+  font-weight: 800;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  margin-bottom: 0.25rem;
+}
+
+.menu-line {
+  font-size: 1.15rem;
+  font-weight: 600;
+}
+
+/* One row of a menu list: a label, and (for match setup) a current value on the right. Focus (keyboard or
+   mouse-hover) is shown with `--focused` rather than the browser's native `:focus` outline, since these rows
+   are plain `div`s driven entirely by `focus.js`'s own model, not the DOM's tab order (`input.js` owns every
+   keystroke; ARCHITECTURE §8). */
+.menu-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1.5rem;
+  padding: 0.75rem 1.25rem;
+  border-radius: 0.75rem;
+  background: rgba(255, 255, 255, 0.06);
+  font-size: 1.1rem;
+  font-weight: 600;
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
+  cursor: pointer;
+}
+
+.menu-item--action {
+  justify-content: center;
+}
+
+/* AC2: disabled rows (main menu's "COMING SOON" items) are visibly inert and never take the focus ring. */
+.menu-item--disabled {
+  opacity: 0.45;
+  cursor: default;
+}
+
+/* AC4: the one visible focus ring every grey-box screen shares. */
+.menu-item--focused {
+  outline: 0.2rem solid #ffffff;
+  outline-offset: 0.15rem;
+  background: rgba(255, 255, 255, 0.18);
+}
+
+.menu-item-value {
+  font-weight: 700;
+}
+
+.menu-item-tag {
+  font-size: 0.7rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  padding: 0.2rem 0.5rem;
+  border-radius: 0.4rem;
+  background: rgba(0, 0, 0, 0.4);
+}
+
+/* The 3·2·1·GO / READY? countdown label (`src/ui/screens/countdown.js`). */
+.countdown-label {
+  font-size: 6rem;
+  font-weight: 800;
+  letter-spacing: 0.05em;
+}
