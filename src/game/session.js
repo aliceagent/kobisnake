@@ -484,7 +484,14 @@ export function createSession({
     machine.dispatch(GAME_EVENTS.ROUND_OVER);
   }
 
-  /** Leaves the scoreboard for the next round, or for the match-over screen when the match is decided. */
+  /**
+   * Leaves the scoreboard for the next round, or for the match-over screen when the match is decided.
+   *
+   * A draw advances `roundIndex` like any other round, so the replay gets a *new* board rather than the same
+   * one again. `DESIGN-DECISIONS §2.5` says only "the match simply replays the round", and either reading is
+   * defensible — but replaying the identical seed would make a drawn round that nobody steers draw forever,
+   * which is a real state a bot run or an idle keyboard can reach. A fresh board cannot deadlock.
+   */
   function leaveScoreboard() {
     const current = /** @type {MatchState} */ (match);
     if (current.isOver()) {
@@ -533,7 +540,15 @@ export function createSession({
     }
   }
 
-  /** @param {number} unscaledDt */
+  /**
+   * The frame that ends the countdown gives the round nothing: it dispatches `COUNTDOWN_DONE` and returns,
+   * and the next frame is the round's first. So a round always begins at tick 0 exactly, rather than at
+   * whatever fraction of a frame happened to be left over when "GO" ran out — which is worth more than the
+   * few milliseconds it costs, once a round, both to a player (the snakes start when GO clears) and to every
+   * visual baseline, which can now name an absolute tick and get it.
+   *
+   * @param {number} unscaledDt
+   */
   function advanceCountdown(unscaledDt) {
     countdownElapsed += unscaledDt;
     const step = Math.floor(countdownElapsed / settings.countdownStepSeconds);
