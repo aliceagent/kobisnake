@@ -148,7 +148,8 @@ its clock starts on the first PLAYING tick.
   hover moves focus, click selects. Every focusable element has a visible focus ring.
 - Text is real DOM text (crisp, selectable, screen-reader friendly). Panels use the chunky toy style from the
   reference images through CSS only (borders, radii, gradients, studs as pseudo-elements).
-- HUD updates come from simulation events, throttled to 10 Hz for the timer text.
+- HUD updates come from simulation events, throttled to 10 Hz for the timer text. **The HUD is visible only in
+  COUNTDOWN, PLAYING, LASER_WARNING and PAUSE**; menus, the scoreboard and MATCH_OVER hide it.
 
 ## 9. Audio rules
 - `AudioContext` is created on the first keydown (browser autoplay policy). Until then, the game runs silent.

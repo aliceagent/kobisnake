@@ -98,7 +98,7 @@ head entering or being inside the dead zone when the laser steps onto it dies.
   round's first tick.
 
 ### 2.6 Match
-- Formats: Best of 1 (first to 1), Best of 3 (first to 2), Best of 5 (first to 3).
+- Formats: Best of 1 (first to 1), Best of 3 (first to 2), Best of 5 (first to 3). **Match setup opens on Best of 3.**
 - Between rounds: scoreboard for 2.5 s (or Enter to skip after 1 s) → countdown → next round. Round winner is
   displayed with the "needs N more win(s)" line from the GDD example.
 - Match win rewards: Bo1 0 keys, Bo3 1 key, Bo5 2 keys, to the winner only. Keys are added when the MATCH_OVER
@@ -112,7 +112,9 @@ head entering or being inside the dead zone when the laser steps onto it dies.
   Teal `#12B5B0`, Gold `#E8B028` with metallic sheen (roughness 0.25, metalness 0.6).
 
 ### 2.8 Pause and focus
-- `Esc` during PLAYING opens PAUSE (Resume / Restart match / Quit to menu). Simulation is frozen; music ducks.
+- `Esc` during PLAYING opens PAUSE (Resume / Restart match / Quit to menu). **`Esc` on the pause screen resumes** (Esc
+  is "back" on every screen, `ARCHITECTURE §8`) and goes through the same READY? beat as Resume. Restart match
+  reuses the REMATCH event. Simulation is frozen; music ducks.
 - Losing window focus pauses automatically. Resuming from pause shows a 1-second "READY?" then continues.
 
 ### 2.9 Save data

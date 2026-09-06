@@ -15,6 +15,20 @@ Final power-up art and burst VFX (S10), pickup sounds (S12).
 
 ## Tickets
 
+### KS-06-00 · Housekeeping from Sprint 05 rulings
+Owner: Opus · Size: S · Depends on: —
+Files: `src/game/gameStateMachine.js`, `src/game/session.js`, `src/ui/screens/pause.js`, `src/ui/ui.js`, `src/ui/hud.js`, `src/game/testHooks.js`, `tests/e2e/helpers.js`, related tests
+Spec: (1) #82: add `BACK → PREVIOUS` to `TRANSITIONS[PAUSE]` and route the pause screen's `onBack` through the
+same handler as RESUME, so Esc resumes with the READY? beat (`DESIGN-DECISIONS §2.8`). (2) Hide the HUD outside
+COUNTDOWN / PLAYING / LASER_WARNING / PAUSE (`ARCHITECTURE §8`); regenerate the affected screen baselines and label
+the PR `needs-design-review`. (3) #84 option 2: `__kobi.fastForward` advances in 0.1 s frame-sized chunks and
+renders once at the end; re-verify `first-playable.spec.js` AC2 tick-for-tick rather than assuming it.
+Acceptance criteria:
+- [ ] AC1 Esc on PAUSE → READY? → the previous state; the generated table-coverage test picks up the new row.
+- [ ] AC2 No HUD element is visible on MAIN_MENU, MATCH_SETUP, ROUND_OVER, MATCH_OVER screenshots; HUD visible on COUNTDOWN and PAUSE.
+- [ ] AC3 After a crash, `fastForward(0.3)` leaves the game observably inside the slow-mo beat (`loop.timeScale === 0.25`); a 90 s fast-forward still completes in < 500 ms.
+QA: unit + e2e + visual.
+
 ### KS-06-01 · Power-up spawn cycle and effects in the simulation
 Owner: Sonnet · Size: M · Depends on: —
 Files: `src/core/powerups.js`, `src/core/snake.js` (effects), `src/core/round.js`, `tests/unit/core/powerups.test.js`

@@ -18,6 +18,10 @@ Before creating a sprint's Opus session, check the sprint's tracking issue for a
 `list_sessions` for a session tagged `sprint:NN`. Sprint 04 briefly had two; the second handed back cleanly,
 but it cost a duplicated merge and a red `main`.
 
+## One worktree per ticket
+Every ticket, including the tech lead's own, is built in its own `git worktree`. Two agents sharing one working
+tree and one `HEAD` is how duplicated merges happen (seen briefly in Sprint 05 and caught before any commit).
+
 ## Kick-off prompt (paste into a new Opus session on `main`)
 
 ```
