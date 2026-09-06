@@ -10,6 +10,13 @@ import { DIRECTIONS, addDir, inBounds, isOpposite } from '../../../src/core/grid
  * duplicated verbatim in `survivorBot.js` rather than factored into a shared module: this ticket's `Files:`
  * list names only the two bot files, and each is short enough that the duplication costs nothing a reader
  * would notice.
+ *
+ * **KS-06-04** (`tests/sim/powerupStats.test.js`) made this bot prefer a power-up over an apple when the
+ * power-up is closer, per the ticket spec read literally: nearest target wins, and the power-up is preferred
+ * on a tie. This is deliberately *not* a value model — no "a power-up is worth N apples" weighting — because
+ * inventing one would be inventing a mechanic (`CLAUDE.md`). `view.powerups` (`../harness.js`) is a live list
+ * of `{cell, type}` pickups, added to `BotView` for this ticket; the bot does not care which `type` it is,
+ * matching "power-up" rather than "speed boost" in the spec.
  */
 
 /** @typedef {import('../harness.js').Bot} Bot */
@@ -103,7 +110,7 @@ function manhattan(a, b) {
  * @param {import('../harness.js').BotView} view
  * @returns {Direction | null}
  */
-export function greedyBot({ self, others, apples, grid, rng }) {
+export function greedyBot({ self, others, apples, powerups, grid, rng }) {
   const head = self.head;
   const candidates = candidateDirections(self.direction);
 
@@ -114,7 +121,11 @@ export function greedyBot({ self, others, apples, grid, rng }) {
     if (!isImmediatelySafe(next, grid, self, others)) continue;
     if (freeNeighborCount(next, grid, self, others) === 0) continue; // a dead-end is as good as a wall
 
-    const target = apples.length > 0 ? nearest(apples, next) : next;
+    // Power-up cells listed first: `nearest`'s reduce only replaces the running closest on a *strictly*
+    // smaller distance, so a power-up at the same distance as the nearest apple stays chosen — "prefers a
+    // power-up over an apple if closer" (KS-06-04), tie going to the power-up, nearest target wins otherwise.
+    const targets = [...(powerups ?? []).map((pickup) => pickup.cell), ...apples];
+    const target = targets.length > 0 ? nearest(targets, next) : next;
     const threatened = others.some(
       (opponent) => opponent.alive && manhattan(opponent.head, next) <= 1,
     );

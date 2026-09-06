@@ -31,6 +31,12 @@ import { SETTINGS } from '../../src/core/settings.js';
  * `greedyBot` and `randomBot` (Sprint 02) simply do not destructure them, so nothing about their behaviour
  * changes. This file is outside `tests/sim/laserStats.test.js`'s own `Files:` list; see that ticket's PR
  * description for why extending the harness here, rather than duplicating it, was the smaller change.
+ *
+ * **KS-06-04** (`tests/sim/powerupStats.test.js`) added `powerups` to {@link BotView} the same way, for the
+ * same reason: `greedyBot`'s new "prefer a power-up over an apple if closer" needs to see what is on the
+ * board, and this file — not `greedyBot.js` — is where the live simulation is walked to build a `BotView` in
+ * the first place. `randomBot` and `survivorBot` do not destructure it, so nothing about their behaviour
+ * changes. Outside this ticket's own `Files:` list too; see its PR description.
  */
 
 /** @typedef {import('../../src/core/grid.js').Direction} Direction */
@@ -48,6 +54,11 @@ import { SETTINGS } from '../../src/core/settings.js';
  * @property {Snake} self - this bot's own snake; `self.alive` is already true when the bot is called
  * @property {Snake[]} others - every other snake in the round, alive or not
  * @property {Cell[]} apples - the current apple cells
+ * @property {{cell: Cell, type: import('../../src/core/powerups.js').PowerUpType}[]} powerups - **added for
+ *   KS-06-04.** The live power-up pickups on the board (`sim.powerUps.pickups`, at most one, ever — see
+ *   `src/core/powerups.js`), the same live-view-not-copy shape as `apples` above. Empty (`[]`), never absent,
+ *   when power-ups are off or none is currently spawned, so a bot can always safely read `.length`/`.map`
+ *   without an existence check.
  * @property {import('../../src/core/grid.js').GridSize} grid
  * @property {Rng} rng - this bot's own seeded stream (see {@link deriveBotSeed})
  * @property {number} decisionIndex - 0, 1, 2, … — how many times this bot has been asked to decide this round,
@@ -249,6 +260,7 @@ function driveWithBots(sim, bots, settings, events) {
         self,
         others: sim.snakes.filter((_, j) => j !== i),
         apples: sim.food.present(),
+        powerups: sim.powerUps.pickups,
         grid: settings.grid,
         rng: rngs[i],
         decisionIndex: decisionIndex[i],
