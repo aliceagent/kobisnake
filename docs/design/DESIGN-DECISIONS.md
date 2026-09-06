@@ -64,6 +64,10 @@ file is the authority on numbers and edge cases.
   extending right. (Offset rows so a straight charge is never an instant head-on.)
 - Apples spawn only on free cells at least **2** cells (Chebyshev distance) from any snake head and never inside
   the laser dead zone. Power-ups additionally require ≥ 3 cells from any head and never on an apple.
+- **When nothing fits** (only possible in the shrunken endgame): retry apple placement with head distance 1,
+  then 0. If the safe square has no free cell at all, the slot stays empty and is retried every tick; in that
+  state `foodCount` is a target, not an invariant. Power-ups relax 3 → 2 → 1 → 0 and otherwise skip that spawn
+  cycle. Placement never throws inside a round.
 
 ### 2.4 Round timeline (simulated seconds remaining)
 | Time | Event |
@@ -86,6 +90,12 @@ head entering or being inside the dead zone when the laser steps onto it dies.
 - When one snake dies the round ends immediately (survivor wins). `crashSlowMo`: game time runs at 0.25× for 0.6 s,
   then ROUND_OVER.
 - Round result is one of `P1_WIN | P2_WIN | DRAW`. Draws never count; the match simply replays the round.
+- Head-on (same cell, or swap) is evaluated **before** body contact, because after a step the other snake's
+  former head cell has become its neck.
+- Head-on length comparison uses the lengths **before** this step's growth is applied.
+- Practice rounds have **no result**: `ROUND_OVER.result` and `winnerId` are `null`; `reason` is recorded.
+- The 3·2·1·GO countdown lives in the game state machine, not the simulation. Simulation time starts at the
+  round's first tick.
 
 ### 2.6 Match
 - Formats: Best of 1 (first to 1), Best of 3 (first to 2), Best of 5 (first to 3).

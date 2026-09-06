@@ -34,7 +34,7 @@ Acceptance criteria:
 - [ ] AC1 Events at exactly t=30.000 (`LASER_WARNING`), 25.0, 22.5, 20.0 … (`LASER_STEP` 1..9); the 9th step at 5.0 s leaves a 6×6 square; no 10th step.
 - [ ] AC2 Head at (0, 12) when inset becomes 1 → dies with `LASER`; body segments in the dead zone do not kill.
 - [ ] AC3 Head moving into cell x = inset−1 dies with `LASER`; into x = −1 dies with `WALL` (only possible at inset 0).
-- [ ] AC4 Apples and power-ups inside the dead zone are removed on the step and apples respawn inside the safe square (`FOOD_REMOVED`, `FOOD_SPAWNED`).
+- [ ] AC4 Apples and power-ups inside the dead zone are removed on the step and apples respawn inside the safe square (`FOOD_REMOVED`, `FOOD_SPAWNED`), using the `DESIGN-DECISIONS §2.3` fallback (distance 2 → 1 → 0, then an empty slot retried each tick); a 6×6 square with two length-15 snakes never throws (closes #39).
 - [ ] AC5 After STOPPED, `advance()` to 0:00 with both alive applies the timeout rule.
 QA: unit tests AC1–AC5 plus a golden event log for a no-input round with immortal snakes (test-only flag `godMode` in settings overrides, allowed only under `import.meta.env.TEST`).
 

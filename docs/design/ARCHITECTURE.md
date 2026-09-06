@@ -100,7 +100,9 @@ propose it in the PR description and Opus approves before merge.
 ## 4. Simulation model (`src/core`)
 - `RoundSimulation.advance(dt)` is the only way time passes. It steps at `1/simHz` internally, accumulating `dt`.
   It returns an array of events (`FOOD_EATEN`, `POWERUP_SPAWNED`, `POWERUP_COLLECTED`, `EFFECT_STARTED`,
-  `EFFECT_ENDED`, `LASER_WARNING`, `LASER_STEP`, `SNAKE_DIED`, `ROUND_OVER`, ...). Render, audio and UI react to
+  `EFFECT_ENDED`, `LASER_WARNING`, `LASER_STEP`, `SNAKE_DIED`, `ROUND_OVER`, ...). `FOOD_SPAWNED` fires for the
+  opening apples as well as respawns. Every event carries an integer `tick` and a derived `t` in seconds;
+  `ROUND_OVER` carries `result`, `reason` (`DEATH | TIMEOUT`), `winnerId` and both `lengths`. Render, audio and UI react to
   events; they never poll internal fields except through read-only getters (`getState()` returns a plain
   serialisable snapshot).
 - Determinism: constructor takes `{ settings, seed, players, powerUpsEnabled }`. Same seed + same input log ⇒
@@ -111,7 +113,8 @@ propose it in the PR description and Opus approves before merge.
 - Step resolution: all snakes that are due to step in this sim tick are stepped **simultaneously** (compute all
   new head cells first, then evaluate deaths), which is what makes head-to-head symmetric.
 - Lasers: `insetCells` (0 at start). Dead zone is any cell with x < inset, x ≥ width−inset, same for y. Walls are
-  simply "inset −1" so the same query answers wall and laser deaths.
+  simply "inset −1" so the same query answers wall and laser deaths. The `isDeadly(cell)` callback returns a
+  cause string (`WALL` or `LASER`), `true` meaning `WALL`, or `false`.
 
 ## 5. Game loop and interpolation (`src/game/loop.js`)
 - `requestAnimationFrame` drives rendering. Simulation is advanced by `frameDt * timeScale`, clamped to 100 ms
@@ -125,7 +128,8 @@ propose it in the PR description and Opus approves before merge.
 States exactly as GDD §7: `MAIN_MENU, MATCH_SETUP, TUTORIAL, PRACTICE, SHOP, SETTINGS, COUNTDOWN, PLAYING,
 LASER_WARNING, ROUND_OVER, MATCH_OVER` plus `PAUSE`. Transitions are a data table (`TRANSITIONS[state][event]`)
 so QA can test every allowed and forbidden transition. `LASER_WARNING` is a sub-state of PLAYING for UI/audio
-purposes; the simulation keeps running.
+purposes; the simulation keeps running. The COUNTDOWN state owns 3·2·1·GO; the simulation is created frozen and
+its clock starts on the first PLAYING tick.
 
 ## 7. Rendering rules
 - One `THREE.Scene` for gameplay, one for the menu background, one for the shop. Only one is rendered per frame.

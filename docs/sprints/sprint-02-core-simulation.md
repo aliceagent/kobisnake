@@ -93,7 +93,7 @@ Acceptance criteria:
 - [ ] AC2 Same seed + same input log ⇒ identical event log and identical `getState()` snapshots at every 0.5 s (100 seeds).
 - [ ] AC3 `advance(90)` in one call and 10 800 calls of `advance(1/120)` yield identical logs.
 - [ ] AC4 Timeout with both alive: longer wins; equal → `DRAW`.
-- [ ] AC5 Exactly `foodCount` apples exist at all times during PLAYING.
+- [ ] AC5 Exactly `foodCount` apples exist at all times during PLAYING whenever a legal cell exists (`DESIGN-DECISIONS §2.3` fallback; unreachable on the full board).
 - [ ] AC6 `getState()` is JSON-serialisable and contains no functions or class instances.
 QA: listed unit tests + `tests/sim/determinism.test.js`.
 
