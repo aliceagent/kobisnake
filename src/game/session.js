@@ -50,6 +50,7 @@ import { createLoop } from './loop.js';
 /** @typedef {import('./loop.js').RequestFrame} RequestFrame */
 /** @typedef {import('./loop.js').VisibilitySource} VisibilitySource */
 /** @typedef {import('./gameStateMachine.js').GameState} GameState */
+/** @typedef {import('./gameStateMachine.js').GameEvent} GameEvent */
 /** @typedef {import('../core/settings.js').Settings} Settings */
 /** @typedef {import('../core/round.js').SimEvent} SimEvent */
 /** @typedef {import('../core/match.js').MatchState} MatchState */
@@ -390,6 +391,10 @@ export function createSession({
     loop.timeScale = 0;
     ui.show(STATES.PAUSE, {
       onResume: resume,
+      // Esc on the pause screen resumes (`§2.8`, issue #82), through the same handler and therefore the same
+      // READY? beat — but carrying the event the player actually expressed, so the machine's `BACK` row is
+      // the one that fires and the transition table stays an honest record of what the UI does.
+      onBack: () => resume(GAME_EVENTS.BACK),
       onRestart() {
         restartRequested = true;
         machine.dispatch(GAME_EVENTS.REMATCH);
@@ -709,10 +714,19 @@ export function createSession({
     if (machine.can(GAME_EVENTS.AUTO_PAUSE)) machine.dispatch(GAME_EVENTS.AUTO_PAUSE);
   }
 
-  /** Resume from pause: back to the state pause came from, after a one-second READY? (`§2.8`). */
-  function resume() {
-    if (!machine.can(GAME_EVENTS.RESUME)) return;
-    machine.dispatch(GAME_EVENTS.RESUME);
+  /**
+   * Resume from pause: back to the state pause came from, after a one-second READY? (`§2.8`).
+   *
+   * `event` is which of the two ways out of the pause screen the player took. Both rows in
+   * `TRANSITIONS[PAUSE]` resolve to `PREVIOUS`, so the destination is identical; what differs is only the
+   * intention recorded in the transition — the RESUME item, or Esc (`BACK`, issue #82). Everything after the
+   * dispatch is shared, which is the whole point of routing both through one function.
+   *
+   * @param {GameEvent} [event]
+   */
+  function resume(event = GAME_EVENTS.RESUME) {
+    if (!machine.can(event)) return;
+    machine.dispatch(event);
     readyRemaining = READY_SECONDS;
     // Still frozen through the beat — "resuming from pause shows a 1-second READY? then continues".
     loop.timeScale = 0;
@@ -815,6 +829,17 @@ export function createSession({
      */
     advanceSimulation(unscaledSeconds) {
       runUpdate(unscaledSeconds * loop.timeScale, unscaledSeconds);
+    },
+    /**
+     * The game loop's current `timeScale` — 1 in ordinary play, 0.25 through the crash slow-mo beat
+     * (`DESIGN-DECISIONS §2.5`), 0 while paused. Exposed for `__kobi` (KS-06-00 AC3): a spec that wants to
+     * assert the game is *inside* the slow-mo beat rather than past it has no other way to see it, and
+     * reading `loop.timeScale` through a getter keeps `loop` itself out of the test-hook contract.
+     *
+     * @returns {number}
+     */
+    getTimeScale() {
+      return loop.timeScale;
     },
     /** Draws one frame of the sim's current state, without advancing it. */
     renderFrame() {

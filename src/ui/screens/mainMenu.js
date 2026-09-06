@@ -94,7 +94,9 @@ export function createMainMenuScreen(root) {
   const focus = createFocusModel({
     items: MENU_ITEMS.map((item) => ({
       disabled: item.disabled,
-      onSelect: item.disabled ? undefined : () => props.onSelect(/** @type {string} */ (item.event)),
+      onSelect: item.disabled
+        ? undefined
+        : () => props.onSelect(/** @type {string} */ (item.event)),
     })),
   });
 

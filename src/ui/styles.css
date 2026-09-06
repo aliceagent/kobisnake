@@ -130,6 +130,13 @@ body {
   display: none;
 }
 
+/* KS-06-00: `.hud` sets `display: flex`, which wins over the browser's default `[hidden] { display: none }`,
+   so hiding the HUD outside a round (ARCHITECTURE §8) needs this rule the same way `.overlay`,
+   `.hud-laser-banner` and `.menu-screen` above and below already do. */
+.hud[hidden] {
+  display: none;
+}
+
 /* KS-05-04: grey-box menu screens (main menu, match setup, countdown, scoreboard, match over, pause), all
    built on the shared focus model (src/ui/focus.js, ARCHITECTURE §8). Legibility only, unstyled beyond that
    per the ticket's own spec — the toy panel look of docs/reference/images/14-main-menu.png is Sprint 11's

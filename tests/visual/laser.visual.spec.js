@@ -74,7 +74,11 @@ function startFrozenRoundAtLaserState(timeRemaining) {
   // a real pause: `__kobi.pause()` sets `loop.timeScale` to 0, and a paused round cannot be fast-forwarded,
   // so the placement and catch-up below have to come first.
   kobi.startMatch();
-  kobi.fastForward(3.21);
+  // KS-06-00: `fastForward` advances in frame-sized chunks now (#84), so the countdown is played out
+  // by stepping until it hands the round over, rather than by one fixed 3.21 s call — which would spill
+  // its last hundredth of a second into the round and start it at tick 1 instead of tick 0. The bound is
+  // nearly twice the countdown's own 3.2 s, so it can only be reached if the countdown is truly stuck.
+  for (let i = 0; i < 60 && kobi.getState() === 'COUNTDOWN'; i += 1) kobi.fastForward(0.1);
 
   const sim = kobi.sim;
 

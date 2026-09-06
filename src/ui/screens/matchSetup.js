@@ -80,7 +80,10 @@ function cycleValue(values, current, direction) {
  * @returns {MatchSettings}
  */
 export function changeMatchLength(matchSettings, direction) {
-  return { ...matchSettings, bestOf: cycleValue(SETTINGS.bestOfOptions, matchSettings.bestOf, direction) };
+  return {
+    ...matchSettings,
+    bestOf: cycleValue(SETTINGS.bestOfOptions, matchSettings.bestOf, direction),
+  };
 }
 
 /** POWER-UPS: an ON/OFF pill, so either arrow direction just flips it.
@@ -97,7 +100,10 @@ export function togglePowerUps(matchSettings) {
  * @returns {MatchSettings}
  */
 export function changeMusicTrack(matchSettings, direction) {
-  return { ...matchSettings, musicTrack: cycleValue(MUSIC_TRACKS, matchSettings.musicTrack, direction) };
+  return {
+    ...matchSettings,
+    musicTrack: cycleValue(MUSIC_TRACKS, matchSettings.musicTrack, direction),
+  };
 }
 
 /**
@@ -162,7 +168,12 @@ export function createMatchSetupScreen(root) {
 
   /** @type {MatchSetupProps} */
   let props = {
-    matchSettings: { bestOf: 3, powerUpsEnabled: true, musicTrack: MUSIC_TRACKS[0], colors: { 1: 'red', 2: 'blue' } },
+    matchSettings: {
+      bestOf: 3,
+      powerUpsEnabled: true,
+      musicTrack: MUSIC_TRACKS[0],
+      colors: { 1: 'red', 2: 'blue' },
+    },
     ownedColors: ['red', 'blue'],
     onChange: () => {},
     onStart: () => {},
@@ -209,8 +220,14 @@ export function createMatchSetupScreen(root) {
       { onChange: (dir) => props.onChange(changeMatchLength(props.matchSettings, dir)) },
       { onChange: () => props.onChange(togglePowerUps(props.matchSettings)) },
       { onChange: (dir) => props.onChange(changeMusicTrack(props.matchSettings, dir)) },
-      { onChange: (dir) => props.onChange(pickPlayerColor(props.matchSettings, 1, props.ownedColors, dir)) },
-      { onChange: (dir) => props.onChange(pickPlayerColor(props.matchSettings, 2, props.ownedColors, dir)) },
+      {
+        onChange: (dir) =>
+          props.onChange(pickPlayerColor(props.matchSettings, 1, props.ownedColors, dir)),
+      },
+      {
+        onChange: (dir) =>
+          props.onChange(pickPlayerColor(props.matchSettings, 2, props.ownedColors, dir)),
+      },
       { onSelect: () => props.onStart() },
     ],
     onBack: () => props.onBack(),

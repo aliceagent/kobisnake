@@ -232,3 +232,35 @@ describe('createHud — KS-04-03 laser warning presentation', () => {
     expect(p2.textContent).toBe('P2 7');
   });
 });
+
+describe('createHud — KS-06-00 AC2: the HUD is hidden outside a round', () => {
+  it('KS-06-00 AC2: setVisible(false) hides the whole HUD, setVisible(true) brings it back', () => {
+    const root = createFakeRoot();
+    const hud = createHud(root);
+    const container = findByClass(/** @type {any} */ (root), 'hud');
+
+    // Visible as built: `ui.js` decides, and it hides the HUD itself before the first frame is painted.
+    expect(container.hidden).toBe(false);
+
+    hud.setVisible(false);
+    expect(container.hidden).toBe(true);
+
+    hud.setVisible(true);
+    expect(container.hidden).toBe(false);
+  });
+
+  it('KS-06-00: hiding the HUD does not disturb the laser banner or the red timer underneath it', () => {
+    const root = createFakeRoot();
+    const hud = createHud(root);
+    const banner = findByClass(/** @type {any} */ (root), 'hud-laser-banner');
+    const timer = findByClass(/** @type {any} */ (root), 'hud-timer');
+
+    hud.showLaserWarning(5);
+    hud.setVisible(false);
+    hud.setVisible(true);
+
+    // A round paused during the warning and resumed still owes the player its banner (`KS-04-03`).
+    expect(banner.hidden).toBe(false);
+    expect(timer.classList.contains('hud-timer--warning')).toBe(true);
+  });
+});

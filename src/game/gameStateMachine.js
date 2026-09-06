@@ -143,6 +143,12 @@ export const PREVIOUS = 'PREVIOUS';
  * - **`ROUND_OVER` carries both `NEXT_ROUND` and `MATCH_OVER`** (`AC4`), and nothing else. Which one fires is
  *   `match.js`'s answer to `isOver()`, asked by `session.js`; the machine does not know the score and must
  *   not. The scoreboard has no quit affordance in `DESIGN-DECISIONS §2.6`, so there is no row for one.
+ * - **`PAUSE` carries `BACK` as well as `RESUME`, and the two land in the same place.** Esc means "back" on
+ *   every screen (`ARCHITECTURE §8`), and back out of the pause screen is back into the round, so the design
+ *   lead's ruling on issue #82 is that Esc resumes — through the same READY? beat the RESUME item gets
+ *   (`DESIGN-DECISIONS §2.8`). It is a second row rather than a reuse of RESUME because the *intention* a
+ *   player expresses with Esc and the one they express by choosing RESUME are different intentions that
+ *   happen to agree here; `session.js` routes both through one handler.
  * - **`PAUSE` carries `REMATCH`.** `DESIGN-DECISIONS §2.8` gives the pause screen three items — Resume,
  *   Restart match, Quit to menu — and the ticket's event list has no `RESTART_MATCH`. "Restart match" is
  *   `REMATCH`: same settings, score back to nothing, straight into a countdown. Mapping it onto the existing
@@ -202,6 +208,7 @@ export const TRANSITIONS = Object.freeze({
   }),
   [STATES.PAUSE]: Object.freeze({
     [GAME_EVENTS.RESUME]: PREVIOUS,
+    [GAME_EVENTS.BACK]: PREVIOUS,
     [GAME_EVENTS.REMATCH]: STATES.COUNTDOWN,
     [GAME_EVENTS.QUIT_TO_MENU]: STATES.MAIN_MENU,
   }),

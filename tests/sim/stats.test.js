@@ -160,8 +160,8 @@ describe('KS-02-06 bot statistics', () => {
     console.table(rows);
     console.log(
       'Note: from Sprint 04 the lasers are real, so "ends 0:30-0:00" is "ends during lasers". survivorBot is ' +
-        'the same laser-aware bot as tests/sim/laserStats.test.js (KS-04-04) — this table is Sprint 02\'s own ' +
-        '200-round run, not a laser-blind control; read laserStats.test.js\'s table as the measurement of ' +
+        "the same laser-aware bot as tests/sim/laserStats.test.js (KS-04-04) — this table is Sprint 02's own " +
+        "200-round run, not a laser-blind control; read laserStats.test.js's table as the measurement of " +
         'record for the closing phase. "power-up pickup rate" is N/A until Sprint 06 (src/core/powerups.js is ' +
         'still an inactive stub). Compare against docs/qa/reports/2026-09-05-pre-sprint-validation.md §1; a ' +
         'large deviation is a finding to report, not something to tune the bots to match.',

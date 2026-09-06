@@ -24,6 +24,7 @@
 
 /**
  * @typedef {object} Hud
+ * @property {(visible: boolean) => void} setVisible
  * @property {(text: string) => void} setTime
  * @property {(p1Length: number, p2Length: number) => void} setLengths
  * @property {(durationSeconds: number) => void} showLaserWarning
@@ -79,6 +80,17 @@ export function createHud(root) {
   let bannerRemaining = 0;
 
   return {
+    /**
+     * Shows or hides the whole HUD. `ARCHITECTURE §8`: "The HUD is visible only in COUNTDOWN, PLAYING,
+     * LASER_WARNING and PAUSE; menus, the scoreboard and MATCH_OVER hide it" — the design lead's ruling
+     * during the Sprint 05 review, where the timer and both length panels were drawn over the main menu.
+     * `ui.js` owns *which* states those are; this only does as it is told.
+     *
+     * @param {boolean} visible
+     */
+    setVisible(visible) {
+      container.hidden = !visible;
+    },
     setTime(text) {
       timer.textContent = text;
     },

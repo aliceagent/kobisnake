@@ -1,7 +1,7 @@
 // @ts-check
 import { expect, test } from '@playwright/test';
 import { DEFAULT_QUERY } from '../../playwright.config.js';
-import { COUNTDOWN_SECONDS, crashPlayerOneInPage } from './helpers.js';
+import { crashPlayerOneInPage } from './helpers.js';
 
 /**
  * KS-05-05: back navigation from every screen (`ARCHITECTURE §8`, `gameStateMachine.js`'s `TRANSITIONS`
@@ -41,7 +41,9 @@ test.describe('KS-05-05 back navigation', () => {
     await page.keyboard.press('Escape');
 
     await expect(page.locator('[data-screen="MAIN_MENU"]')).toBeVisible();
-    expect(await page.evaluate(() => /** @type {any} */ (globalThis).__kobi.getState())).toBe('MAIN_MENU');
+    expect(await page.evaluate(() => /** @type {any} */ (globalThis).__kobi.getState())).toBe(
+      'MAIN_MENU',
+    );
   });
 
   test('KS-05-05 AC: Esc on MATCH_SETUP returns to MAIN_MENU', async ({ page }) => {
@@ -55,7 +57,9 @@ test.describe('KS-05-05 back navigation', () => {
     await page.keyboard.press('Escape');
 
     await expect(page.locator('[data-screen="MAIN_MENU"]')).toBeVisible();
-    expect(await page.evaluate(() => /** @type {any} */ (globalThis).__kobi.getState())).toBe('MAIN_MENU');
+    expect(await page.evaluate(() => /** @type {any} */ (globalThis).__kobi.getState())).toBe(
+      'MAIN_MENU',
+    );
   });
 
   test('KS-05-05 AC: Esc on COUNTDOWN does nothing', async ({ page }) => {
@@ -68,11 +72,15 @@ test.describe('KS-05-05 back navigation', () => {
       // keypress (a separate round-trip from this script) is in flight.
       /** @type {any} */ (globalThis).__kobi.fastForward(0.9);
     });
-    expect(await page.evaluate(() => /** @type {any} */ (globalThis).__kobi.getState())).toBe('COUNTDOWN');
+    expect(await page.evaluate(() => /** @type {any} */ (globalThis).__kobi.getState())).toBe(
+      'COUNTDOWN',
+    );
 
     await page.keyboard.press('Escape');
 
-    expect(await page.evaluate(() => /** @type {any} */ (globalThis).__kobi.getState())).toBe('COUNTDOWN');
+    expect(await page.evaluate(() => /** @type {any} */ (globalThis).__kobi.getState())).toBe(
+      'COUNTDOWN',
+    );
     await expect(page.locator('[data-screen="COUNTDOWN"]')).toBeVisible();
   });
 
@@ -83,28 +91,38 @@ test.describe('KS-05-05 back navigation', () => {
 
     // Bo1 so the one scripted crash below both ends the round and decides the match, reaching ROUND_OVER and
     // then MATCH_OVER without playing a second round.
-    await page.evaluate((countdown) => {
+    await page.evaluate(() => {
       const kobi = /** @type {any} */ (globalThis).__kobi;
       kobi.startMatch({ bestOf: 1 });
-      kobi.fastForward(countdown);
-    }, COUNTDOWN_SECONDS);
+      // KS-06-00: `fastForward` advances in frame-sized chunks now (#84), so the countdown is played out
+      // by stepping until it hands the round over, rather than by one fixed 3.21 s call — which would spill
+      // its last hundredth of a second into the round and start it at tick 1 instead of tick 0. The bound is
+      // nearly twice the countdown's own 3.2 s, so it can only be reached if the countdown is truly stuck.
+      for (let i = 0; i < 60 && kobi.getState() === 'COUNTDOWN'; i += 1) kobi.fastForward(0.1);
+    });
 
     const crashed = await page.evaluate(crashPlayerOneInPage);
     expect(crashed.state).toBe('ROUND_OVER');
 
     await page.keyboard.press('Escape');
-    expect(await page.evaluate(() => /** @type {any} */ (globalThis).__kobi.getState())).toBe('ROUND_OVER');
+    expect(await page.evaluate(() => /** @type {any} */ (globalThis).__kobi.getState())).toBe(
+      'ROUND_OVER',
+    );
     await expect(page.locator('[data-screen="ROUND_OVER"]')).toBeVisible();
 
     await page.evaluate(() => {
       /** @type {any} */ (globalThis).__kobi.fastForward(3); // scoreboardSeconds is 2.5
     });
-    expect(await page.evaluate(() => /** @type {any} */ (globalThis).__kobi.getState())).toBe('MATCH_OVER');
+    expect(await page.evaluate(() => /** @type {any} */ (globalThis).__kobi.getState())).toBe(
+      'MATCH_OVER',
+    );
 
     // MATCH_OVER's own Esc: `gameStateMachine.js`'s TRANSITIONS[MATCH_OVER] has no BACK row, so this must be
     // provably inert before its real way back (QUIT TO MENU) is exercised.
     await page.keyboard.press('Escape');
-    expect(await page.evaluate(() => /** @type {any} */ (globalThis).__kobi.getState())).toBe('MATCH_OVER');
+    expect(await page.evaluate(() => /** @type {any} */ (globalThis).__kobi.getState())).toBe(
+      'MATCH_OVER',
+    );
     await expect(page.locator('[data-screen="MATCH_OVER"]')).toBeVisible();
 
     // QUIT TO MENU is the second (and last) row on MATCH_OVER, below the default-focused REMATCH.
@@ -112,7 +130,9 @@ test.describe('KS-05-05 back navigation', () => {
     await page.keyboard.press('Enter');
 
     await expect(page.locator('[data-screen="MAIN_MENU"]')).toBeVisible();
-    expect(await page.evaluate(() => /** @type {any} */ (globalThis).__kobi.getState())).toBe('MAIN_MENU');
+    expect(await page.evaluate(() => /** @type {any} */ (globalThis).__kobi.getState())).toBe(
+      'MAIN_MENU',
+    );
     // Leaving to the main menu clears the finished match (`session.js`'s `showMainMenu`).
     expect(await page.evaluate(() => /** @type {any} */ (globalThis).__kobi.getMatch())).toBeNull();
   });

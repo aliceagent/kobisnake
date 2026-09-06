@@ -86,7 +86,11 @@ function startRoundAndFreeze() {
   // Main menu, match setup, and the four countdown beats of `DESIGN-DECISIONS §2.4`. The countdown runs on
   // wall time and the simulation does not run at all during it, so this leaves the round at tick 0.
   kobi.startMatch();
-  kobi.fastForward(3.21);
+  // KS-06-00: `fastForward` advances in frame-sized chunks now (#84), so the countdown is played out
+  // by stepping until it hands the round over, rather than by one fixed 3.21 s call — which would spill
+  // its last hundredth of a second into the round and start it at tick 1 instead of tick 0. The bound is
+  // nearly twice the countdown's own 3.2 s, so it can only be reached if the countdown is truly stuck.
+  for (let i = 0; i < 60 && kobi.getState() === 'COUNTDOWN'; i += 1) kobi.fastForward(0.1);
 
   kobi.pause();
   kobi.fastForward(0);
@@ -129,7 +133,11 @@ test.describe('KS-03-07 visual', () => {
       // Start the round inside this script, so every absolute tick target below is measured from a real tick
       // 0 rather than from wherever a background frame happened to leave the sim.
       kobi.startMatch();
-      kobi.fastForward(3.21);
+      // KS-06-00: `fastForward` advances in frame-sized chunks now (#84), so the countdown is played out
+      // by stepping until it hands the round over, rather than by one fixed 3.21 s call — which would spill
+      // its last hundredth of a second into the round and start it at tick 1 instead of tick 0. The bound is
+      // nearly twice the countdown's own 3.2 s, so it can only be reached if the countdown is truly stuck.
+      for (let i = 0; i < 60 && kobi.getState() === 'COUNTDOWN'; i += 1) kobi.fastForward(0.1);
       const simHz = kobi.sim.settings.simHz;
 
       /**

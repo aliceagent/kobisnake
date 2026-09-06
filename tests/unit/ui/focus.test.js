@@ -97,7 +97,9 @@ describe('createFocusModel', () => {
   it('CONFIRM (Enter) calls the focused item onSelect, and only that item', () => {
     const selectA = vi.fn();
     const selectB = vi.fn();
-    const model = createFocusModel({ items: [item({ onSelect: selectA }), item({ onSelect: selectB })] });
+    const model = createFocusModel({
+      items: [item({ onSelect: selectA }), item({ onSelect: selectB })],
+    });
     model.handleAction('CONFIRM');
     expect(selectA).toHaveBeenCalledTimes(1);
     expect(selectB).not.toHaveBeenCalled();

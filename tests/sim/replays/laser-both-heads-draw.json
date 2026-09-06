@@ -109,10 +109,7 @@
       "result": "DRAW",
       "reason": "DEATH",
       "winnerId": null,
-      "lengths": [
-        4,
-        4
-      ]
+      "lengths": [4, 4]
     }
   ]
 }

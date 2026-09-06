@@ -82,10 +82,7 @@
       "result": "DRAW",
       "reason": "TIMEOUT",
       "winnerId": null,
-      "lengths": [
-        4,
-        4
-      ]
+      "lengths": [4, 4]
     }
   ]
 }

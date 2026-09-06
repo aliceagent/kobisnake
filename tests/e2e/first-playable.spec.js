@@ -6,7 +6,7 @@ import { RoundSimulation } from '../../src/core/round.js';
 import { SETTINGS } from '../../src/core/settings.js';
 import { roundSeedFor } from '../../src/game/session.js';
 import { DEFAULT_QUERY } from '../../playwright.config.js';
-import { COUNTDOWN_SECONDS, startMatchInPage } from './helpers.js';
+import { startMatchInPage } from './helpers.js';
 
 /**
  * KS-03-07: the first-playable round flow, driven end to end in a real browser (`ARCHITECTURE §11`).
@@ -206,13 +206,17 @@ test.describe('KS-03-07 first playable', () => {
     expect(ended.match.roundsPlayed).toBe(1);
 
     // The scoreboard stands for `scoreboardSeconds` and then the next round counts itself in (`§2.6`).
-    const fresh = await page.evaluate((countdown) => {
+    const fresh = await page.evaluate(() => {
       const kobi = /** @type {any} */ (globalThis).__kobi;
       kobi.fastForward(3);
       const afterScoreboard = kobi.getState();
-      kobi.fastForward(countdown);
+      // KS-06-00: `fastForward` advances in frame-sized chunks now (#84), so the countdown is played out
+      // by stepping until it hands the round over, rather than by one fixed 3.21 s call — which would spill
+      // its last hundredth of a second into the round and start it at tick 1 instead of tick 0. The bound is
+      // nearly twice the countdown's own 3.2 s, so it can only be reached if the countdown is truly stuck.
+      for (let i = 0; i < 60 && kobi.getState() === 'COUNTDOWN'; i += 1) kobi.fastForward(0.1);
       return { afterScoreboard, state: kobi.getState(), snapshot: kobi.getSnapshot() };
-    }, COUNTDOWN_SECONDS);
+    });
 
     expect(fresh.afterScoreboard).toBe('COUNTDOWN');
     expect(fresh.state).toBe('PLAYING');
