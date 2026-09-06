@@ -53,6 +53,8 @@ file is the authority on numbers and edge cases.
 - Direction inputs are queued (max **2** buffered). A direction that is the exact reverse of the last committed
   or last queued direction is ignored. A direction equal to the current one is ignored. The queue is consumed one
   entry per grid step.
+- A reversal is judged against the **last queued** direction when the queue is non-empty, and against the
+  committed direction only when it is empty. (Otherwise a two-turn U-turn could never be buffered.)
 - Both key sets are polled every frame; whichever player's key it is goes to that player's queue. P1 = WASD,
   P2 = Arrow keys. In single-player, practice and tutorial, **both** key sets steer the one snake.
 - Keys are never rebindable in V1. Mouse is ignored during PLAYING.
