@@ -403,23 +403,28 @@ describe('KS-07-03 Gate 1 bot statistics matrix', () => {
         PENDING_SLOW_VARIANTS.map((v) => v.label).join(', '),
     );
     // JSON dump for transcribing a FULL run into docs/qa/playtests/gate1-bot-matrix.md's machine-readable
-    // block (module doc) — printed every run so a FULL_RUN's stdout is directly copy-pasteable.
-    console.log(
-      "\nKS-07-03 JSON (for the document's machine-readable block):",
-      JSON.stringify(
-        {
-          roundsPerCell: ROUNDS_PER_CELL,
-          cells: matrixCells.map(({ variantId, pairingId, stats }) => ({
-            variant: variantId,
-            pairing: pairingId,
-            ...stats,
-          })),
-          speedBoost,
-        },
-        null,
-        2,
-      ),
-    );
+    // block (module doc) — gated on FULL_RUN so the ~120-line dump only ever appears on a deliberately-driven
+    // `KS_TUNING_MATRIX_FULL=1` run, not on every contributor's/CI's default `npm run test:unit`: the default
+    // subset's own consistency check (below) already reads the document back and compares against it, so
+    // nothing in CI needs this dump printed to be useful — only a human regenerating the document does.
+    if (FULL_RUN) {
+      console.log(
+        "\nKS-07-03 JSON (for the document's machine-readable block):",
+        JSON.stringify(
+          {
+            roundsPerCell: ROUNDS_PER_CELL,
+            cells: matrixCells.map(({ variantId, pairingId, stats }) => ({
+              variant: variantId,
+              pairing: pairingId,
+              ...stats,
+            })),
+            speedBoost,
+          },
+          null,
+          2,
+        ),
+      );
+    }
   }, 180_000);
 
   it('KS-07-03 AC1: the matrix document exists and lists every buildable variant and the three pending SLOW rows', () => {
