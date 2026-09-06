@@ -132,7 +132,9 @@ export function createGameplayScene({
      * @param {number} [dt] - seconds since the previous frame, for the camera's shake and zoom decay
      */
     update(snapshot, dt = 0) {
-      const state = /** @type {{snakes?: any[], apples?: any[], lasers?: any}} */ (snapshot);
+      const state = /** @type {{snakes?: any[], apples?: any[], powerUps?: any, lasers?: any}} */ (
+        snapshot
+      );
       const snakeStates = state.snakes ?? [];
       snakes.forEach((view, index) => {
         const snakeState = snakeStates[index];
@@ -143,9 +145,22 @@ export function createGameplayScene({
           view.pupils.count = 0;
           return;
         }
-        view.update(snakeState);
+        // KS-06-02 declared deviation: `view.update` used to take only the snapshot; now also passed this
+        // frame's `dt`, which the snake's own effect tint needs for its SPEED pulse (`snakeView.js`'s own
+        // doc comment) — the same widening the pickups call two lines below already had authorisation for.
+        view.update(snakeState, dt);
       });
-      pickups.update(/** @type {{apples: any[]}} */ ({ apples: state.apples ?? [] }));
+      // KS-06-02 declared deviation: this line used to hand pickups only `{ apples }`, so the power-up
+      // pedestals could never see the snapshot at all. Widened to also pass `powerUps` and this frame's `dt`
+      // (the pedestal's idle bob and spin are time-driven — `DESIGN-DECISIONS §3` "Power-up sheet") — still
+      // the one call site the tech lead pre-authorised, nothing else in this file changed.
+      pickups.update(
+        /** @type {{apples: any[], powerUps: any}} */ ({
+          apples: state.apples ?? [],
+          powerUps: state.powerUps ?? { pickups: [] },
+        }),
+        dt,
+      );
       lasers.update(state, dt);
       // The floor darkens in step with the beams' own glide, not with the sim's integer inset directly —
       // `lasers.visualInset` is the eased value both are reading, which is what keeps the two in sync.

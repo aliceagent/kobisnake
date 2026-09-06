@@ -137,6 +137,64 @@ body {
   display: none;
 }
 
+/* KS-06-02: the power-up tag, per `docs/reference/images/13-gameplay-hud.png` — a dark rounded pill with a
+   yellow bolt icon on the left, a small cyan-caps label on top and a bigger bold white countdown under it,
+   floating just above and to the right of the boosted snake's head. Grey-box: Sprint 11 restyles it.
+   `.hud-powerup-tags` spans the whole viewport (not just the `.hud` bar) because `hud.js` positions each tag
+   with `left`/`top` percentages of the *viewport* — the fraction the head projects to — plus a fixed pixel
+   offset from its own `transform`. */
+.hud-powerup-tags {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+}
+
+.hud-powerup-tag {
+  position: absolute;
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  padding: 0.35rem 0.65rem;
+  border-radius: 999px;
+  background: rgba(18, 20, 26, 0.88);
+  white-space: nowrap;
+}
+
+.hud-powerup-tag-icon {
+  font-size: 1.05rem;
+  line-height: 1;
+}
+
+/* Yellow bolt for SPEED, pale-blue snowflake for SLOW — "never rely on colour alone" also means the icon
+   glyph itself differs (DESIGN-DECISIONS §1 row 20), the colour is just an extra cue. */
+.hud-powerup-tag-icon--speed {
+  color: #f6c21b;
+}
+
+.hud-powerup-tag-icon--slow {
+  color: #bfe3fb;
+}
+
+.hud-powerup-tag-text {
+  display: flex;
+  flex-direction: column;
+  line-height: 1.05;
+}
+
+.hud-powerup-tag-label {
+  font-size: 0.6rem;
+  font-weight: 700;
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
+  color: #4fd8ff;
+}
+
+.hud-powerup-tag-seconds {
+  font-size: 1.05rem;
+  font-weight: 800;
+  color: #ffffff;
+}
+
 /* KS-05-04: grey-box menu screens (main menu, match setup, countdown, scoreboard, match over, pause), all
    built on the shared focus model (src/ui/focus.js, ARCHITECTURE §8). Legibility only, unstyled beyond that
    per the ticket's own spec — the toy panel look of docs/reference/images/14-main-menu.png is Sprint 11's
