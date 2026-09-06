@@ -1,6 +1,7 @@
 // @ts-check
 import { describe, expect, it, vi } from 'vitest';
 import { DIRECTIONS } from '../../../src/core/grid.js';
+import { createSession } from '../../../src/game/session.js';
 import { createTestHooks } from '../../../src/game/testHooks.js';
 
 /**
@@ -238,6 +239,63 @@ describe('KS-03-06 createTestHooks', () => {
           /** @type {typeof globalThis & { KeyboardEvent?: unknown } } */ (globalThis).KeyboardEvent
         );
       }
+    });
+  });
+
+  describe('KS-03-06: pressKey against a real session (not just a fake one)', () => {
+    it('KS-03-06: pressKey steers the player it names, through the real input module', () => {
+      // `PLAYER_KEY_CODES` above mirrors `input.js`'s own key tables rather than importing them (`input.js`
+      // does not export them). Every other `pressKey` test in this file only proves that mirror is
+      // self-consistent — this one proves it actually agrees with `input.js`, by driving a *real*
+      // `createSession` (not a fake) through the same event target and reading back a real
+      // `RoundSimulation` snapshot. If a later sprint ever edits `input.js`'s tables without this file
+      // following, this is the test that catches it — the others would keep passing while every
+      // hook-driven e2e quietly tested a lie.
+      const eventTarget = new NodeEventTarget();
+      const renderer = {
+        render: vi.fn(),
+        resize: vi.fn(),
+        getHeadWorldPosition: vi.fn(() => ({ x: 0, y: 0, z: 0 })),
+      };
+      const ui = {
+        hud: { setTime: vi.fn(), setLengths: vi.fn() },
+        showOverlay: vi.fn(),
+        hideOverlay: vi.fn(),
+      };
+      const session = createSession({
+        renderer,
+        ui,
+        seed: 1,
+        inputTarget: eventTarget,
+        requestFrame: () => 0,
+        cancelFrame: () => {},
+        visibilitySource: null,
+      });
+      const hooks = createTestHooks({
+        session,
+        renderer,
+        eventTarget,
+        KeyboardEventCtor: FakeKeyboardEvent,
+      });
+
+      // Enter starts a round (session's input mode is 'both', so a menu action fires alongside any
+      // direction match — Enter has none, so this is CONFIRM only).
+      eventTarget.dispatchEvent(new FakeKeyboardEvent('keydown', { code: 'Enter' }));
+
+      // P1 spawns heading RIGHT, P2 heading LEFT (DESIGN-DECISIONS §2.3): UP and DOWN are legal turns for
+      // both, so both queue cleanly.
+      hooks.pressKey(1, 'UP');
+      hooks.pressKey(2, 'DOWN');
+
+      // 1 simulated second is 120 ticks at the default 120 Hz sim rate — several steps at the base 6
+      // cells/s speed (a step every 20 ticks), comfortably enough for the queued turn to commit.
+      hooks.fastForward(1);
+
+      const snapshot = /** @type {{ snakes: { direction: { dx: number, dy: number } }[] }} */ (
+        hooks.getSnapshot()
+      );
+      expect(snapshot.snakes[0].direction).toEqual(DIRECTIONS.UP);
+      expect(snapshot.snakes[1].direction).toEqual(DIRECTIONS.DOWN);
     });
   });
 
