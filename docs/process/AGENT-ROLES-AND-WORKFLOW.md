@@ -41,7 +41,8 @@ owner; that assignment wins over the rule of thumb.
 6. **Bug fixing.** Bugs marked `blocker` are fixed in the same sprint. Others go to the next sprint's backlog
    with Fable's triage decision.
 7. **Sign-off (Fable).** Fable walks the *Exit criteria* in the sprint file against the deployed preview, records
-   the result in the tracking issue and tags the repo `sprint-NN-done`. The next sprint cannot kick off until the
+   the result in the tracking issue and adds the sign-off row to `docs/sprints/README.md` (the `sprint-NN-done` tag
+   is optional and owner-applied; agent sessions cannot push tags). The next sprint cannot kick off until the
    tag exists.
 
 Sprints are sized by scope, not calendar. Expect one sprint to take roughly one to three agent-days of wall
@@ -78,7 +79,8 @@ QA: the tests this ticket must add or make pass
 - Commit messages: imperative, ≤ 72 chars subject, body explains why. Ticket ID in the subject.
 - Squash-merge title = PR title = `KS-NN-TT: description`.
 - Labels: `sprint:NN`, `owner:*`, `type:*`, `needs-design-review`, `bug`, `blocker`, `tuning-proposal`.
-- Tags: `sprint-NN-done` at sign-off; `v1.0.0` at release (Sprint 18).
+- Sign-off: a row in the `docs/sprints/README.md` table plus a comment on the tracking issue. Tags
+  (`sprint-NN-done`, `v1.0.0`) are owner-applied because agent sessions cannot push tag refs.
 - Vercel: the GitHub integration builds every PR into a preview URL (posted automatically on the PR). `main`
   deploys to production. Nobody deploys manually.
 

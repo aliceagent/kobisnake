@@ -7,7 +7,8 @@ them in parallel wherever the ticket's `Depends on:` allows. Fable reviews PRs, 
 signs the sprint off.
 
 ## Before starting any sprint
-1. The previous sprint's tag exists (`sprint-NN-done`), or the sprint file says it may start earlier.
+1. The previous sprint has its sign-off row in `docs/sprints/README.md`, or the design lead has started it
+   conditionally on the tracking issue.
 2. `main` is green and deployed.
 3. The sprint's tracking issue exists (title `Sprint NN — <name>`, label `sprint:NN`), with one issue per
    ticket. If they do not exist, the Opus session creates them from the ticket blocks as its first action.
@@ -34,7 +35,7 @@ Then:
 4. Never change a tunable, add a dependency, skip a test, or load anything from a CDN. Propose instead.
 5. When all tickets are merged: run the sprint QA plan on the main deployment, post the sprint QA report
    (QA-STRATEGY §7) on the tracking issue, and post "READY FOR SIGN-OFF" or the list of blockers.
-6. Stop there. Fable signs off and tags sprint-NN-done.
+6. Stop there. Fable signs off (sign-off row + comment).
 
 Report progress as comments on the tracking issue, not in chat. If blocked, post "BLOCKED: <what> <from whom>".
 ```

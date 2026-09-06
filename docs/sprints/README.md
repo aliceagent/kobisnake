@@ -71,8 +71,10 @@ close in one to three days. Ticket counts: S01 8 · S02 7 · S03 7 · S04 5 · S
 S09 7 · S10 6 · S11 6 · S12 5 · S13 4 · S14 4 · S15 4 · S16 6 · S17 6 · S18 4 · S19 5 · S20 6.
 
 ## Sign-off record
-Fable appends a row here at each sign-off.
+Fable appends a row here at each sign-off. **This table is the source of truth for sprint completion.** Git tags
+cannot be pushed from agent sessions (the proxy refuses tag refs), so `sprint-NN-done` tags are a courtesy the
+owner may add; a sprint is done when its row is here and the sign-off comment is on its tracking issue.
 
 | Sprint | Tag | Date | Notes |
 |---|---|---|---|
-| 01 | *(pending)* | 2026-09-05 | All 7 implementable tickets merged, CI green, QA report posted. Tag withheld until (a) the first Vercel deployment succeeds after the quota reset on 2026-09-06 and (b) the owner applies branch protection. **Sprint 02 conditionally started** because it has no dependency on either. |
+| 01 | signed off (tag: owner may add `sprint-01-done` at 60b1145) | 2026-09-06 | All 8 tickets merged; CI green; production live at https://kobisnake.vercel.app. KS-01-06 AC1 (branch protection) remains an owner click, tracked on #1. |
