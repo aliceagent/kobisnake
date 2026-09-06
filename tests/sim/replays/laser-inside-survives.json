@@ -1,0 +1,91 @@
+{
+  "seed": 101,
+  "settingsOverrides": {
+    "roundDuration": 2,
+    "laserStartTime": 2,
+    "laserWarningDuration": 1,
+    "laserStepInterval": 10
+  },
+  "inputs": [
+    {
+      "t": 0,
+      "player": "p1",
+      "dir": "UP"
+    },
+    {
+      "t": 0.2,
+      "player": "p1",
+      "dir": "LEFT"
+    },
+    {
+      "t": 0.95,
+      "player": "p1",
+      "dir": "UP"
+    }
+  ],
+  "expectedEvents": [
+    {
+      "type": "FOOD_SPAWNED",
+      "tick": 0,
+      "t": 0,
+      "index": 0,
+      "cell": {
+        "x": 3,
+        "y": 4
+      }
+    },
+    {
+      "type": "FOOD_SPAWNED",
+      "tick": 0,
+      "t": 0,
+      "index": 1,
+      "cell": {
+        "x": 18,
+        "y": 5
+      }
+    },
+    {
+      "type": "FOOD_SPAWNED",
+      "tick": 0,
+      "t": 0,
+      "index": 2,
+      "cell": {
+        "x": 12,
+        "y": 22
+      }
+    },
+    {
+      "type": "FOOD_SPAWNED",
+      "tick": 0,
+      "t": 0,
+      "index": 3,
+      "cell": {
+        "x": 15,
+        "y": 7
+      }
+    },
+    {
+      "type": "LASER_WARNING",
+      "tick": 1,
+      "t": 0.008333333333333333
+    },
+    {
+      "type": "LASER_STEP",
+      "tick": 120,
+      "t": 1,
+      "inset": 1
+    },
+    {
+      "type": "ROUND_OVER",
+      "tick": 240,
+      "t": 2,
+      "result": "DRAW",
+      "reason": "TIMEOUT",
+      "winnerId": null,
+      "lengths": [
+        4,
+        4
+      ]
+    }
+  ]
+}
