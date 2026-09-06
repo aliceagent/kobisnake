@@ -7,10 +7,14 @@ import { DEFAULT_QUERY } from '../../playwright.config.js';
  * SwiftShader (this environment has no GPU) prints its own environment warnings to the console — e.g.
  * "Automatic fallback to software WebGL" and GL_CLOSE_PATH_NV performance notices — which are not errors and
  * must not be asserted on; this only checks messages of type "error" and uncaught page errors, which are
- * genuinely zero on the scaffold.
+ * genuinely zero.
+ *
+ * Originally written against the Sprint 01 scaffold cube; KS-03-05 replaced that scene, but the assertion
+ * itself — a canvas renders, `#ui` is attached, nothing errors — still holds against whatever `index.html`
+ * renders today, so only the wording below changed.
  */
 test.describe('KS-01-03 smoke', () => {
-  test('KS-01-03 AC1: npm run test:e2e passes — the scaffold renders a canvas with zero console errors', async ({
+  test('KS-01-03 AC1: npm run test:e2e passes — the page renders a canvas with zero console errors', async ({
     page,
   }) => {
     /** @type {string[]} */

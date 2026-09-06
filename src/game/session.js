@@ -67,8 +67,11 @@ import { createLoop } from './loop.js';
  * @property {SessionRenderer} renderer - anything shaped `{ render(snapshot, dt), resize() }`; `main.js`
  *   passes the real `createGameplayRenderer` result.
  * @property {SessionUi} ui - the overlay + HUD, e.g. `createUi(document.getElementById('ui'))`.
- * @property {number} seed - read once by the caller (`?seed` or `Date.now()`) and reused for every round
- *   this session plays, so a `?seed` visual baseline stays reproducible across a round replay.
+ * @property {number | null} seed - a fixed `?seed`, reused for every round this session plays so a visual
+ *   baseline stays reproducible across a round replay; `null` when the caller found no `?seed` in the URL, in
+ *   which case every round draws its own fresh seed from `randomSeed()` — "new round" means a new board too,
+ *   not just new objects (the ticket's own wording: "Enter → new RoundSimulation(seed from `?seed` or
+ *   `Date.now()`)" is read per round, not once for the whole session).
  * @property {Settings} [settings] - defaults to the shipping `SETTINGS`.
  * @property {SessionPlayer[]} [players] - defaults to the two-player match `[{id:'p1'}, {id:'p2'}]`.
  * @property {EventTarget} [inputTarget] - where `createInput` listens; defaults to `window`.
@@ -76,6 +79,9 @@ import { createLoop } from './loop.js';
  * @property {(handle: number) => void} [cancelFrame] - forwarded to the loop.
  * @property {() => number} [now] - forwarded to the loop.
  * @property {VisibilitySource | null} [visibilitySource] - forwarded to the loop.
+ * @property {() => number} [randomSeed] - draws a fresh seed for a round when `seed` is `null`; defaults to
+ *   `Date.now`. Tests inject a fake (an incrementing counter) rather than depending on `Date.now()`'s
+ *   millisecond resolution to prove two rounds actually differ.
  */
 
 /** HUD timer text is throttled to 10 Hz (`ARCHITECTURE §8`). */
@@ -139,6 +145,7 @@ export function createSession({
   cancelFrame,
   now,
   visibilitySource,
+  randomSeed = Date.now,
 }) {
   // --- placeholder round flow (see banner above) ------------------------------------------------------
   /** @type {'idle' | 'playing' | 'roundOver'} */
@@ -146,9 +153,15 @@ export function createSession({
   /** @type {RoundSimulation | null} */
   let sim = null;
 
-  /** Starts a fresh round with the session's fixed seed: a clean sim, fresh apples, fresh snakes. */
+  /**
+   * Starts a fresh round: a clean sim, fresh apples, fresh snakes — and, unless `?seed` fixed one, a fresh
+   * board too. A fixed `seed` is reused every round (that is what makes a `?seed` visual baseline
+   * reproducible across a replay); without one, `randomSeed()` is drawn again each time, so five rounds in a
+   * row do not hand a human playtester the same four apples five times running.
+   */
   function startRound() {
-    sim = new RoundSimulation({ settings, seed, players, mode: 'match' });
+    const roundSeed = seed ?? randomSeed();
+    sim = new RoundSimulation({ settings, seed: roundSeed, players, mode: 'match' });
     phase = 'playing';
     ui.hideOverlay();
     hudAccumulator = 0;
@@ -208,8 +221,15 @@ export function createSession({
     target: inputTarget,
   });
 
+  // The renderer wants the frame's real dt (for the camera's shake/zoom decay), not the fixed-step alpha
+  // `loop.js` hands its own `render` callback — so `update` remembers the dt it was just given, and `render`
+  // reads it back. Both fire once per frame, `update` immediately before `render` (`loop.js`'s own contract),
+  // so the value is always the one from the frame that just happened.
+  let lastDt = 0;
+
   const loop = createLoop({
     update(dt) {
+      lastDt = dt;
       if (sim !== null) {
         handleRoundEvents(sim.advance(dt));
       }
@@ -218,7 +238,9 @@ export function createSession({
         hudAccumulator = 0;
         writeHud();
       }
-      renderer.render(sim === null ? EMPTY_SNAPSHOT : sim.getState(), dt);
+    },
+    render() {
+      renderer.render(sim === null ? EMPTY_SNAPSHOT : sim.getState(), lastDt);
     },
     requestFrame,
     cancelFrame,

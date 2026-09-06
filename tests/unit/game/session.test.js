@@ -207,10 +207,50 @@ describe('createSession', () => {
       expect(round2State?.snakes.map((s) => s.length)).toEqual(
         round1StartState?.snakes.map((s) => s.length),
       );
-      // Fresh apples, reproducibly: the same seed reused for round 2 reseeds the RNG from scratch, so the
-      // opening board matches round 1's opening board exactly (this is also what a `?seed` visual baseline
-      // depends on across a replayed round, per the ticket).
+      // Fresh apples, reproducibly: `buildSession`'s default `seed: 1` is a fixed seed, reused for round 2,
+      // which reseeds the RNG from scratch — so the opening board matches round 1's opening board exactly.
+      // See the two tests below for the seed contract itself (fixed replays, absent draws fresh each round).
       expect(round2State?.apples).toEqual(round1StartState?.apples);
+    });
+
+    it('KS-03-05 AC3: a fixed ?seed replays the same board every round', () => {
+      // `foodCount` stays at its default here (unlike the test above) because this test's whole point is
+      // comparing the apples, which a `foodCount: 0` override would make trivially and meaninglessly equal.
+      const settings = withOverrides({ roundDuration: 1 });
+      const { session, target } = buildSession({ seed: 1, settings });
+
+      pressEnter(target);
+      const round1Apples = session.getSim()?.getState().apples;
+      for (let i = 0; i < 10; i += 1) session.loop.step(0.1);
+      expect(session.getPhase()).toBe('roundOver');
+
+      pressEnter(target);
+      const round2Apples = session.getSim()?.getState().apples;
+
+      expect(round2Apples).toEqual(round1Apples);
+    });
+
+    it('KS-03-05 AC3: without ?seed, a new round gets a new board', () => {
+      // A fake `randomSeed` in place of `Date.now` — real wall-clock time called twice in the same test could
+      // land in the same millisecond and produce two identical seeds, which would make this test flaky for a
+      // reason that has nothing to do with the behaviour it is proving.
+      let nextSeed = 0;
+      const settings = withOverrides({ roundDuration: 1 });
+      const { session, target } = buildSession({
+        seed: null,
+        settings,
+        randomSeed: () => (nextSeed += 1),
+      });
+
+      pressEnter(target);
+      const round1Apples = session.getSim()?.getState().apples;
+      for (let i = 0; i < 10; i += 1) session.loop.step(0.1);
+      expect(session.getPhase()).toBe('roundOver');
+
+      pressEnter(target);
+      const round2Apples = session.getSim()?.getState().apples;
+
+      expect(round2Apples).not.toEqual(round1Apples);
     });
 
     it('Enter mid-round has no effect', () => {

@@ -76,6 +76,17 @@ body {
   text-align: center;
 }
 
+/* Coloured by player, not just position, so "find your head in under a second" (PLAYTEST-SCRIPT §3) works
+   from the HUD too. Red/Blue are the two colours DESIGN-DECISIONS §2.7 assigns before either player has
+   picked one (S05+); a left border is the smallest change that still reads instantly. */
+.hud-player--p1 {
+  border-left: 0.35rem solid #e3261b;
+}
+
+.hud-player--p2 {
+  border-left: 0.35rem solid #1f6fe5;
+}
+
 .hud-timer {
   padding: 0.5rem 1.25rem;
   border-radius: 0.75rem;

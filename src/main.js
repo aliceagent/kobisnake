@@ -17,11 +17,11 @@ import { createUi } from './ui/ui.js';
 const canvas = /** @type {HTMLCanvasElement} */ (document.getElementById('game'));
 const uiRoot = /** @type {HTMLElement} */ (document.getElementById('ui'));
 
-// `?seed=N` fixes the round's RNG for a reproducible visual baseline; otherwise each page load gets a fresh
-// one (`ARCHITECTURE §11`, ticket spec). Read once here and handed to `createSession`, which reuses it for
-// every round this session plays.
+// `?seed=N` fixes every round's RNG for a reproducible visual baseline; without it, `createSession` draws a
+// fresh seed per round from `Date.now()` (its own default), so a human playing several rounds in a row does
+// not see the same board every time (`ARCHITECTURE §11`, ticket spec).
 const seedParam = new URLSearchParams(window.location.search).get('seed');
-const seed = seedParam === null ? Date.now() : Number(seedParam);
+const seed = seedParam === null ? null : Number(seedParam);
 
 const renderer = createGameplayRenderer(canvas);
 const ui = createUi(uiRoot);
