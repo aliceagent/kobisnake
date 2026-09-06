@@ -35,6 +35,16 @@ import { Snake } from './snake.js';
 /** @typedef {{id: string, color?: string}} Player */
 
 /**
+ * `settings.slow.targetMode`, widened over `settings.js`'s own `SlowSettings` typedef — not added there
+ * (KS-07-01 tech-lead note 1: "`src/core/settings.js` must not change. At all."). The tuning overlay
+ * (`src/game/tuning.js`) is the only writer of this key in practice, via `withOverrides({slow: {targetMode}})`
+ * — a `settings.slow` with no `targetMode` at all (every shipping round, and every existing test) reads as
+ * {@link DEFAULT_SLOW_TARGET_MODE} below, so this file is the only place that has to know the key can exist.
+ *
+ * @typedef {'opponent' | 'collector' | 'everyone-but-collector'} SlowTargetMode
+ */
+
+/**
  * Whether this process is a test run. `import.meta.env.TEST` is Vitest's own flag; in a Vite production
  * build the key simply does not exist, so this is `false` there and {@link RoundSimulation}'s `godMode`
  * cannot be switched on by a hand-crafted settings object in a shipped game — which is the guard
@@ -49,6 +59,15 @@ import { Snake } from './snake.js';
  */
 // @ts-expect-error import.meta.env is Vite's own addition; not present in this project's jsconfig types.
 const UNDER_TEST = Boolean(import.meta.env?.TEST);
+
+/**
+ * The behaviour every shipping round has always had (`DESIGN-DECISIONS §1 row 3`): SLOW slows every other
+ * living snake. {@link SlowTargetMode} above is read with this as its fallback, so a `settings.slow` with no
+ * `targetMode` — every settings object before this ticket, and every one after it that the tuning overlay has
+ * not touched — behaves exactly as it always did.
+ * @type {SlowTargetMode}
+ */
+const DEFAULT_SLOW_TARGET_MODE = 'everyone-but-collector';
 
 /**
  * Where each player starts and which way they face (`DESIGN-DECISIONS §2.3`). The rows are deliberately
@@ -599,9 +618,13 @@ export class RoundSimulation {
   /**
    * Turns a collected power-up into its effect (`DESIGN-DECISIONS §1 rows 3/4/20/21`).
    *
-   * SPEED always boosts the collector. SLOW slows every *other* living snake — unless there is none, in which
-   * case (practice/solo) it slows the laser clock instead (`powerups.js`'s solo-SLOW rule; see that module's
-   * doc comment for why this path cannot be reached by playing in Sprint 06).
+   * SPEED always boosts the collector. SLOW's target depends on `settings.slow.targetMode`
+   * ({@link SlowTargetMode}, defaulting to {@link DEFAULT_SLOW_TARGET_MODE} — see that constant's doc
+   * comment): shipped behaviour slows every *other* living snake; the tuning overlay (KS-07-01) can instead
+   * point it at the collector itself, so the GDD's three options can be felt (tech-lead note 3). Either
+   * "other-snake" mode falls back to slowing the laser clock when there is no living opponent to slow
+   * (practice/solo) — `powerups.js`'s solo-SLOW rule; see that module's doc comment for why this path cannot
+   * be reached by playing in Sprint 06.
    *
    * @param {Snake} collector
    * @param {import('./powerups.js').PowerUpType} type
@@ -614,7 +637,20 @@ export class RoundSimulation {
       return;
     }
 
-    const { multiplier, duration, laserMultiplierWhenSolo } = this.settings.slow;
+    const { multiplier, duration, laserMultiplierWhenSolo, targetMode } =
+      /**
+       * @type {Settings['slow'] & {targetMode?: SlowTargetMode}}
+       */ (this.settings.slow);
+    const mode = targetMode ?? DEFAULT_SLOW_TARGET_MODE;
+
+    if (mode === 'collector') {
+      const isNew = collector.applyEffect(type, multiplier, duration, this.settings.simHz);
+      if (isNew) this.emit(EVENTS.EFFECT_STARTED, { playerId: collector.id, powerUpType: type });
+      return;
+    }
+
+    // 'opponent' and 'everyone-but-collector' both land on the same living snake in V1's two-player roster —
+    // see {@link SlowTargetMode}'s own doc comment for why the two names are kept distinct anyway.
     const others = this.snakes.filter((snake) => snake !== collector && snake.alive);
     if (others.length === 0) {
       const isNew = this.powerUps.applySoloSlow(

@@ -1,0 +1,78 @@
+{
+  "seed": 4242,
+  "settingsOverrides": {
+    "snakeSpeed": 9,
+    "laserStartTime": 25,
+    "laserStepInterval": 1.5,
+    "laserMinArena": 8,
+    "foodCount": 2,
+    "growthPerFood": 2,
+    "inputBufferSize": 1,
+    "speedBoost": {
+      "multiplier": 1.35,
+      "duration": 4
+    },
+    "slow": {
+      "multiplier": 0.6,
+      "duration": 4,
+      "targetMode": "collector"
+    }
+  },
+  "inputs": [],
+  "expectedEvents": [
+    {
+      "type": "FOOD_SPAWNED",
+      "tick": 0,
+      "t": 0,
+      "index": 0,
+      "cell": {
+        "x": 13,
+        "y": 1
+      }
+    },
+    {
+      "type": "FOOD_SPAWNED",
+      "tick": 0,
+      "t": 0,
+      "index": 1,
+      "cell": {
+        "x": 6,
+        "y": 8
+      }
+    },
+    {
+      "type": "SNAKE_DIED",
+      "tick": 254,
+      "t": 2.1166666666666667,
+      "snakeId": "p1",
+      "cause": "WALL",
+      "cell": {
+        "x": 24,
+        "y": 12
+      }
+    },
+    {
+      "type": "SNAKE_DIED",
+      "tick": 254,
+      "t": 2.1166666666666667,
+      "snakeId": "p2",
+      "cause": "WALL",
+      "cell": {
+        "x": -1,
+        "y": 11
+      }
+    },
+    {
+      "type": "ROUND_OVER",
+      "tick": 254,
+      "t": 2.1166666666666667,
+      "result": "DRAW",
+      "reason": "DEATH",
+      "winnerId": null,
+      "lengths": [
+        4,
+        4
+      ]
+    }
+  ]
+}

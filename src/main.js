@@ -2,6 +2,7 @@
 import { createSession } from './game/session.js';
 import { createTestHooks } from './game/testHooks.js';
 import { createGameplayRenderer } from './render/renderer.js';
+import { createTuningScreen } from './ui/screens/tuning.js';
 import { createUi } from './ui/ui.js';
 
 /**
@@ -48,6 +49,20 @@ const session = createSession({ renderer, ui, seed, strict: isDevOrTest });
 // and one such expression is easier to keep right than two.
 if (isDevOrTest) {
   /** @type {any} */ (window).__kobi = createTestHooks({ session, renderer });
+}
+
+// KS-07-01: the tuning overlay, gated the same way as `__kobi` above but on its own flag — `?tuning=1` (a
+// human on a real production deploy can add it) or a dev server, never a plain production load. AC3 needs
+// the overlay's DOM node genuinely absent otherwise, not merely hidden, so — like `__kobi` — the gate has to
+// guard the `createTuningScreen` call itself; `tuning.js`/`ui/screens/tuning.js` never read `window` or
+// `import.meta` themselves.
+// @ts-expect-error import.meta.env is Vite's own addition; not present in this project's jsconfig types.
+const isTuningEnabled = import.meta.env.DEV || window.location.search.includes('tuning=1');
+if (isTuningEnabled) {
+  createTuningScreen(uiRoot, {
+    onChange: (overrides) => session.setSettingsOverrides(overrides),
+    getReplay: () => session.getReplay(),
+  }).show();
 }
 
 session.start();
