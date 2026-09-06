@@ -57,12 +57,32 @@ import { createLoop } from './loop.js';
 /** @typedef {1 | 2} PlayerNumber */
 
 /**
+ * A world-space point that knows how to project itself through a camera — a `THREE.Vector3`, described
+ * structurally rather than imported, since `src/game/` may never import three.js (`ARCHITECTURE §3`).
+ * `renderer.getHeadWorldPosition` already returns exactly this (KS-03-04's own doc comment on it); KS-06-02's
+ * HUD tag is the first caller in this file that calls `.project()` on it rather than only reading `x`/`y`/`z`.
+ *
+ * @typedef {object} ProjectableVector
+ * @property {number} x
+ * @property {number} y
+ * @property {number} z
+ * @property {(camera: any) => ProjectableVector} project - normalized device coordinates, `x`/`y` each
+ *   in `[-1, 1]`; mutates and returns `this`, same as three's own. `camera: any` rather than a narrower type
+ *   because the real caller hands it a `THREE.Camera` and this file may never name that type
+ *   (`ARCHITECTURE §3`) — `unknown` would reject the real renderer's own `project`, whose parameter three
+ *   itself types as `Camera`, not `unknown`.
+ */
+
+/**
  * @typedef {object} SessionRenderer
  * @property {(snapshot: object, dt?: number) => void} render
  * @property {() => void} resize
- * @property {{pulseLaserWarning: () => void}} [camera] - the gameplay camera's `LASER_WARNING` reaction
- *   (KS-04-03). Typed as only the one method this file calls, because `src/game/` cannot import three.js and
- *   so can never name the real `GameplayCamera` class.
+ * @property {{pulseLaserWarning: () => void, updateMatrixWorld?: () => void}} [camera] - the gameplay
+ *   camera's `LASER_WARNING` reaction (KS-04-03) plus, since KS-06-02, whatever the HUD tag's projection
+ *   needs from it — typed as only the members this file actually calls, because `src/game/` cannot import
+ *   three.js and so can never name the real `GameplayCamera` class.
+ * @property {(player: number) => ProjectableVector} [getHeadWorldPosition] - KS-06-02: where the HUD tag
+ *   anchors. Optional, like `camera`, so a minimal test renderer stays legal.
  */
 
 /**
@@ -72,6 +92,8 @@ import { createLoop } from './loop.js';
  * @property {(durationSeconds: number) => void} showLaserWarning
  * @property {(dt: number) => void} tick
  * @property {() => void} resetWarning
+ * @property {(tags: import('../ui/hud.js').PowerUpTagState[]) => void} [setPowerUpTags] - KS-06-02. Optional
+ *   for the same reason `SessionRenderer`'s new members are: a minimal test HUD stays legal without it.
  */
 
 /**
@@ -108,7 +130,7 @@ import { createLoop } from './loop.js';
  *
  * @typedef {object} RoundSnapshot
  * @property {number | null} timeRemaining
- * @property {{length: number}[]} snakes
+ * @property {{id: string, length: number, effects: {type: string, remaining: number}[]}[]} snakes
  */
 
 /**
@@ -639,13 +661,67 @@ export function createSession({
     if (pendingRoundOver !== null && slowMoRemaining <= 0) finishRound();
   }
 
-  /** Writes the timer and both lengths to the HUD right now, bypassing the 10 Hz throttle. */
+  /**
+   * Builds this frame's power-up tags (`SessionHud.setPowerUpTags`, `PowerUpTagState`) from a snapshot's
+   * per-snake `effects`, projecting each affected head through the gameplay camera. KS-06-02 tech-lead note:
+   * `writeHud` is the only function in this file that holds both the snapshot and the renderer, so this
+   * helper — new code, not a change to any other function here — exists only to keep `writeHud` itself
+   * readable.
+   *
+   * Returns no tags at all when the renderer cannot project (`camera`/`getHeadWorldPosition` are optional on
+   * `SessionRenderer` for exactly this reason) rather than throwing: the tag is cosmetic, and a test double
+   * built to prove something else should not have to grow a fake camera to keep passing.
+   *
+   * @param {RoundSnapshot['snakes']} snakes
+   * @param {SessionRenderer} rendererRef
+   * @returns {import('../ui/hud.js').PowerUpTagState[]}
+   */
+  function powerUpTagsFor(snakes, rendererRef) {
+    // Captured into `const`s rather than read off `rendererRef` again inside the closures below: both are
+    // optional on `SessionRenderer`, and a `const` narrowed by this guard stays narrowed inside a nested
+    // function in a way a property access on `rendererRef` would not.
+    const getHeadWorldPosition = rendererRef.getHeadWorldPosition;
+    const camera = rendererRef.camera;
+    if (typeof getHeadWorldPosition !== 'function' || camera === undefined) {
+      return [];
+    }
+    // Camera effects (shake, the laser-warning zoom pulse) move it slightly every frame; the renderer's own
+    // `render()` keeps `matrixWorld` current for drawing, but `writeHud` can run before this frame's render
+    // has happened yet (`ARCHITECTURE §5`'s update-then-render order), so this asks for it directly rather
+    // than trusting whatever the *previous* frame left behind.
+    camera.updateMatrixWorld?.();
+
+    /** @type {import('../ui/hud.js').PowerUpTagState[]} */
+    const tags = [];
+    snakes.forEach((snake, index) => {
+      snake.effects.forEach((effect, stackIndex) => {
+        const head = /** @type {ProjectableVector} */ (
+          getHeadWorldPosition(/** @type {PlayerNumber} */ (index + 1))
+        );
+        const projected = head.project(camera);
+        tags.push({
+          key: `${snake.id}:${effect.type}`,
+          type: /** @type {'SPEED' | 'SLOW'} */ (effect.type),
+          // AC2: whole seconds, rounded up — a fraction of a second left still reads as "1s", never "0s".
+          seconds: Math.ceil(effect.remaining),
+          // Normalized device coordinates are -1..1 with +y up; a CSS fraction is 0..1 with +y down.
+          xFraction: (projected.x + 1) / 2,
+          yFraction: (1 - projected.y) / 2,
+          stackIndex,
+        });
+      });
+    });
+    return tags;
+  }
+
+  /** Writes the timer, both lengths and the power-up tags to the HUD right now, bypassing the 10 Hz throttle. */
   function writeHud() {
     if (sim === null) return;
     const state = /** @type {RoundSnapshot} */ (sim.getState());
     ui.hud.setTime(formatTime(state.timeRemaining ?? 0));
     const [p1, p2] = state.snakes;
     ui.hud.setLengths(p1?.length ?? 0, p2?.length ?? 0);
+    ui.hud.setPowerUpTags?.(powerUpTagsFor(state.snakes, renderer));
   }
 
   /** Draws one frame of whatever the sim currently looks like, without advancing anything. */

@@ -872,3 +872,166 @@ describe('KS-05-03 lifecycle', () => {
     expect(() => session.dispose()).not.toThrow();
   });
 });
+
+/**
+ * KS-06-02: `writeHud` grows the power-up tag (`ui.hud.setPowerUpTags`) alongside the timer and lengths it
+ * already wrote. Every other function in `session.js` is untouched by this ticket (tech-lead note); these
+ * tests are only about the one function that changed.
+ *
+ * Reaching a real pickup needs a live snake on it, which needs *some* survival story — `godMode` (`core/
+ * settings.js`, honoured only under Vitest's own `import.meta.env.TEST`) buys the simplest one: an immortal
+ * snake just refuses a fatal step and parks instead of dying, so a blunt "walk toward the target cell,
+ * correcting every couple of frames" is always safe here. `tests/e2e/powerups.spec.js` is the one proving
+ * this against a real production build, where `godMode` does not exist at all.
+ */
+describe('KS-06-02 writeHud power-up tag', () => {
+  /** @param {'UP' | 'DOWN' | 'LEFT' | 'RIGHT'} dir */
+  function p1KeyFor(dir) {
+    return { UP: 'KeyW', DOWN: 'KeyS', LEFT: 'KeyA', RIGHT: 'KeyD' }[dir];
+  }
+
+  /**
+   * Steers P1 onto `cell`, one small step at a time, correcting direction every 0.02 s. Safe regardless of
+   * the exact path because the session under test always runs with `godMode: true`.
+   *
+   * @param {any} session @param {EventTarget} keyboardTarget @param {{x: number, y: number}} cell
+   */
+  function walkP1Onto(session, keyboardTarget, cell) {
+    for (let guard = 0; guard < 3000; guard += 1) {
+      const snake = session.getSim().getState().snakes[0];
+      const head = snake.segments[0];
+      if (head.x === cell.x && head.y === cell.y) return;
+      const dir = snake.direction;
+      const dx = cell.x - head.x;
+      const dy = cell.y - head.y;
+      let want =
+        Math.abs(dx) >= Math.abs(dy) && dx !== 0
+          ? dx > 0
+            ? 'RIGHT'
+            : 'LEFT'
+          : dy > 0
+            ? 'UP'
+            : 'DOWN';
+      const reverses =
+        (want === 'RIGHT' && dir.dx === -1) ||
+        (want === 'LEFT' && dir.dx === 1) ||
+        (want === 'UP' && dir.dy === -1) ||
+        (want === 'DOWN' && dir.dy === 1);
+      if (reverses) want = dy !== 0 ? (dy > 0 ? 'UP' : 'DOWN') : dx > 0 ? 'RIGHT' : 'LEFT';
+      fireKeydown(keyboardTarget, p1KeyFor(/** @type {any} */ (want)));
+      session.advanceSimulation(0.02);
+    }
+    throw new Error('walkP1Onto: did not reach the target cell in time');
+  }
+
+  /** A renderer whose projection is fixed and known, so the expected fraction is exact arithmetic. */
+  function createProjectingRenderer() {
+    return {
+      render: vi.fn(),
+      resize: vi.fn(),
+      camera: { pulseLaserWarning: vi.fn(), updateMatrixWorld: vi.fn() },
+      // Always "projects" to normalized device coordinates (0.5, -0.5) regardless of the head handed in —
+      // this test is about what `writeHud` does with a projection, not about the projection maths itself
+      // (`render/camera.js`'s own tests own that).
+      getHeadWorldPosition: vi.fn(() => ({
+        x: 0,
+        y: 0,
+        z: 0,
+        project: () => ({ x: 0.5, y: -0.5, z: 0 }),
+      })),
+    };
+  }
+
+  /** @param {object} [overrides] */
+  function buildGodModeSession(overrides = {}) {
+    const renderer = createProjectingRenderer();
+    const ui = createFakeUi();
+    ui.hud.setPowerUpTags = vi.fn();
+    const target = new NodeEventTarget();
+    const session = createSession({
+      renderer,
+      ui,
+      seed: 1,
+      settings: withOverrides({ godMode: true }),
+      inputTarget: target,
+      requestFrame: () => 0,
+      cancelFrame: () => {},
+      visibilitySource: null,
+      blurSource: createFakeBlurSource(),
+      ...overrides,
+    });
+    return { session, renderer, ui, target };
+  }
+
+  it('KS-06-02 AC1/AC2: one active SPEED effect becomes one tag, ceil()d seconds, at the projected fraction', () => {
+    const { session, ui, target } = buildGodModeSession();
+    playTo(session, { powerUpsEnabled: true });
+
+    // `powerUpFirstSpawnAt` seconds remaining is `roundDuration - powerUpFirstSpawnAt` seconds elapsed.
+    const elapsedAtFirstSpawn = SETTINGS.roundDuration - SETTINGS.powerUpFirstSpawnAt;
+    runFrames(session, elapsedAtFirstSpawn, elapsedAtFirstSpawn * 10);
+
+    const pickup = session.getSim().getState().powerUps.pickups[0];
+    expect(pickup).toBeDefined();
+    ui.hud.setPowerUpTags.mockClear();
+    walkP1Onto(session, target, pickup.cell);
+
+    // `godMode` still runs `resolvePowerUpPickup` and `tickPowerUpEffects` for a surviving step (only the
+    // *fatal* step is refused), so the pickup lands exactly as it would in a real round.
+    const afterPickup = session.getSim().getState();
+    // SPEED benefits the collector; SLOW benefits every *other* snake (`DESIGN-DECISIONS §1 row 3`) — either
+    // way, exactly one snake now carries the effect, and this test does not care which pickup the seed drew.
+    const victimIndex = pickup.type === 'SPEED' ? 0 : 1;
+    const victim = afterPickup.snakes[victimIndex];
+    const effect = victim.effects.find((/** @type {any} */ e) => e.type === pickup.type);
+    expect(effect).toBeDefined();
+
+    // `writeHud` is throttled to 10 Hz (`ARCHITECTURE §8`), so more than 0.1 s of wall time has to pass
+    // since the last write before a fresh one — reflecting the effect that just started — is guaranteed.
+    session.advanceSimulation(0.15);
+    const tags = ui.hud.setPowerUpTags.mock.calls.at(-1)[0];
+    expect(tags).toHaveLength(1);
+    expect(tags[0].key).toBe(`${victim.id}:${pickup.type}`);
+    expect(tags[0].seconds).toBe(Math.ceil(effect.remaining));
+    // NDC (0.5, -0.5) → fraction ((0.5+1)/2, (1-(-0.5))/2) = (0.75, 0.75).
+    expect(tags[0].xFraction).toBeCloseTo(0.75, 10);
+    expect(tags[0].yFraction).toBeCloseTo(0.75, 10);
+    expect(tags[0].stackIndex).toBe(0);
+  });
+
+  it('KS-06-02 AC2: no active effects means no tags at all', () => {
+    const { session, ui } = buildGodModeSession();
+    playTo(session, { powerUpsEnabled: false });
+    ui.hud.setPowerUpTags.mockClear();
+
+    session.advanceSimulation(0.2);
+    expect(ui.hud.setPowerUpTags).toHaveBeenCalledWith([]);
+  });
+
+  it('KS-06-02: a renderer with no camera or projection sends no tags, and nothing throws', () => {
+    const ui = createFakeUi();
+    ui.hud.setPowerUpTags = vi.fn();
+    const target = new NodeEventTarget();
+    const session = createSession({
+      renderer: { render: vi.fn(), resize: vi.fn() }, // KS-05-03's own "no camera" fake, unchanged
+      ui,
+      seed: 1,
+      inputTarget: target,
+      requestFrame: () => 0,
+      cancelFrame: () => {},
+      visibilitySource: null,
+      blurSource: createFakeBlurSource(),
+    });
+
+    expect(() => playTo(session)).not.toThrow();
+    expect(ui.hud.setPowerUpTags).toHaveBeenCalledWith([]);
+  });
+
+  it('KS-06-02: writeHud does not throw when the HUD has no setPowerUpTags at all', () => {
+    // The shared `createFakeUi()` fixture predates this ticket and still lacks the method — proof that a
+    // minimal test double never has to grow one just to keep passing (`SessionHud.setPowerUpTags` is
+    // optional for exactly this reason).
+    const { session } = buildSession();
+    expect(() => playTo(session)).not.toThrow();
+  });
+});

@@ -51,6 +51,20 @@ export const COLORS = {
    * arrows all draw from this one name rather than inventing a shade.
    */
   laserRed: 0xff2a2a,
+  /**
+   * The power-up pedestals and their floating icons (`DESIGN-DECISIONS §1 row 20`, `§3` "Power-up sheet",
+   * `docs/reference/README.md` note 5). Both rows lock the *language* — "blue... pedestal inside a cyan
+   * ring" for SPEED, "ice-white pedestal... pale-blue ring" and a white snowflake for SLOW — but neither
+   * gives a hex for the ring or the ice-white shade the way the player catalogue and materials bible do for
+   * everything else here. SPEED's pedestal and bolt are not invented at all: they are `snakeColorHex('blue')`
+   * and `snakeColorHex('yellow')` outright (see {@link createPowerUpMaterials}). The two below are this
+   * ticket's own grey-box choice for the parts nothing else locks, flagged in the PR; Sprint 09/10 replaces
+   * the whole pedestal with real art and can pick differently.
+   */
+  powerUpSlowPedestal: 0xeaf4fb,
+  powerUpSlowIcon: 0xffffff,
+  powerUpSpeedRing: 0x38e0f0,
+  powerUpSlowRing: 0xbfe3fb,
 };
 
 /** Plastic look shared by every brick in the game: matte, not metal (DESIGN-DECISIONS §3). */
@@ -152,5 +166,46 @@ export function createAppleMaterials(settings = SETTINGS) {
   return {
     body: createPlasticMaterial(snakeColorHex('red', settings)),
     leaf: createPlasticMaterial(snakeColorHex('green', settings)),
+  };
+}
+
+/**
+ * A `COLORS` (or `SETTINGS.colors`) hex value as a CSS colour string, for the handful of places outside
+ * three.js materials that still need one — namely a `CanvasRenderingContext2D` fill/stroke style, which
+ * takes a string, not a number. `pickupView.js`'s power-up icons are the first caller: they draw a bolt or a
+ * snowflake on a canvas at runtime (`DESIGN-DECISIONS §3`, tech-lead note — no image files) and this is how
+ * that drawing code gets a colour without ever writing a hex literal of its own (`CLAUDE.md`'s "never" list).
+ *
+ * @param {number | string} color - a `COLORS` entry (number) or a `SETTINGS.colors` entry (already a string)
+ * @returns {string} `'#rrggbb'`
+ */
+export function cssColor(color) {
+  if (typeof color === 'string') return color;
+  return `#${color.toString(16).padStart(6, '0')}`;
+}
+
+/**
+ * The power-up pedestals and their floating icons (`DESIGN-DECISIONS §1 row 20`, `§3` "Power-up sheet"):
+ * SPEED reuses the player-blue pedestal and the player-yellow bolt outright; SLOW's ice-white pedestal and
+ * white snowflake, and both rings, are `COLORS`'s own grey-box choice (see the comment there).
+ *
+ * @param {import('../core/settings.js').Settings} [settings]
+ * @returns {{
+ *   speedPedestal: THREE.MeshStandardMaterial,
+ *   slowPedestal: THREE.MeshStandardMaterial,
+ *   speedIconColor: string,
+ *   slowIconColor: string,
+ *   speedRingColor: string,
+ *   slowRingColor: string,
+ * }}
+ */
+export function createPowerUpMaterials(settings = SETTINGS) {
+  return {
+    speedPedestal: createPlasticMaterial(snakeColorHex('blue', settings)),
+    slowPedestal: createPlasticMaterial(COLORS.powerUpSlowPedestal),
+    speedIconColor: snakeColorHex('yellow', settings),
+    slowIconColor: cssColor(COLORS.powerUpSlowIcon),
+    speedRingColor: cssColor(COLORS.powerUpSpeedRing),
+    slowRingColor: cssColor(COLORS.powerUpSlowRing),
   };
 }

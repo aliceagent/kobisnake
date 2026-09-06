@@ -1,6 +1,6 @@
 // @ts-check
 import { describe, expect, it } from 'vitest';
-import { createHud } from '../../../src/ui/hud.js';
+import { createHud, POWERUP_TAG_OFFSET } from '../../../src/ui/hud.js';
 
 /**
  * KS-04-03: the "LASERS CLOSING!" banner and red-timer presentation on `LASER_WARNING`.
@@ -49,19 +49,33 @@ class FakeElement {
     this.hidden = false;
     /** @type {FakeElement[]} */
     this.children = [];
+    /** @type {FakeElement | null} */
+    this.parent = null;
     this.classList = new FakeClassList(this);
+    // KS-06-02: `hud.js` positions power-up tags via `element.style.left/top/transform`. A plain object is
+    // all that is needed — nothing here reads a computed style, only what was last written to it.
+    this.style = {};
   }
   /** @param {FakeElement[]} nodes */
   append(...nodes) {
-    this.children.push(...nodes);
+    for (const node of nodes) this.appendChild(node);
   }
   /** @param {FakeElement} node */
   appendChild(node) {
+    node.parent = this;
     this.children.push(node);
     return node;
   }
+  /**
+   * KS-06-02: `setPowerUpTags` removes a tag element once its effect ends, and the search helpers below must
+   * not still find it afterwards — the real DOM's `remove()` detaches the node, so this one does too.
+   */
   remove() {
-    // No parent link is needed for what these tests check.
+    if (this.parent === null) return;
+    const siblings = this.parent.children;
+    const index = siblings.indexOf(this);
+    if (index !== -1) siblings.splice(index, 1);
+    this.parent = null;
   }
 }
 
@@ -104,6 +118,23 @@ function search(node, className) {
 function findByClass(node, className) {
   const found = search(node, className);
   if (found === null) throw new Error(`no descendant with class "${className}"`);
+  return found;
+}
+
+/**
+ * Every descendant carrying `className` — `findByClass`'s "first match" is not enough for the power-up tags,
+ * where KS-06-02 AC3 needs to see two at once.
+ *
+ * @param {FakeElement} node
+ * @param {string} className
+ * @returns {FakeElement[]}
+ */
+function findAllByClass(node, className) {
+  const found = [];
+  for (const child of node.children) {
+    if (child.className.split(' ').includes(className)) found.push(child);
+    found.push(...findAllByClass(child, className));
+  }
   return found;
 }
 
@@ -262,5 +293,122 @@ describe('createHud — KS-06-00 AC2: the HUD is hidden outside a round', () => 
     // A round paused during the warning and resumed still owes the player its banner (`KS-04-03`).
     expect(banner.hidden).toBe(false);
     expect(timer.classList.contains('hud-timer--warning')).toBe(true);
+  });
+});
+
+/**
+ * KS-06-02: the power-up tag. `session.js`'s `writeHud` does the projection and hands this module only
+ * fractions and text (see the module doc comment); these tests drive `setPowerUpTags` directly with the same
+ * shape it hands over, `import('../../../src/ui/hud.js').PowerUpTagState`.
+ */
+describe('createHud — KS-06-02 power-up tag', () => {
+  it('KS-06-02 AC1: places the tag at the projected fraction plus the fixed offset', () => {
+    const root = createFakeRoot();
+    const hud = createHud(root);
+
+    hud.setPowerUpTags([
+      { key: 'p1:SPEED', type: 'SPEED', seconds: 5, xFraction: 0.4, yFraction: 0.6 },
+    ]);
+
+    const tag = findByClass(/** @type {any} */ (root), 'hud-powerup-tag');
+    expect(tag.style.left).toBe('40%');
+    expect(tag.style.top).toBe('60%');
+    expect(tag.style.transform).toBe(
+      `translate(${POWERUP_TAG_OFFSET.x}px, ${POWERUP_TAG_OFFSET.y}px)`,
+    );
+  });
+
+  it('KS-06-02 AC1: an already-drawn tag updates in place rather than creating a second element', () => {
+    const root = createFakeRoot();
+    const hud = createHud(root);
+
+    hud.setPowerUpTags([
+      { key: 'p1:SPEED', type: 'SPEED', seconds: 5, xFraction: 0.1, yFraction: 0.1 },
+    ]);
+    hud.setPowerUpTags([
+      { key: 'p1:SPEED', type: 'SPEED', seconds: 4, xFraction: 0.2, yFraction: 0.2 },
+    ]);
+
+    const tags = findAllByClass(/** @type {any} */ (root), 'hud-powerup-tag');
+    expect(tags).toHaveLength(1);
+    expect(tags[0].style.left).toBe('20%');
+  });
+
+  it("KS-06-02 AC2: shows the SPEED copy with the ceil()'d seconds the caller passed in", () => {
+    const root = createFakeRoot();
+    const hud = createHud(root);
+
+    hud.setPowerUpTags([
+      { key: 'p1:SPEED', type: 'SPEED', seconds: 5, xFraction: 0.5, yFraction: 0.5 },
+    ]);
+
+    const tag = findByClass(/** @type {any} */ (root), 'hud-powerup-tag');
+    const label = findByClass(tag, 'hud-powerup-tag-label');
+    const seconds = findByClass(tag, 'hud-powerup-tag-seconds');
+    expect(label.textContent).toBe('SPEED BOOST');
+    expect(seconds.textContent).toBe('5s');
+  });
+
+  it('KS-06-02 AC2: shows the SLOW copy, and the tag disappears once it is no longer in the list', () => {
+    const root = createFakeRoot();
+    const hud = createHud(root);
+
+    hud.setPowerUpTags([
+      { key: 'p2:SLOW', type: 'SLOW', seconds: 4, xFraction: 0.5, yFraction: 0.5 },
+    ]);
+    const tag = findByClass(/** @type {any} */ (root), 'hud-powerup-tag');
+    expect(findByClass(tag, 'hud-powerup-tag-label').textContent).toBe('SLOWED');
+    expect(findByClass(tag, 'hud-powerup-tag-seconds').textContent).toBe('4s');
+
+    // The effect ended: `session.js` stops including it, exactly as it stops including a `SNAKE_DIED` snake's
+    // length once the round moves on. Nothing here counts down on its own (AC2's "disappears at 0" is a
+    // property of the list `writeHud` sends, not a timer this module owns).
+    hud.setPowerUpTags([]);
+    expect(findAllByClass(/** @type {any} */ (root), 'hud-powerup-tag')).toHaveLength(0);
+  });
+
+  it('KS-06-02 AC3: two tags can show at once, offset apart, and neither is the timer panel', () => {
+    const root = createFakeRoot();
+    const hud = createHud(root);
+
+    hud.setPowerUpTags([
+      { key: 'p1:SPEED', type: 'SPEED', seconds: 1, xFraction: 0.3, yFraction: 0.55 },
+      { key: 'p2:SLOW', type: 'SLOW', seconds: 4, xFraction: 0.7, yFraction: 0.5 },
+    ]);
+
+    const tags = findAllByClass(/** @type {any} */ (root), 'hud-powerup-tag');
+    expect(tags).toHaveLength(2);
+    // Distinct screen positions — the two AC3 asks to see "at once" are never merged into one element.
+    expect(tags[0].style.left).not.toBe(tags[1].style.left);
+    // Neither tag is (or is inside) the timer panel — they live in their own overlay, never `.hud-row`.
+    const timerRow = findByClass(/** @type {any} */ (root), 'hud-row');
+    for (const tag of tags) expect(search(timerRow, tag.className.split(' ')[0])).toBeNull();
+  });
+
+  it('KS-06-02 AC3: a second tag on the same head stacks rather than overlapping the first', () => {
+    const root = createFakeRoot();
+    const hud = createHud(root);
+
+    hud.setPowerUpTags([
+      { key: 'p1:SPEED', type: 'SPEED', seconds: 1, xFraction: 0.5, yFraction: 0.5, stackIndex: 0 },
+      { key: 'p1:SLOW', type: 'SLOW', seconds: 4, xFraction: 0.5, yFraction: 0.5, stackIndex: 1 },
+    ]);
+
+    const tags = findAllByClass(/** @type {any} */ (root), 'hud-powerup-tag');
+    expect(tags).toHaveLength(2);
+    // Same fraction (same head), but the transform's Y differs, so the pills do not sit on top of each other.
+    expect(tags[0].style.left).toBe(tags[1].style.left);
+    expect(tags[0].style.transform).not.toBe(tags[1].style.transform);
+  });
+
+  it('setVisible hides and shows the power-up tags along with the rest of the HUD', () => {
+    const root = createFakeRoot();
+    const hud = createHud(root);
+    const tagsLayer = findByClass(/** @type {any} */ (root), 'hud-powerup-tags');
+
+    hud.setVisible(false);
+    expect(tagsLayer.hidden).toBe(true);
+    hud.setVisible(true);
+    expect(tagsLayer.hidden).toBe(false);
   });
 });

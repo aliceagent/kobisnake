@@ -139,3 +139,111 @@ describe('PickupView', () => {
     expect(disposed).toHaveLength(4);
   });
 });
+
+/**
+ * KS-06-02: the power-up pedestals. Grey-box per the ticket's own spec — a box (blue for SPEED, ice-white for
+ * SLOW) with a floating canvas-textured icon plane that bobs and spins (`DESIGN-DECISIONS §3` "Power-up
+ * sheet") — drawn from `snapshot.powerUps.pickups`, the KS-06-01 contract this file did not exist to read
+ * before this ticket.
+ */
+describe('PickupView — KS-06-02 power-up pedestals', () => {
+  it("draws a pedestal and an icon at a SPEED pickup's cell", () => {
+    const view = createPickupView({ reducedFx: true });
+    view.update({ apples: [], powerUps: { pickups: [{ cell: { x: 3, y: 9 }, type: 'SPEED' }] } });
+
+    expect(view.powerUps.SPEED.pedestal.count).toBe(1);
+    expect(view.powerUps.SPEED.icon.count).toBe(1);
+    expect(view.powerUps.SLOW.pedestal.count).toBe(0);
+    expect(view.powerUps.SLOW.icon.count).toBe(0);
+
+    const expected = cellToWorld({ x: 3, y: 9 }, SETTINGS.grid);
+    const pedestal = instancePosition(view.powerUps.SPEED.pedestal, 0);
+    const icon = instancePosition(view.powerUps.SPEED.icon, 0);
+    expect(pedestal.x).toBeCloseTo(expected.x, 5);
+    expect(pedestal.z).toBeCloseTo(expected.z, 5);
+    expect(pedestal.y).toBeGreaterThan(0);
+    // The icon floats above the pedestal, not through or under it.
+    expect(icon.y).toBeGreaterThan(pedestal.y);
+  });
+
+  it('draws a SLOW pickup on the SLOW meshes only, in its own colours', () => {
+    const view = createPickupView({ reducedFx: true });
+    view.update({ apples: [], powerUps: { pickups: [{ cell: { x: 20, y: 4 }, type: 'SLOW' }] } });
+
+    expect(view.powerUps.SLOW.pedestal.count).toBe(1);
+    expect(view.powerUps.SLOW.icon.count).toBe(1);
+    expect(view.powerUps.SPEED.pedestal.count).toBe(0);
+    expect(view.powerUps.SPEED.icon.count).toBe(0);
+    // SPEED reuses the player-blue catalogue colour outright (never a hex literal in this file).
+    expect(`#${view.powerUpMaterials.speedPedestal.color.getHexString()}`.toUpperCase()).toBe(
+      SETTINGS.colors.blue,
+    );
+  });
+
+  it('draws nothing on an empty board, and clears a pickup that is gone next frame', () => {
+    const view = createPickupView({ reducedFx: true });
+    view.update({ apples: [], powerUps: { pickups: [{ cell: { x: 1, y: 1 }, type: 'SPEED' }] } });
+    expect(view.powerUps.SPEED.pedestal.count).toBe(1);
+
+    view.update({ apples: [], powerUps: { pickups: [] } });
+    expect(view.powerUps.SPEED.pedestal.count).toBe(0);
+    expect(view.powerUps.SPEED.icon.count).toBe(0);
+    expect(view.drawCalls).toBe(0);
+  });
+
+  it('survives a snapshot with no powerUps field at all', () => {
+    const view = createPickupView();
+    expect(() => view.update({ apples: [] })).not.toThrow();
+    expect(view.powerUps.SPEED.pedestal.count).toBe(0);
+    expect(view.powerUps.SLOW.pedestal.count).toBe(0);
+  });
+
+  it('bobs and spins the icon over time, and freezes both under reducedFx', () => {
+    const pickups = { pickups: [{ cell: { x: 10, y: 10 }, type: 'SPEED' }] };
+
+    const animated = createPickupView({ reducedFx: false });
+    animated.update({ apples: [], powerUps: pickups }, 0);
+    const start = instancePosition(animated.powerUps.SPEED.icon, 0);
+    // A quarter of the 1.2 s bob period: the sine wave is nowhere near either endpoint or its start.
+    animated.update({ apples: [], powerUps: pickups }, 0.3);
+    const moved = instancePosition(animated.powerUps.SPEED.icon, 0);
+    expect(moved.y).not.toBeCloseTo(start.y, 3);
+
+    const frozen = createPickupView({ reducedFx: true });
+    frozen.update({ apples: [], powerUps: pickups }, 0);
+    const frozenStart = instancePosition(frozen.powerUps.SPEED.icon, 0);
+    frozen.update({ apples: [], powerUps: pickups }, 5);
+    frozen.update({ apples: [], powerUps: pickups }, 5);
+    const frozenLater = instancePosition(frozen.powerUps.SPEED.icon, 0);
+    expect(frozenLater.y).toBeCloseTo(frozenStart.y, 10);
+  });
+
+  it('costs one draw call per non-empty mesh, and none for an empty board', () => {
+    const view = createPickupView({ reducedFx: true });
+    expect(view.drawCalls).toBe(0);
+
+    view.update({ apples: [], powerUps: { pickups: [{ cell: { x: 5, y: 5 }, type: 'SPEED' }] } });
+    // 2 for the pedestal + icon; apples/leaves stay at 0 since none were drawn.
+    expect(view.drawCalls).toBe(2);
+  });
+
+  it('dispose() releases the power-up geometry, materials and textures too', () => {
+    const view = createPickupView();
+    const disposed = [];
+    for (const target of [
+      view.pedestalGeometry,
+      view.iconGeometry,
+      view.powerUpMaterials.speedPedestal,
+      view.powerUpMaterials.slowPedestal,
+      view.boltMaterial,
+      view.snowflakeMaterial,
+      view.boltTexture,
+      view.snowflakeTexture,
+    ]) {
+      target.addEventListener('dispose', () => disposed.push(target));
+    }
+
+    view.dispose();
+    expect(disposed).toHaveLength(8);
+  });
+});
