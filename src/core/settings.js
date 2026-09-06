@@ -95,6 +95,10 @@
  * @property {number} inputBufferSize - max queued directions per snake
  * @property {number} foodCount - apples present at all times during PLAYING
  * @property {number} foodMinDistanceFromHead - min Chebyshev distance from any head, in cells
+ * @property {number} foodMinDistanceFromFood - min Chebyshev distance from every other apple, in cells
+ *   (DESIGN-DECISIONS §2.3 "Apples never line up")
+ * @property {boolean} foodNoSharedRowOrColumn - when true, a new apple may not share a row or a column with
+ *   any apple already on the board (DESIGN-DECISIONS §2.3 "Apples never line up")
  * @property {boolean} powerUpsEnabled - default power-ups toggle
  * @property {number} powerUpFirstSpawnAt - seconds remaining when the first power-up spawns
  * @property {number} powerUpInterval - seconds between power-up spawn/respawn cycles
@@ -140,6 +144,8 @@ const SETTINGS_SOURCE = {
 
   foodCount: 4,
   foodMinDistanceFromHead: 2,
+  foodMinDistanceFromFood: 3,
+  foodNoSharedRowOrColumn: true,
 
   powerUpsEnabled: true,
   powerUpFirstSpawnAt: 75, // seconds remaining

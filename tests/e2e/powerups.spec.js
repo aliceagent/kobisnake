@@ -23,6 +23,11 @@ import { POWERUP_TAG_OFFSET } from '../../src/ui/hud.js';
  * - `boxWander(player, box, avoidCell)` keeps a snake safely inside a rectangle, turning toward its centre
  *   the instant continuing straight would leave the box (or the grid) — safe from any starting position,
  *   inside or out. `avoidCell` lets a snake circle *near* a pickup without walking onto it before it should.
+ * - `walkToward(player, cell)` returns **false** when it cannot steer — the head is already on the target, or
+ *   the target is directly behind and there is no perpendicular component to turn into — and every caller
+ *   falls back to `boxWander` in that case. Without that fallback the driver presses nothing and the snake
+ *   keeps its current direction, which in KS-07-00 walked P1 out of its box and into the wall at (2, 0) while
+ *   its target sat directly above it (found when #102 moved the apples and so the pedestals).
  * - `walkToward(player, cell)` steers a straight line at whatever cell the snapshot says is there, replanning
  *   every step — so it is correct whether the snake is at base speed or mid-`SPEED`-boost, and whichever cell
  *   the RNG actually chose.
@@ -50,6 +55,18 @@ import { POWERUP_TAG_OFFSET } from '../../src/ui/hud.js';
  * so nothing but the snakes moves; the seed is fixed inline rather than via `kobi.setSeed` purely so every
  * test's query string alone says which board it runs on. */
 const QUERY = '?test=1&seed=97&reducedFx=1';
+
+/**
+ * The two-tags scenario below needs a round where a scripted collector can chain *two* power-up cycles
+ * inside one effect window, and whether that is reachable depends on where the pedestals happen to spawn —
+ * which depends on the rng stream, which KS-07-00 (#102) moved when it changed how apple cells are chosen.
+ * Seed 97 no longer offers a reachable pair; seed 11 does. The seed is scenario furniture, not the thing
+ * under test: every assertion in that test is unchanged, and the driver itself was made materially less
+ * seed-sensitive in the same change (see `walkToward` returning false, and the re-read of the target cell).
+ * Ten of the first forty seeds produce a reachable pair, so this is a real property of the scenario rather
+ * than of any one seed — recorded on #111.
+ */
+const TWO_TAGS_QUERY = '?test=1&seed=11&reducedFx=1';
 
 /**
  * The viewport `playwright.config.js` fixes for every spec (`use.viewport`). Kept as a constant here (not
@@ -106,7 +123,7 @@ test.describe('KS-06-02 power-up pedestal and HUD tag', () => {
       /** Steers `player` at `target`, replanning from the live snapshot every call — see the module doc comment. */
       function walkToward(player, target) {
         const snake = kobi.getSnapshot().snakes[player - 1];
-        if (!snake.alive) return;
+        if (!snake.alive) return false;
         const head = snake.segments[0];
         const dir = snake.direction;
         const dx = target.x - head.x;
@@ -114,7 +131,7 @@ test.describe('KS-06-02 power-up pedestal and HUD tag', () => {
         let want;
         if (Math.abs(dx) >= Math.abs(dy) && dx !== 0) want = dx > 0 ? 'RIGHT' : 'LEFT';
         else if (dy !== 0) want = dy > 0 ? 'UP' : 'DOWN';
-        else return;
+        else return false;
         const wv = DIRS[want];
         if (wv.dx === -dir.dx && wv.dy === -dir.dy) {
           want =
@@ -130,7 +147,9 @@ test.describe('KS-06-02 power-up pedestal and HUD tag', () => {
                   ? 'LEFT'
                   : null;
         }
-        if (want) kobi.pressKey(player, want);
+        if (!want) return false;
+        kobi.pressKey(player, want);
+        return true;
       }
 
       /** Keeps `player` inside `box` (and the grid), turning toward its centre before it would leave either. */
@@ -183,8 +202,7 @@ test.describe('KS-06-02 power-up pedestal and HUD tag', () => {
 
         boxWander(2, P2_BOX);
         const pickup = snapshot.powerUps.pickups[0];
-        if (pickup) walkToward(1, pickup.cell);
-        else boxWander(1, P1_BOX);
+        if (!pickup || !walkToward(1, pickup.cell)) boxWander(1, P1_BOX);
 
         if (snapshot.snakes[0].effects.length > 0) collectorIndex = 0;
         else if (snapshot.snakes[1].effects.length > 0) collectorIndex = 1;
@@ -231,7 +249,7 @@ test.describe('KS-06-02 power-up pedestal and HUD tag', () => {
 
       function walkToward(player, target) {
         const snake = kobi.getSnapshot().snakes[player - 1];
-        if (!snake.alive) return;
+        if (!snake.alive) return false;
         const head = snake.segments[0];
         const dir = snake.direction;
         const dx = target.x - head.x;
@@ -239,7 +257,7 @@ test.describe('KS-06-02 power-up pedestal and HUD tag', () => {
         let want;
         if (Math.abs(dx) >= Math.abs(dy) && dx !== 0) want = dx > 0 ? 'RIGHT' : 'LEFT';
         else if (dy !== 0) want = dy > 0 ? 'UP' : 'DOWN';
-        else return;
+        else return false;
         const wv = DIRS[want];
         if (wv.dx === -dir.dx && wv.dy === -dir.dy) {
           want =
@@ -255,7 +273,9 @@ test.describe('KS-06-02 power-up pedestal and HUD tag', () => {
                   ? 'LEFT'
                   : null;
         }
-        if (want) kobi.pressKey(player, want);
+        if (!want) return false;
+        kobi.pressKey(player, want);
+        return true;
       }
 
       function boxWander(player, box, avoidCell) {
@@ -310,8 +330,7 @@ test.describe('KS-06-02 power-up pedestal and HUD tag', () => {
 
         if (collectorIndex === null) {
           const pickup = snapshot.powerUps.pickups[0];
-          if (pickup) walkToward(1, pickup.cell);
-          else boxWander(1, P1_BOX);
+          if (!pickup || !walkToward(1, pickup.cell)) boxWander(1, P1_BOX);
 
           const effect = snapshot.snakes[0].effects[0] ?? snapshot.snakes[1].effects[0];
           if (effect) {
@@ -359,7 +378,7 @@ test.describe('KS-06-02 power-up pedestal and HUD tag', () => {
   test('KS-06-02 AC3: two tags show at once, offset apart, and neither overlaps the timer panel', async ({
     page,
   }) => {
-    await page.goto(QUERY);
+    await page.goto(TWO_TAGS_QUERY);
 
     const result = await page.evaluate(() => {
       const kobi = /** @type {any} */ (globalThis).__kobi;
@@ -377,7 +396,7 @@ test.describe('KS-06-02 power-up pedestal and HUD tag', () => {
 
       function walkToward(player, target) {
         const snake = kobi.getSnapshot().snakes[player - 1];
-        if (!snake.alive) return;
+        if (!snake.alive) return false;
         const head = snake.segments[0];
         const dir = snake.direction;
         const dx = target.x - head.x;
@@ -385,7 +404,7 @@ test.describe('KS-06-02 power-up pedestal and HUD tag', () => {
         let want;
         if (Math.abs(dx) >= Math.abs(dy) && dx !== 0) want = dx > 0 ? 'RIGHT' : 'LEFT';
         else if (dy !== 0) want = dy > 0 ? 'UP' : 'DOWN';
-        else return;
+        else return false;
         const wv = DIRS[want];
         if (wv.dx === -dir.dx && wv.dy === -dir.dy) {
           want =
@@ -401,7 +420,9 @@ test.describe('KS-06-02 power-up pedestal and HUD tag', () => {
                   ? 'LEFT'
                   : null;
         }
-        if (want) kobi.pressKey(player, want);
+        if (!want) return false;
+        kobi.pressKey(player, want);
+        return true;
       }
 
       function boxWander(player, box, avoidCell) {
@@ -436,7 +457,7 @@ test.describe('KS-06-02 power-up pedestal and HUD tag', () => {
         kobi.pressKey(player, candidates[0]);
       }
 
-      kobi.setSeed(97);
+      kobi.setSeed(11);
       kobi.startMatch();
       for (let i = 0; i < 60 && kobi.getState() === 'COUNTDOWN'; i += 1) kobi.advance(0.1);
       const GRID = kobi.sim.settings.grid;
@@ -469,14 +490,23 @@ test.describe('KS-06-02 power-up pedestal and HUD tag', () => {
         if (phase === 'toFirst') {
           const pickup = snapshot.powerUps.pickups[0];
           if (pickup) {
-            if (firstCell === null) firstCell = pickup.cell;
+            // Re-read the cell every iteration rather than pinning the first one seen: a cycle P1 fails to
+            // reach despawns and is replaced 15 s later, and a driver still walking at the old cell would
+            // chase an empty square for the rest of the round (KS-07-00: it did, once #102 moved the
+            // pedestals). Whatever is on the board now is the target; once one is collected the effect ends
+            // this phase and `firstCell` holds the cell it was collected on, which is what phase 2 excludes.
+            firstCell = pickup.cell;
             const head = snapshot.snakes[0].segments[0];
             const dist = manhattan(head, firstCell);
             const travelTicks = (dist / kobi.sim.settings.snakeSpeed) * simHz;
             let despawnTick = FIRST_SPAWN_AT * simHz;
             while (despawnTick <= kobi.sim.tick) despawnTick += CYCLE * simHz;
-            if (despawnTick - kobi.sim.tick <= travelTicks * 1.25 + 20) walkToward(1, firstCell);
-            else boxWander(1, P1_BOX, firstCell);
+            // Half a second of slack on top of the travel estimate. `manhattan` is a lower bound on the real
+            // path — `walkToward` turns one axis at a time and `boxWander` may have it pointing the wrong
+            // way when the chase starts — so a margin this heuristic sets too tight arrives one tick *after*
+            // the despawn, which is exactly what happened at seed 97 with 20 ticks of slack.
+            const chase = despawnTick - kobi.sim.tick <= travelTicks * 1.25 + 60;
+            if (!chase || !walkToward(1, firstCell)) boxWander(1, P1_BOX, firstCell);
           } else {
             boxWander(1, P1_BOX);
           }
@@ -485,8 +515,7 @@ test.describe('KS-06-02 power-up pedestal and HUD tag', () => {
           const pickup = snapshot.powerUps.pickups.find(
             (p) => !(p.cell.x === firstCell.x && p.cell.y === firstCell.y),
           );
-          if (pickup) walkToward(1, pickup.cell);
-          else boxWander(1, P1_BOX, firstCell);
+          if (!pickup || !walkToward(1, pickup.cell)) boxWander(1, P1_BOX, firstCell);
         }
 
         kobi.advance(CHUNK);

@@ -7,6 +7,13 @@
  * time as apples are eaten. `RoundSimulation` (KS-02-05) owns the occupied-cell set and the snake heads; this
  * module knows nothing about snakes, only about cells.
  *
+ * **Sprint 07 (KS-07-00, issue #102) adds the two rules that stop apples reading as a pattern.** The owner's
+ * playtest found apples lining up in rows and columns, and the design lead's ruling — now
+ * `DESIGN-DECISIONS §2.3`, "Apples never line up" — is that a new apple may share neither a row nor a column
+ * with an apple already on the board, and must be at least `SETTINGS.foodMinDistanceFromFood` Chebyshev
+ * cells from every one of them. The opening board obeys it too. Both rules are relaxable: see
+ * {@link relaxationLadder} for the order `§2.3` fixes.
+ *
  * **Sprint 04 (KS-04-01, issue #39) makes a slot allowed to be empty.** Once the lasers shrink the arena to
  * 6 × 6 the placement constraints can genuinely exclude every remaining cell, and the design lead's ruling on
  * #39 — now `DESIGN-DECISIONS §2.3`, "When nothing fits" — is: relax the head distance 2 → 1 → 0, and if even
@@ -77,6 +84,9 @@ function findFreeCell({
   rng,
   minDistance = SETTINGS.foodMinDistanceFromHead,
   region,
+  apples = [],
+  minFoodDistance = SETTINGS.foodMinDistanceFromFood,
+  noSharedRowOrColumn = SETTINGS.foodNoSharedRowOrColumn,
 }) {
   const minX = Math.max(0, region?.minX ?? 0);
   const maxX = Math.min(grid.width - 1, region?.maxX ?? grid.width - 1);
@@ -92,6 +102,15 @@ function findFreeCell({
       }
       const tooCloseToAHead = heads.some((head) => chebyshev(cell, head) < minDistance);
       if (tooCloseToAHead) {
+        continue;
+      }
+      const linesUpWithAnApple =
+        noSharedRowOrColumn && apples.some((apple) => apple.x === x || apple.y === y);
+      if (linesUpWithAnApple) {
+        continue;
+      }
+      const tooCloseToAnApple = apples.some((apple) => chebyshev(cell, apple) < minFoodDistance);
+      if (tooCloseToAnApple) {
         continue;
       }
       candidates.push(cell);
@@ -114,6 +133,14 @@ function findFreeCell({
  * @property {number} [minDistance] - minimum Chebyshev distance from every head; defaults to
  *   `SETTINGS.foodMinDistanceFromHead`
  * @property {Region} [region] - cells to consider; defaults to the whole grid
+ * @property {Cell[]} [apples] - the apples already on the board, which the new one must not line up with or
+ *   crowd (DESIGN-DECISIONS §2.3 "Apples never line up"). Defaults to `[]`, which makes both apple rules
+ *   no-ops — that is the shape {@link import('./powerups.js')} uses, since the ruling is about apples
+ *   relative to each other and a power-up only has to avoid *standing on* one (that is `occupied`'s job)
+ * @property {number} [minFoodDistance] - minimum Chebyshev distance from every entry in `apples`; defaults
+ *   to `SETTINGS.foodMinDistanceFromFood`
+ * @property {boolean} [noSharedRowOrColumn] - when true, reject any cell sharing a row or a column with an
+ *   entry in `apples`; defaults to `SETTINGS.foodNoSharedRowOrColumn`
  */
 
 /**
@@ -136,22 +163,80 @@ export function placeFood(params) {
 }
 
 /**
- * Places an apple under `DESIGN-DECISIONS §2.3`'s "When nothing fits" rule (the design lead's ruling on issue
- * #39): try `minDistance`, then `minDistance − 1`, … down to 0, and return `null` if even a cell touching a
- * head is unavailable. Never throws.
+ * The rungs {@link placeFoodWithFallback} tries, hardest first, as `DESIGN-DECISIONS §2.3` orders them:
+ * the full rule, then **drop the row/column rule**, then apple distance 2, 1, 0, and only then the
+ * head-distance ladder from the #39 ruling (`minDistance − 1`, … down to 0).
  *
- * Only the head distance is relaxed. Occupancy and the dead zone are not constraints that can be traded away
- * — an apple inside a snake or under a laser is not an apple — and the ruling relaxes exactly this one thing,
- * accepting that "an apple occasionally appearing right in front of a snake, which in a 6×6 endgame is a gift
- * rather than a hazard".
+ * Writing the ladder out as data rather than as nested loops is what makes "the ladder relaxes in the stated
+ * order" a thing a test can read: `relaxationLadder` is the order, and {@link placeFoodWithFallback} is just
+ * "first rung that finds a cell wins".
+ *
+ * The apple rules come off before the head distance because they are about how the *board reads* — the owner
+ * playtest finding (#102) is that lined-up apples look mechanical — while the head distance is about whether
+ * the round is fair. Given a board where something has to give, a fair round with a slightly patterned one is
+ * the better trade, and in a 6×6 endgame four apples cannot avoid sharing rows at all.
+ *
+ * @param {PlacementParams} params
+ * @returns {PlacementParams[]}
+ */
+function relaxationLadder(params) {
+  const minDistance = params.minDistance ?? SETTINGS.foodMinDistanceFromHead;
+  // With no other apple on the board both apple rules are already satisfied by every cell, so the rungs that
+  // relax them would each re-scan the same candidates and find the same answer. Collapsing them keeps a
+  // caller that never has apples to compare against — a power-up spawn — at exactly the cost it had before
+  // #102, and keeps the empty-board case out of the "which rung succeeded" reasoning entirely.
+  const hasApples = (params.apples ?? []).length > 0;
+  const minFoodDistance = hasApples
+    ? (params.minFoodDistance ?? SETTINGS.foodMinDistanceFromFood)
+    : 0;
+  const noSharedRowOrColumn =
+    hasApples && (params.noSharedRowOrColumn ?? SETTINGS.foodNoSharedRowOrColumn);
+
+  /** @type {PlacementParams[]} */
+  const rungs = [];
+  if (noSharedRowOrColumn) {
+    rungs.push({ ...params, minDistance, minFoodDistance, noSharedRowOrColumn: true });
+  }
+  for (let distance = minFoodDistance; distance >= 0; distance -= 1) {
+    rungs.push({
+      ...params,
+      minDistance,
+      minFoodDistance: distance,
+      noSharedRowOrColumn: false,
+    });
+  }
+  for (let head = minDistance - 1; head >= 0; head -= 1) {
+    rungs.push({
+      ...params,
+      minDistance: head,
+      minFoodDistance: 0,
+      noSharedRowOrColumn: false,
+    });
+  }
+  return rungs;
+}
+
+/**
+ * Places an apple under `DESIGN-DECISIONS §2.3`'s fallback ladder (the design lead's ruling on issue #39,
+ * extended by the ruling on #102): walk {@link relaxationLadder} and return the first cell any rung finds, or
+ * `null` when even a cell touching a head is unavailable. Never throws.
+ *
+ * Occupancy and the dead zone are the two constraints that are never traded away — an apple inside a snake or
+ * under a laser is not an apple — and everything else relaxes in the documented order, accepting that "an
+ * apple occasionally appearing right in front of a snake, which in a 6×6 endgame is a gift rather than a
+ * hazard".
+ *
+ * A rung that finds nothing costs no `rng` call (see {@link findFreeCell}: it lists candidates, then picks
+ * once), so a placement still draws **exactly one** random number when it succeeds and **none** when it
+ * fails, however many rungs were walked. That is what keeps a golden event log stable against a change in
+ * how crowded the arena happens to be — including this one.
  *
  * @param {PlacementParams} params
  * @returns {Cell | null}
  */
 export function placeFoodWithFallback(params) {
-  const start = params.minDistance ?? SETTINGS.foodMinDistanceFromHead;
-  for (let minDistance = start; minDistance >= 0; minDistance -= 1) {
-    const cell = findFreeCell({ ...params, minDistance });
+  for (const rung of relaxationLadder(params)) {
+    const cell = findFreeCell(rung);
     if (cell !== null) return cell;
   }
   return null;
@@ -194,6 +279,8 @@ export class FoodState {
    * @param {Rng} params.rng
    * @param {number} [params.minDistance]
    * @param {Region} [params.region]
+   * @param {number} [params.minFoodDistance]
+   * @param {boolean} [params.noSharedRowOrColumn]
    */
   fill({
     grid,
@@ -203,6 +290,8 @@ export class FoodState {
     rng,
     minDistance = SETTINGS.foodMinDistanceFromHead,
     region,
+    minFoodDistance = SETTINGS.foodMinDistanceFromFood,
+    noSharedRowOrColumn = SETTINGS.foodNoSharedRowOrColumn,
   }) {
     const working = new Set(occupied);
     this.apples = [];
@@ -215,6 +304,12 @@ export class FoodState {
         rng,
         minDistance,
         region,
+        // `§2.3`'s apple rules apply to the opening board too (#102), and the board fills one slot at a
+        // time, so each apple is placed against the ones already down rather than against a snapshot taken
+        // before any of them existed.
+        apples: this.present(),
+        minFoodDistance,
+        noSharedRowOrColumn,
       });
       if (cell !== null) working.add(cellKey(cell));
       this.apples.push(cell);
@@ -239,6 +334,8 @@ export class FoodState {
    * @param {Rng} params.rng
    * @param {number} [params.minDistance]
    * @param {Region} [params.region]
+   * @param {number} [params.minFoodDistance]
+   * @param {boolean} [params.noSharedRowOrColumn]
    * @returns {Cell | null}
    */
   respawn(
@@ -251,14 +348,21 @@ export class FoodState {
       rng,
       minDistance = SETTINGS.foodMinDistanceFromHead,
       region,
+      minFoodDistance = SETTINGS.foodMinDistanceFromFood,
+      noSharedRowOrColumn = SETTINGS.foodNoSharedRowOrColumn,
     },
   ) {
     // The other apples still on the board must stay off-limits, or two apples could land on the same cell.
+    // They are also what `§2.3`'s row/column and distance rules are measured against, so the same pass
+    // collects them as cells.
     const working = new Set(occupied);
+    /** @type {Cell[]} */
+    const others = [];
     for (let i = 0; i < this.apples.length; i += 1) {
       const other = this.apples[i];
       if (i !== index && other !== null) {
         working.add(cellKey(other));
+        others.push(other);
       }
     }
     this.apples[index] = placeFoodWithFallback({
@@ -269,6 +373,9 @@ export class FoodState {
       rng,
       minDistance,
       region,
+      apples: others,
+      minFoodDistance,
+      noSharedRowOrColumn,
     });
     return this.apples[index];
   }
