@@ -259,7 +259,15 @@ describe('KS-03-06 createTestHooks', () => {
         getHeadWorldPosition: vi.fn(() => ({ x: 0, y: 0, z: 0 })),
       };
       const ui = {
-        hud: { setTime: vi.fn(), setLengths: vi.fn() },
+        // KS-04-03: `session.js` now also calls `showLaserWarning`/`tick`/`resetWarning` on the real HUD
+        // interface; this fake needs the same three no-ops or the real session it drives would throw.
+        hud: {
+          setTime: vi.fn(),
+          setLengths: vi.fn(),
+          showLaserWarning: vi.fn(),
+          tick: vi.fn(),
+          resetWarning: vi.fn(),
+        },
         showOverlay: vi.fn(),
         hideOverlay: vi.fn(),
       };

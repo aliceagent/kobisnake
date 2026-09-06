@@ -30,6 +30,17 @@ describe('createGameplayScene', () => {
     expect(composition.camera.fov).toBe(SETTINGS.camera.fov);
   });
 
+  it('KS-04-03: the real composition exposes a camera with pulseLaserWarning (session.js calls it optionally)', () => {
+    // `session.js`'s `renderer.camera?.pulseLaserWarning()` is optional-chained because `src/game/` cannot
+    // import three.js and therefore cannot assert the real shape at that call site — so nothing there would
+    // fail if `createGameplayScene` ever stopped building a camera, or the camera lost this method. This is
+    // the one place that actually builds the real composition in Node and can pin that connected half down.
+    const composition = createGameplayScene({ reducedFx: true });
+
+    expect(composition.camera).toBeDefined();
+    expect(typeof composition.camera.pulseLaserWarning).toBe('function');
+  });
+
   it('KS-03-04 AC2: the whole scene stays inside the ARCHITECTURE §12 draw-call budget', () => {
     const composition = createGameplayScene({ reducedFx: true });
     const sim = new RoundSimulation({ seed: 1, players: [{ id: 'p1' }, { id: 'p2' }] });

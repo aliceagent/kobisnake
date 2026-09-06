@@ -287,6 +287,45 @@ describe('createGameplayCamera', () => {
     });
   });
 
+  describe('pulseLaserWarning', () => {
+    it('KS-04-03: pulses the zoom twice, 0.4 s each, back-to-back', () => {
+      const camera = createGameplayCamera({ reducedFx: false });
+
+      camera.pulseLaserWarning();
+
+      // Mid first pulse: zoomed in, same as a lone `zoomPulse(2, 0.4)` would be at this point.
+      camera.update(0.2);
+      const midFirstPulse = camera.fov;
+      expect(midFirstPulse).toBeCloseTo(camera.baseFov * 0.98, 6);
+
+      // End of the first pulse / start of the second: back at the base FOV for exactly this frame.
+      camera.update(0.2);
+      expect(camera.fov).toBe(camera.baseFov);
+
+      // Mid second pulse: zoomed in again — the "twice" the ticket asks for, not one pulse fading out.
+      camera.update(0.2);
+      expect(camera.fov).toBeCloseTo(camera.baseFov * 0.98, 6);
+
+      // End of the second pulse: back to base and staying there.
+      camera.update(0.2);
+      expect(camera.fov).toBe(camera.baseFov);
+      camera.update(0.1);
+      expect(camera.fov).toBe(camera.baseFov);
+    });
+
+    it('KS-04-03: is a no-op under ?reducedFx=1, same as a lone zoomPulse', () => {
+      const camera = createGameplayCamera({ reducedFx: true });
+
+      camera.pulseLaserWarning();
+      camera.update(0.2);
+      camera.update(0.2);
+      camera.update(0.2);
+
+      expect(camera.fov).toBe(camera.baseFov);
+      expect(camera.queuedZoomPulses).toBe(0);
+    });
+  });
+
   describe('?reducedFx=1', () => {
     it('makes shake and zoomPulse no-ops so screenshots compare identical frames', () => {
       const camera = createGameplayCamera({ reducedFx: true });

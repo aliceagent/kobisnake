@@ -35,12 +35,20 @@ import { createLoop } from './loop.js';
  * @typedef {object} SessionRenderer
  * @property {(snapshot: object, dt?: number) => void} render
  * @property {() => void} resize
+ * @property {{pulseLaserWarning: () => void}} [camera] - the gameplay camera's `LASER_WARNING` reaction
+ *   (KS-04-03, `render/camera.js`). Optional and typed as only the one method this file calls: `src/game/`
+ *   cannot import three.js itself (`ARCHITECTURE §3`), so this can never be the real `GameplayCamera` class,
+ *   only whatever shape `main.js`'s real renderer (and a test's fake one) happens to expose it as.
  */
 
 /**
  * @typedef {object} SessionHud
  * @property {(text: string) => void} setTime
  * @property {(p1Length: number, p2Length: number) => void} setLengths
+ * @property {(durationSeconds: number) => void} showLaserWarning - KS-04-03: puts up the "LASERS CLOSING!"
+ *   banner and reddens the timer.
+ * @property {(dt: number) => void} tick - KS-04-03: advances the banner's own countdown by one frame.
+ * @property {() => void} resetWarning - KS-04-03: clears the banner and the red timer for a fresh round.
  */
 
 /**
@@ -172,6 +180,9 @@ export function createSession({
     sim = new RoundSimulation({ settings, seed: roundSeed, players, mode: 'match' });
     phase = 'playing';
     ui.hideOverlay();
+    // KS-04-03: the previous round's laser warning (banner + red timer) must not carry into a fresh one —
+    // "for the rest of the round" means exactly that round.
+    ui.hud.resetWarning();
     hudAccumulator = 0;
     writeHud();
   }
@@ -189,6 +200,12 @@ export function createSession({
         phase = 'roundOver';
         const result = /** @type {string} */ (event.result);
         ui.showOverlay(RESULT_OVERLAY_TEXT[result] ?? IDLE_OVERLAY_TEXT);
+      } else if (event.type === EVENTS.LASER_WARNING) {
+        // KS-04-03: the "LASERS CLOSING!" banner, the red timer, and the camera's zoom pulse, all on the
+        // sim's own event rather than on a timer of this file's own — `settings.laserWarningDuration` is
+        // the same number `lasers.js` scheduled the warning from, read from `SETTINGS`, not retyped here.
+        ui.hud.showLaserWarning(settings.laserWarningDuration);
+        renderer.camera?.pulseLaserWarning();
       }
     }
   }
@@ -254,6 +271,9 @@ export function createSession({
     if (sim !== null) {
       handleRoundEvents(sim.advance(dt));
     }
+    // KS-04-03: the banner's own 5 s countdown runs on this same frame `dt`, same as the camera's shake and
+    // zoom pulse (`render/camera.js`'s `update(dt)`) — a no-op whenever no warning is showing.
+    ui.hud.tick(dt);
     hudAccumulator += dt;
     if (hudAccumulator >= HUD_INTERVAL_SECONDS) {
       hudAccumulator = 0;
