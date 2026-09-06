@@ -3,6 +3,7 @@ import { expect, test } from '@playwright/test';
 import { cellToWorld } from '../../src/render/arenaView.js';
 import { SETTINGS } from '../../src/core/settings.js';
 import { DEFAULT_QUERY } from '../../playwright.config.js';
+import { startMatchInPage } from './helpers.js';
 
 /**
  * KS-03-04 AC1, proved through the real renderer rather than a hand-built snapshot.
@@ -34,13 +35,15 @@ test.describe('KS-03-07 interpolation', () => {
     page,
   }) => {
     await page.goto(DEFAULT_QUERY);
-    await page.keyboard.press('Enter');
+    // KS-05-03: main menu -> match setup -> countdown -> PLAYING, in one synchronous script.
+    await page.evaluate(startMatchInPage);
 
     for (const target of [0.25, 0.5, 0.75]) {
       const result = await page.evaluate((targetProgress) => {
         const kobi = /** @type {any} */ (globalThis).__kobi;
         const snake = kobi.sim.snakes[0];
-        const ticksPerStep = kobi.sim.settings.simHz / (kobi.sim.settings.snakeSpeed * snake.speedMultiplier);
+        const ticksPerStep =
+          kobi.sim.settings.simHz / (kobi.sim.settings.snakeSpeed * snake.speedMultiplier);
 
         // How many *more* ticks, from wherever the live snake's progress happens to be right now, land it
         // exactly on `targetProgress` within its current step. `+= ticksPerStep` when the target has already

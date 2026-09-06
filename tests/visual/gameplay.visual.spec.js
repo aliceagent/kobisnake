@@ -47,10 +47,18 @@ import { DEFAULT_QUERY } from '../../playwright.config.js';
  * showing the same "DRAW — PRESS ENTER" overlay, because by the time the screenshot was actually taken the
  * background loop had carried the *unsteered* golden no-input log all the way to its own ~3.167 s wall crash
  * while Playwright was still stabilising the frame). The fix reuses scenario (c)'s own mechanism rather than
- * inventing a new one: dispatching a fake `visibilitychange` with `document.hidden` overridden to `true`
- * makes `loop.js` cancel its pending frame and stop scheduling new ones (`ARCHITECTURE §5`'s "a hidden tab
- * stops requesting frames outright"), which freezes the canvas at exactly the frame this script's last
- * `fastForward` drew, for however long the screenshot then takes to settle.
+ * inventing a new one: the game is put into its real PAUSE state, which sets `loop.timeScale` to 0 and
+ * freezes the canvas at exactly the frame this script's last `fastForward` drew, for however long the
+ * screenshot then takes to settle.
+ *
+ * **KS-05-03 changed how that freeze is spelled, and when it happens.** Until Sprint 05 these scripts faked a
+ * `visibilitychange` with `document.hidden` overridden to `true`, leaning on `loop.js`'s hidden-tab
+ * behaviour; the game now has a real PAUSE state that means exactly "freeze this round", and
+ * `__kobi.pause()` is the supported way to reach it. Because a paused round cannot be fast-forwarded (that
+ * is the point of it), the freeze moved from the start of each script to the end — which costs nothing, since
+ * a whole script is synchronous and no frame can land inside one anyway. The PAUSE panel is hidden before the
+ * screenshot, the same way `laser.visual.spec.js` hides `.hud` for its own baselines: these two baselines are
+ * pictures of gameplay, and the pause screen gets its own in `tests/visual/screens.visual.spec.js`.
  */
 
 /**
@@ -66,26 +74,26 @@ import { DEFAULT_QUERY } from '../../playwright.config.js';
  * the 0.2 % budget of `QA-STRATEGY §1`. That is what turned `main` red after KS-03-07 merged, having passed
  * on the same commit's pull-request run.
  *
- * Dispatching the `Enter` keydown from inside the page removes the gap entirely rather than trying to
- * measure or tolerate it: JavaScript is single-threaded, so no `requestAnimationFrame` callback can run
- * between the keydown that starts the round and the `visibilitychange` that stops the loop. The round is
- * therefore frozen at tick 0, every time, on any machine.
- *
- * `Enter` is dispatched at `window` because that is where `createInput` listens (`src/game/input.js`), so
- * this goes through the real input path exactly as `__kobi.pressKey` does for the direction keys.
+ * Starting the round from inside the page removes the gap entirely rather than trying to measure or
+ * tolerate it: JavaScript is single-threaded, so no `requestAnimationFrame` callback can run between the
+ * call that starts the match and the pause that freezes it. The round is therefore frozen at tick 0, every
+ * time, on any machine.
  */
 function startRoundAndFreeze() {
-  const win = /** @type {any} */ (globalThis);
   const doc = /** @type {any} */ (globalThis).document;
-  const kobi = win.__kobi;
+  const kobi = /** @type {any} */ (globalThis).__kobi;
 
-  win.dispatchEvent(
-    new win.KeyboardEvent('keydown', { code: 'Enter', bubbles: true, cancelable: true }),
-  );
-  Object.defineProperty(doc, 'hidden', { configurable: true, get: () => true });
-  doc.dispatchEvent(new win.Event('visibilitychange'));
+  // Main menu, match setup, and the four countdown beats of `DESIGN-DECISIONS §2.4`. The countdown runs on
+  // wall time and the simulation does not run at all during it, so this leaves the round at tick 0.
+  kobi.startMatch();
+  kobi.fastForward(3.21);
 
+  kobi.pause();
   kobi.fastForward(0);
+
+  const pausePanel = doc.querySelector('[data-screen="PAUSE"]');
+  if (pausePanel !== null) pausePanel.hidden = true;
+
   return kobi.sim.tick;
 }
 
@@ -116,21 +124,29 @@ test.describe('KS-03-07 visual', () => {
     // {@link startRoundAndFreeze}).
     const snapshot = await page.evaluate(() => {
       const kobi = /** @type {any} */ (globalThis).__kobi;
-      const simHz = kobi.sim === null ? 120 : kobi.sim.settings.simHz;
-
-      // Start the round and stop the frame loop in the same breath, so every absolute tick target below is
-      // measured from a real tick 0 rather than from wherever a background frame happened to leave the sim.
-      const win = /** @type {any} */ (globalThis);
       const doc = /** @type {any} */ (globalThis).document;
-      win.dispatchEvent(
-        new win.KeyboardEvent('keydown', { code: 'Enter', bubbles: true, cancelable: true }),
-      );
-      Object.defineProperty(doc, 'hidden', { configurable: true, get: () => true });
-      doc.dispatchEvent(new win.Event('visibilitychange'));
 
-      /** Fast-forwards from wherever `sim.tick` is right now to the given *absolute* tick count. */
+      // Start the round inside this script, so every absolute tick target below is measured from a real tick
+      // 0 rather than from wherever a background frame happened to leave the sim.
+      kobi.startMatch();
+      kobi.fastForward(3.21);
+      const simHz = kobi.sim.settings.simHz;
+
+      /**
+       * Fast-forwards from wherever `sim.tick` is right now to the given *absolute* tick count.
+       *
+       * The half-tick and the `tickAccumulator` term are what make this exact. `round.js` accumulates
+       * `dt * simHz` and consumes whole ticks, so asking for exactly `n / simHz` seconds can land at
+       * `n - 1e-14` ticks and leave the round one tick short — 40/120 seconds is 39.99999999999999 ticks, not
+       * 40. Before KS-05-03 this file got away with the naive division because real frames had already left
+       * an arbitrary fraction in the accumulator by the time the script ran; now the round starts inside the
+       * script with the accumulator at exactly 0, which is precisely the unlucky case. Asking for half a tick
+       * more than is needed, minus whatever the accumulator already holds, lands on the target every time and
+       * leaves the accumulator at a steady half tick rather than drifting upward call by call.
+       */
       const advanceToTick = (/** @type {number} */ targetTick) => {
-        kobi.fastForward(Math.max(0, targetTick - kobi.sim.tick) / simHz);
+        const needed = Math.max(0, targetTick - kobi.sim.tick);
+        kobi.fastForward((needed + 0.5 - kobi.sim.tickAccumulator) / simHz);
       };
 
       // Phase boundaries as absolute ticks from round start (120 per grid step): 6, 6, 6, 10 and 2 more
@@ -148,6 +164,12 @@ test.describe('KS-03-07 visual', () => {
       kobi.pressKey(1, 'RIGHT');
       kobi.pressKey(2, 'LEFT');
       advanceToTick(600); // P1 RIGHT x2, P2 LEFT x2 — 30 steps, 5.0 simulated seconds
+
+      // Freeze last, not first: a paused round cannot be fast-forwarded (see the module doc comment).
+      kobi.pause();
+      kobi.fastForward(0);
+      const pausePanel = doc.querySelector('[data-screen="PAUSE"]');
+      if (pausePanel !== null) pausePanel.hidden = true;
 
       return kobi.getSnapshot();
     });

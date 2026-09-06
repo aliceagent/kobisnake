@@ -27,7 +27,23 @@
  * The defaults are the real browser ones.
  */
 
-/** @typedef {(dt: number) => void} UpdateCallback */
+/**
+ * The per-frame update. It is handed the frame twice over, in two different currencies:
+ *
+ * - `dt` — **simulated** seconds: the clamped frame duration multiplied by `timeScale`. 0.25x during the
+ *   crash slow-mo beat, exactly 0 while paused.
+ * - `unscaledDt` — **wall** seconds: the clamped frame duration, unscaled.
+ *
+ * Both are needed because a game has two kinds of timer and they must not be confused (`session.js`'s header
+ * comment, and Sprint 05's own stated risk: "slow-mo uses wall time while the sim uses sim time; keep them
+ * separate or the timer drifts"). The simulation runs on `dt` so that a pause or a slow frame never steals
+ * simulated time; the countdown, the scoreboard and the length of the slow-mo beat itself run on
+ * `unscaledDt`, because they are presentation timings a player experiences in real seconds. A caller that
+ * only cares about simulated time simply ignores the second argument, which is what every caller before
+ * Sprint 05 did.
+ *
+ * @typedef {(dt: number, unscaledDt: number) => void} UpdateCallback
+ */
 /** @typedef {(alpha: number) => void} RenderCallback */
 
 /**
@@ -91,6 +107,7 @@ function defaultNow() {
  *
  * @param {object} options
  * @param {UpdateCallback} options.update - called once per frame with the clamped, scaled seconds to advance
+ *   and, second, the same frame unscaled (see {@link UpdateCallback})
  * @param {RenderCallback} [options.render] - called once per frame with the fixed-step interpolation alpha
  * @param {() => void} [options.onAutoPause] - called when a hidden tab becomes visible again, before the
  *   first update of the resumed loop, so the UI can show "READY?" (`DESIGN-DECISIONS §2.8`)
@@ -179,7 +196,7 @@ export function createLoop({
     const clamped = Math.min(Math.max(rawSeconds, 0), maxFrameSeconds);
     const dt = clamped * loop.timeScale;
 
-    update(dt);
+    update(dt, clamped);
 
     // `alpha` is how far the simulated clock stands into the current fixed step. The snake renderer does not
     // use it — each snake has its own movement accumulator and its own `stepProgress` in the snapshot

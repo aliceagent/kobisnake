@@ -5,15 +5,25 @@ import { DIRECTIONS } from '../../src/core/grid.js';
 import { RoundSimulation } from '../../src/core/round.js';
 import { SETTINGS } from '../../src/core/settings.js';
 import { DEFAULT_QUERY } from '../../playwright.config.js';
+import { COUNTDOWN_SECONDS, startMatchInPage } from './helpers.js';
 
 /**
  * KS-03-07: the first-playable round flow, driven end to end in a real browser (`ARCHITECTURE §11`).
  *
  * Three of the ticket's five scenarios live here, all of them about what a whole round *does* rather than
  * how one frame is drawn: (a) the browser and the headless engine must agree exactly, tick for tick and
- * segment cell for segment cell; (c) a hidden tab must not steal simulated time; (d) a round must actually
- * end, show the right overlay, and hand control back to a fresh round on Enter. Scenario (b) (the reversal
- * key) lives in `input.spec.js`; the visual baselines of scenario (e) live in `gameplay.visual.spec.js`.
+ * segment cell for segment cell; (c) a paused game must not steal simulated time; (d) a round must actually
+ * end, record the right result, and hand control on to a fresh round. Scenario (b) (the reversal key) lives
+ * in `input.spec.js`; the visual baselines of scenario (e) live in `gameplay.visual.spec.js`.
+ *
+ * **KS-05-03 rewrote how these scenarios reach a round and what they read at the end of one.** Sprint 03's
+ * placeholder flow — an idle "PRESS ENTER" overlay, one round at a time, Enter for another — no longer
+ * exists: the game boots into the main menu and a round is reached through match setup and the 3 · 2 · 1 · GO
+ * countdown (`startMatchInPage`). Scenario (c) drives the real PAUSE state through `__kobi.pause()` /
+ * `__kobi.resume()` instead of faking a `visibilitychange` with `document.hidden` overridden, and scenario
+ * (d) reads the round's outcome from the machine and the match tally rather than from overlay text, because
+ * the scoreboard's wording is KS-05-04's to write and KS-05-05's to assert. Nothing about *what* these
+ * scenarios prove has changed.
  *
  * Every one of `__kobi`'s own calls below happens inside a single `page.evaluate()` per scripted moment
  * (never split across an `await` boundary), which is deliberate: `session.start()` keeps the real frame loop
@@ -41,7 +51,11 @@ import { DEFAULT_QUERY } from '../../playwright.config.js';
  * "fixing" one to match the other, or copying the division pattern somewhere it is not safe.
  */
 
-/** The two players in `RoundSimulation`'s own id order, exactly as `session.js`'s `DEFAULT_PLAYERS` does. */
+/**
+ * The two players in `RoundSimulation`'s own id order. From KS-05-03 the session names their colours from
+ * the match-setup screen (P1 red, P2 blue by default); the colours change nothing about the simulation, so
+ * the Node-side replay below needs only the ids.
+ */
 const PLAYERS = [{ id: 'p1' }, { id: 'p2' }];
 
 test.describe('KS-03-07 first playable', () => {
@@ -49,7 +63,7 @@ test.describe('KS-03-07 first playable', () => {
     page,
   }) => {
     await page.goto(DEFAULT_QUERY);
-    await page.keyboard.press('Enter');
+    await page.evaluate(startMatchInPage);
 
     // The scripted log itself: P1 turns UP, then LEFT; P2 turns DOWN; the round is fast-forwarded a total
     // of 2 simulated seconds (the ticket's scenario (a), verbatim). `startTick` is read first, before this
@@ -110,80 +124,93 @@ test.describe('KS-03-07 first playable', () => {
     );
   });
 
-  test('KS-03-07 scenario (c): a hidden tab freezes the timer; visible resumes it', async ({
+  test('KS-03-07 scenario (c): pausing freezes the timer; resuming carries it on', async ({
     page,
   }) => {
     await page.goto(DEFAULT_QUERY);
-    await page.keyboard.press('Enter');
-    // Not asserted against a fixed '1:30' here: the round clock runs in real wall-clock time from the
-    // moment PLAYING starts (`timeScale` is 1, `ARCHITECTURE §5`), so exactly what it reads the instant
-    // after `Enter` depends on how long page load and the keypress itself happened to take on this run.
-    // What this scenario tests is the freeze/resume behaviour below, not the starting value.
+    await page.evaluate(startMatchInPage);
+    // Not asserted against a fixed '1:30' here: the round clock runs in real wall-clock time from the moment
+    // PLAYING starts (`timeScale` is 1, `ARCHITECTURE §5`), so exactly what it reads an instant later depends
+    // on how long page load happened to take on this run. What this scenario tests is the freeze/resume
+    // behaviour below, not the starting value.
     await expect(page.locator('.hud-timer')).toBeVisible();
 
-    // Playwright cannot literally background a tab, so this dispatches the same `visibilitychange` event
-    // `loop.js` listens for, first overriding `document.hidden` (a getter, since the real property is
-    // read-only) to report `true` the way an actually-backgrounded tab would.
+    // KS-05-03 replaces Sprint 03's trick here. This test used to fake a `visibilitychange` with
+    // `document.hidden` overridden to `true`, which leaned on `loop.js`'s hidden-tab behaviour to stop the
+    // clock. The game now has a real PAUSE state that means exactly this, and `__kobi.pause()` is the
+    // supported way to reach it — so the scenario tests the thing the design actually promises
+    // (`DESIGN-DECISIONS §2.8`) rather than a side effect of the frame scheduler.
     await page.evaluate(() => {
-      const doc = /** @type {any} */ (globalThis).document;
-      Object.defineProperty(doc, 'hidden', { configurable: true, get: () => true });
-      doc.dispatchEvent(new (/** @type {any} */ (globalThis).Event)('visibilitychange'));
+      /** @type {any} */ (globalThis).__kobi.pause();
     });
+    expect(await page.evaluate(() => /** @type {any} */ (globalThis).__kobi.getState())).toBe(
+      'PAUSE',
+    );
 
     const frozenText = await page.locator('.hud-timer').textContent();
 
     // There is no *thing* to poll for here — the whole point is that nothing happens — so this is the one
     // place in the suite that waits on the wall clock rather than on `__kobi.fastForward` or a locator
-    // assertion. `loop.js`'s own guarantee is that a hidden tab stops requesting frames outright, so nothing
-    // real-time-driven can advance the sim during this wait; a flake here would mean that guarantee broke.
+    // assertion. A paused game runs at `timeScale` 0, so nothing real-time-driven can advance the sim during
+    // this wait; a flake here would mean that guarantee broke.
     await page.waitForTimeout(400);
     await expect(page.locator('.hud-timer')).toHaveText(/** @type {string} */ (frozenText));
 
     await page.evaluate(() => {
-      const doc = /** @type {any} */ (globalThis).document;
-      Object.defineProperty(doc, 'hidden', { configurable: true, get: () => false });
-      doc.dispatchEvent(new (/** @type {any} */ (globalThis).Event)('visibilitychange'));
+      /** @type {any} */ (globalThis).__kobi.resume();
     });
 
     // Now the *thing* to wait for is real: the timer text changing away from its frozen value. Playwright's
     // own polling drives this, not a fixed sleep — it resolves the moment real time has moved the timer on,
-    // whichever frame that turns out to be.
+    // which is one READY? beat (`DESIGN-DECISIONS §2.8`) plus a frame or two after the resume.
     await expect(page.locator('.hud-timer')).not.toHaveText(/** @type {string} */ (frozenText));
   });
 
-  test('KS-03-07 scenario (d): a directed wall crash ends the round, and Enter starts a fresh one', async ({
+  test('KS-03-07 scenario (d): a directed wall crash ends the round, and the next one counts in', async ({
     page,
   }) => {
     await page.goto(DEFAULT_QUERY);
-    await page.keyboard.press('Enter');
+    await page.evaluate(startMatchInPage);
 
     // P1 spawns at (5, 12) heading RIGHT (`DESIGN-DECISIONS §2.3`). Turning UP is legal (not a reversal) and,
     // left uncorrected, drives the head straight into the top wall: 12 steps from y=12 reaches y=24, one past
     // the last legal cell (`grid.height` is 24). At 6 cells/s that is exactly 2.0 simulated seconds — well
     // before P2, who gets no input at all and does not reach the opposite wall until ~3.167 s (the golden
     // no-input log's own DRAW timing, `tests/unit/core/round.test.js`). P1 dies alone, so P2 wins.
-    await page.evaluate(() => {
+    const ended = await page.evaluate(() => {
       const kobi = /** @type {any} */ (globalThis).__kobi;
       kobi.pressKey(1, 'UP');
+      // Three seconds carries the round past the crash at 2.0 s and past the 0.6 s crash slow-mo beat that
+      // follows it (`DESIGN-DECISIONS §2.5`), which is what stands between the crash and the scoreboard.
       kobi.fastForward(3);
+      return { state: kobi.getState(), match: kobi.getMatch() };
     });
 
-    await expect(page.locator('.overlay')).toHaveText('P2 WINS — PRESS ENTER');
-    await expect(page.locator('.overlay')).toBeVisible();
+    // KS-05-03: the outcome is read from the machine and the match tally, not from overlay text. The
+    // scoreboard's wording is KS-05-04's to write and KS-05-05's to assert; what this scenario has always
+    // been about is that the round ends, and ends the right way.
+    expect(ended.state).toBe('ROUND_OVER');
+    expect(ended.match.wins).toEqual({ 1: 0, 2: 1 });
+    expect(ended.match.roundsPlayed).toBe(1);
 
-    await page.keyboard.press('Enter');
+    // The scoreboard stands for `scoreboardSeconds` and then the next round counts itself in (`§2.6`).
+    const fresh = await page.evaluate((countdown) => {
+      const kobi = /** @type {any} */ (globalThis).__kobi;
+      kobi.fastForward(3);
+      const afterScoreboard = kobi.getState();
+      kobi.fastForward(countdown);
+      return { afterScoreboard, state: kobi.getState(), snapshot: kobi.getSnapshot() };
+    }, COUNTDOWN_SECONDS);
 
-    await expect(page.locator('.overlay')).toBeHidden();
-    // "Fresh round" is checked through the sim's own state rather than the HUD's `m:ss` text: the clock
-    // runs in real wall-clock time from the instant PLAYING starts (see the note above), so the *displayed*
-    // text a moment later is not reliably '1:30' — but the fresh `RoundSimulation` itself starts every
-    // snake back at `startingSnakeLength` and `tick` at (near) zero, which is what "a new round" actually
-    // means and what does not depend on how fast this test happened to run.
-    const freshSnapshot = await page.evaluate(
-      () => /** @type {any} */ (globalThis).__kobi.getSnapshot(),
-    );
-    expect(freshSnapshot.phase).toBe(PHASES.PLAYING);
-    for (const snake of freshSnapshot.snakes) {
+    expect(fresh.afterScoreboard).toBe('COUNTDOWN');
+    expect(fresh.state).toBe('PLAYING');
+    // "Fresh round" is checked through the sim's own state rather than the HUD's `m:ss` text: the clock runs
+    // in real wall-clock time from the instant PLAYING starts (see the note above), so the *displayed* text a
+    // moment later is not reliably '1:30' — but the fresh `RoundSimulation` starts every snake back at
+    // `startingSnakeLength`, which is what "a new round" actually means and does not depend on how fast this
+    // test happened to run.
+    expect(fresh.snapshot.phase).toBe(PHASES.PLAYING);
+    for (const snake of fresh.snapshot.snakes) {
       expect(snake.length).toBe(SETTINGS.startingSnakeLength);
     }
   });
@@ -196,12 +223,18 @@ test.describe('KS-03-07 first playable', () => {
     // `tests/unit/core/round.test.js`), which is a DRAW. Proving this in the browser too pins the golden
     // log's timing end-to-end, not just inside the headless engine.
     await page.goto(DEFAULT_QUERY);
-    await page.keyboard.press('Enter');
+    await page.evaluate(startMatchInPage);
 
-    await page.evaluate(() => {
-      /** @type {any} */ (globalThis).__kobi.fastForward(4);
+    const ended = await page.evaluate(() => {
+      const kobi = /** @type {any} */ (globalThis).__kobi;
+      kobi.fastForward(4);
+      return { state: kobi.getState(), match: kobi.getMatch() };
     });
 
-    await expect(page.locator('.overlay')).toHaveText('DRAW — PRESS ENTER');
+    expect(ended.state).toBe('ROUND_OVER');
+    // A draw is played but never scored, and the match replays the round (`DESIGN-DECISIONS §2.5` row 7).
+    expect(ended.match.roundsPlayed).toBe(1);
+    expect(ended.match.wins).toEqual({ 1: 0, 2: 0 });
+    expect(ended.match.isOver).toBe(false);
   });
 });

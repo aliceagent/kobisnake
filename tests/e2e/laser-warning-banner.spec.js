@@ -1,6 +1,7 @@
 // @ts-check
 import { expect, test } from '@playwright/test';
 import { DEFAULT_QUERY } from '../../playwright.config.js';
+import { startMatchInPage } from './helpers.js';
 
 /**
  * KS-04-03: the "LASERS CLOSING!" banner and red-timer presentation, in a real browser.
@@ -39,11 +40,12 @@ test.describe('KS-04-03 laser warning banner', () => {
     await expect(timer).not.toHaveClass(/hud-timer--warning/);
   });
 
-  test('a fresh round after Enter still starts with the banner hidden and the timer unwarned', async ({
+  test('a fresh round still starts with the banner hidden and the timer unwarned', async ({
     page,
   }) => {
     await page.goto(DEFAULT_QUERY);
-    await page.keyboard.press('Enter');
+    // KS-05-03: main menu -> match setup -> countdown -> PLAYING, in one synchronous script.
+    await page.evaluate(startMatchInPage);
 
     const banner = page.locator('.hud-laser-banner');
     await expect(banner).toBeHidden();
@@ -64,9 +66,12 @@ test.describe('KS-04-03 laser warning banner', () => {
     const result = await page.evaluate(() => {
       const global = /** @type {any} */ (globalThis);
       const kobi = global.__kobi;
-      global.window.dispatchEvent(
-        new global.KeyboardEvent('keydown', { code: 'Enter', bubbles: true, cancelable: true }),
-      );
+      // KS-05-03: the real flow, in this same synchronous script — main menu, match setup, and the four
+      // countdown beats of `DESIGN-DECISIONS §2.4`, after which the round is at tick 0 exactly. (Inlined
+      // rather than calling `startMatchInPage`: `page.evaluate` ships this function's *source*, so it cannot
+      // reach a helper in the spec's own module scope.)
+      kobi.startMatch();
+      kobi.fastForward(3.21);
 
       const settings = kobi.sim.settings;
       const stepChecks = 3; // check every N grid steps rather than every single one, for speed

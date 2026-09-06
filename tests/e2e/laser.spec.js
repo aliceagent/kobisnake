@@ -37,13 +37,12 @@ test.describe('KS-04-02 laser rendering', () => {
 
     const result = await page.evaluate(() => {
       const kobi = /** @type {any} */ (globalThis).__kobi;
-      const win = /** @type {any} */ (globalThis);
 
-      // Starts the round the same way a real Enter keypress does (`main.js`'s own input path), synchronously
-      // — see the module doc comment on why every scripted moment in this suite stays inside one `evaluate`.
-      win.dispatchEvent(
-        new win.KeyboardEvent('keydown', { code: 'Enter', bubbles: true, cancelable: true }),
-      );
+      // KS-05-03: starts the round through the real flow — main menu, match setup, and the four countdown
+      // beats of `DESIGN-DECISIONS §2.4` — synchronously, so it leaves the round at tick 0 exactly. See the
+      // module doc comment on why every scripted moment in this suite stays inside one `evaluate`.
+      kobi.startMatch();
+      kobi.fastForward(3.21);
       kobi.fastForward(0); // one render at tick 0, so `getDrawCalls` reflects something real before any input.
 
       const parkedDrawCalls = kobi.getDrawCalls();
