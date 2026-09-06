@@ -103,8 +103,30 @@ const EYE_HEIGHT_SEGMENTS = 8;
  * urgent than an idle pedestal.
  */
 const SPEED_PULSE_PERIOD_SECONDS = 0.6;
-/** Peak emissive intensity of the SPEED pulse; the trough is 0, so the pulse fades to the snake's own colour
- * rather than to black. */
+/**
+ * Peak emissive intensity of the SPEED pulse; the trough is 0, so the pulse fades to the snake's own colour
+ * rather than to black. Found empirically against the real renderer, not calculated: 1.4 rendered visually
+ * indistinguishable from no tint at all, and 1.8+ looked identical to a fully saturated flat yellow, with no
+ * usable middle ground found in between — the transition behaves like a threshold, not a ramp. `2` is safely
+ * past that threshold, chosen so the tint is unmistakably present rather than to hit a particular look.
+ *
+ * That choice has a real cost worth a design ruling rather than a silent pick, in two parts:
+ *
+ * 1. At the pulse's peak, a boosted **red** snake reads as **fully yellow** — and yellow is itself one of the
+ *    eight player colours (`DESIGN-DECISIONS §2.7`), not a shade invented for this effect. For that instant
+ *    the two snakes are not distinguishable by colour at all, and a boosted red snake can momentarily look
+ *    like a yellow player's snake — the opposite of what a colour-coded two-player game wants from its own
+ *    player identity.
+ * 2. `DESIGN-DECISIONS §3`'s own wording is "yellow emissive pulses **along the body** + a short motion
+ *    streak behind the head" — travelling highlights layered on top of the snake's own colour, not a whole-
+ *    snake recolour. A full-body saturated pulse is this ticket's grey-box simplification of that (no
+ *    per-segment travelling wave, no streak — both are Sprint 10's job), and the identity-colour loss in
+ *    point 1 is a property of *this simplification*, not necessarily of the real effect it stands in for.
+ *
+ * Left at `2` pending that ruling — a lower value is not obviously better once "invisible" is the alternative,
+ * and the real fix (a travelling highlight rather than a full recolour) is Sprint 10's, not a constant tweak
+ * here.
+ */
 const SPEED_PULSE_PEAK_INTENSITY = 2;
 /** The SLOW tint's flat (unanimated) emissive intensity — a tint, not a pulse (the ticket's own wording). */
 const SLOW_TINT_INTENSITY = 0.55;

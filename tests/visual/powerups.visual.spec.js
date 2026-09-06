@@ -25,6 +25,11 @@ import { expect, test } from '@playwright/test';
  * camera's shake/zoom, the same way it already does for every other baseline in this suite — a screenshot of
  * a bobbing, spinning mesh is a screenshot of whatever phase it happened to be paused at, never twice the
  * same.
+ *
+ * A second test below adds a second baseline, `powerups-slow-pedestal.png` — a design-review request after
+ * this file's first baseline shipped with its SPEED pedestal effectively invisible; see that test's own doc
+ * comment for why a second frame, not a second pedestal in this one, is how "both types, comparable" has to
+ * be shown.
  */
 
 const QUERY = '?test=1&seed=97&reducedFx=1';
@@ -177,5 +182,109 @@ test.describe('KS-06-02 visual', () => {
     expect(result.tagCount).toBeGreaterThan(0);
 
     await expect(page).toHaveScreenshot('powerups-pedestal-and-tag.png');
+  });
+
+  /**
+   * A second baseline, added on design-lead review of the first: the SPEED pedestal in
+   * `powerups-pedestal-and-tag.png` above was found to be effectively invisible (`pickupView.js`'s
+   * `ICON_FLOAT_GAP`/`ICON_SIZE` comments have the full story — the icon sat inside the pedestal's own box
+   * geometry, occluded by it from this camera's near-overhead pitch). Row 20's whole point ("different
+   * silhouette, icon, colour and pedestal... never rely on colour alone") is exactly what a design review
+   * needs to be able to see, so it needs both types legible and, ideally, comparable side by side.
+   *
+   * `core/powerups.js` guarantees at most one pickup on the board, ever (its own doc comment), so "both
+   * pedestal types in one frame" can only mean two frames, not one faked snapshot — this is the second one.
+   * Seed 97's first cycle is always a `SLOW` (the same fact `powerups.spec.js` and the baseline above both
+   * document and rely on), so stopping the instant it spawns — before either snake has moved far enough to
+   * touch it, let alone collect it — gives a clean, untouched SLOW pedestal: no tag, no effect, nothing else
+   * in frame competing for attention. Reviewed together, this and `powerups-pedestal-and-tag.png` show one of
+   * each pedestal type, each on its own, at the same camera scale.
+   */
+  test('KS-06-02: SLOW pedestal baseline, for comparison against the SPEED pedestal above', async ({
+    page,
+  }) => {
+    await page.goto(QUERY);
+
+    const result = await page.evaluate(() => {
+      const kobi = /** @type {any} */ (globalThis).__kobi;
+      const doc = /** @type {any} */ (globalThis).document;
+      const DIRS = {
+        UP: { dx: 0, dy: 1 },
+        DOWN: { dx: 0, dy: -1 },
+        LEFT: { dx: -1, dy: 0 },
+        RIGHT: { dx: 1, dy: 0 },
+      };
+
+      /** Keeps `player` inside `box` (and the grid), turning toward its centre before it would leave either. */
+      function boxWander(player, box) {
+        const snake = kobi.getSnapshot().snakes[player - 1];
+        if (!snake.alive) return;
+        const head = snake.segments[0];
+        const dir = snake.direction;
+        const nx = head.x + dir.dx;
+        const ny = head.y + dir.dy;
+        const wouldLeave =
+          nx < box.xMin ||
+          nx > box.xMax ||
+          ny < box.yMin ||
+          ny > box.yMax ||
+          nx < 0 ||
+          nx > GRID.width - 1 ||
+          ny < 0 ||
+          ny > GRID.height - 1;
+        if (!wouldLeave) return;
+        const candidates = dir.dx !== 0 ? ['UP', 'DOWN'] : ['LEFT', 'RIGHT'];
+        const cx = (box.xMin + box.xMax) / 2;
+        const cy = (box.yMin + box.yMax) / 2;
+        candidates.sort((a, b) => {
+          const da = DIRS[a];
+          const db = DIRS[b];
+          const sa = (cx - head.x) * da.dx + (cy - head.y) * da.dy;
+          const sb = (cx - head.x) * db.dx + (cy - head.y) * db.dy;
+          return sb - sa;
+        });
+        kobi.pressKey(player, candidates[0]);
+      }
+
+      kobi.setSeed(97);
+      kobi.startMatch();
+      for (let i = 0; i < 60 && kobi.getState() === 'COUNTDOWN'; i += 1) kobi.advance(0.1);
+      const GRID = kobi.sim.settings.grid;
+
+      const P1_BOX = { xMin: 2, xMax: 10, yMin: 2, yMax: 10 };
+      const P2_BOX = { xMin: 14, xMax: 21, yMin: 14, yMax: 21 };
+
+      for (let guard = 0; guard < 60000; guard += 1) {
+        const snapshot = kobi.getSnapshot();
+        if (!snapshot.snakes.every((s) => s.alive)) throw new Error('a snake died');
+        // Neither snake walks toward the pickup — this baseline wants it caught untouched, the instant it
+        // spawns, not partway approached.
+        boxWander(1, P1_BOX);
+        boxWander(2, P2_BOX);
+        if (snapshot.powerUps.pickups.length > 0) break;
+        kobi.advance(2 / kobi.sim.settings.simHz);
+      }
+
+      kobi.pause();
+      kobi.fastForward(0);
+
+      const pausePanel = doc.querySelector('[data-screen="PAUSE"]');
+      if (pausePanel !== null) pausePanel.hidden = true;
+
+      const snapshot = kobi.getSnapshot();
+      return {
+        pickupType: snapshot.powerUps.pickups[0]?.type ?? null,
+        pickupCount: snapshot.powerUps.pickups.length,
+        anyEffect: snapshot.snakes.some((s) => s.effects.length > 0),
+      };
+    });
+
+    // Seed 97's first cycle is always SLOW (see the module doc comment) — asserted rather than assumed, so a
+    // seed or spawn-order change fails loudly here instead of quietly recording the wrong pedestal type.
+    expect(result.pickupCount).toBe(1);
+    expect(result.pickupType).toBe('SLOW');
+    expect(result.anyEffect).toBe(false);
+
+    await expect(page).toHaveScreenshot('powerups-slow-pedestal.png');
   });
 });

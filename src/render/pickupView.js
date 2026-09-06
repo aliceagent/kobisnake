@@ -48,16 +48,39 @@ const PEDESTAL_SIZE = 0.8;
  * this is a small buffer rather than a hard "1" — the same reasoning `pickupView`'s apples already use. */
 const MAX_POWERUPS_PER_TYPE = 2;
 
-/** The icon plane: a square a little under a cell wide, so it reads clearly above the pedestal. */
-const ICON_SIZE = 0.6;
+/**
+ * The icon plane's side length — bigger than `PEDESTAL_SIZE` (0.8) itself, not "a little under a cell" (this
+ * constant's old value, 0.6, was): at the gameplay camera's actual distance, a 0.6-unit plane's fine detail —
+ * the snowflake's spokes especially — minifies down to a soft, illegible blur, a second readability bug this
+ * fix's own screenshot review found sitting behind the occlusion one (see `ICON_FLOAT_GAP`'s comment). Once
+ * the icon was no longer hidden inside the pedestal, it was still too small to read as a bolt or a snowflake
+ * rather than a pale smudge; this is the fix for that half of it.
+ */
+const ICON_SIZE = 0.9;
 /**
  * Tilt off horizontal, matching the apple leaf's own reasoning: the gameplay camera looks down from 78°
  * below horizontal (`DESIGN-DECISIONS §1 row 24`), close enough to overhead that a mostly flat icon — tilted
  * only a little toward the camera — reads far better than one standing upright edge-on to it.
  */
 const ICON_TILT_DEGREES = 32;
-/** Height above the pedestal's own top the icon idles at, before the bob is added. */
-const ICON_REST_HEIGHT = PEDESTAL_SIZE * 0.85;
+/**
+ * How far clear of the pedestal's own top face the icon floats, before the bob is added — the gap the
+ * "floating" in "a floating glowing yellow lightning bolt" (`docs/reference/README.md` note 5) is asking for.
+ * `01-master-visual.png`'s pedestal is the calibration: its ring-and-bolt hovers a good pedestal-height clear
+ * of the small pillar underneath, not resting on or inside it.
+ *
+ * This used to be folded into one constant — `ICON_REST_HEIGHT = PEDESTAL_SIZE * 0.85` — used directly as the
+ * icon's absolute world height. Because `0.85 < 1`, that put the icon's centre *below* `PEDESTAL_SIZE` (the
+ * pedestal's own top face, at y = 0.8), not above it: the plane sat inside the box's own volume. At this
+ * camera's 78°-below-horizontal pitch (`DESIGN-DECISIONS §1 row 24`) — close enough to overhead that a point
+ * directly above another almost fully occludes it — the pedestal's flat top face then hid nearly all of the
+ * icon standing inside it, leaving only the sliver a screenshot review correctly flagged as unreadable. This
+ * is now two constants precisely so "above the pedestal's own top" is arithmetic (`PEDESTAL_SIZE + gap`)
+ * rather than a fraction of the pedestal's own height that quietly reads as "above" while computing "inside".
+ */
+const ICON_FLOAT_GAP = PEDESTAL_SIZE * 0.75;
+/** The icon's absolute idle height (world Y), before the bob is added: clear of the pedestal's own top face. */
+const ICON_REST_HEIGHT = PEDESTAL_SIZE + ICON_FLOAT_GAP;
 
 /** Idle bob: ±0.1 units over 1.2 s (`DESIGN-DECISIONS §3` "Power-up sheet"). */
 const BOB_AMPLITUDE = 0.1;
@@ -178,7 +201,13 @@ function createSnowflakeTexture(snowflakeColor, ringColor) {
   ctx.stroke();
 
   ctx.strokeStyle = snowflakeColor;
-  ctx.lineWidth = ICON_CANVAS_SIZE * 0.07;
+  // Thicker than the SPEED bolt needs to be, and thicker than this line's own first pass (0.07): a filled
+  // bolt shape survives being minified onto a ~20 px pedestal, but a *white* glyph on the "ice-white" pedestal
+  // row 20 also asks for (`materials.js`'s own note on `COLORS.powerUpSlowPedestal`) has far less colour
+  // contrast to lean on than SPEED's yellow-on-blue does, so its silhouette has to do more of the work reading
+  // as "snowflake" rather than a pale blur — hence the heavier stroke here, not a colour change (row 20's
+  // white-on-ice-white is the locked spec, not this ticket's choice to revisit).
+  ctx.lineWidth = ICON_CANVAS_SIZE * 0.12;
   ctx.lineCap = 'round';
   // Six spokes, each with a short pair of twigs partway along it — a simple, unmistakably "snowflake"
   // silhouette at this size (`DESIGN-DECISIONS §1 row 20`'s "never rely on colour alone").

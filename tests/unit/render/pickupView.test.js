@@ -162,8 +162,17 @@ describe('PickupView — KS-06-02 power-up pedestals', () => {
     expect(pedestal.x).toBeCloseTo(expected.x, 5);
     expect(pedestal.z).toBeCloseTo(expected.z, 5);
     expect(pedestal.y).toBeGreaterThan(0);
-    // The icon floats above the pedestal, not through or under it.
-    expect(icon.y).toBeGreaterThan(pedestal.y);
+
+    // KS-06-02 design-review fix: `icon.y > pedestal.y` alone (centre above centre) is not enough — that was
+    // already true of the bug this replaces (`ICON_REST_HEIGHT = PEDESTAL_SIZE * 0.85`, which is *below* the
+    // pedestal's own top face at `PEDESTAL_SIZE`, not above it), and it rendered as a near-invisible icon
+    // sitting inside the box's own geometry at this camera's near-overhead pitch. The real invariant a design
+    // review needs is that the icon's *lower* edge clears the pedestal's *top face*, not just its centre —
+    // read straight from the two `BoxGeometry`/`PlaneGeometry` instances this view actually built, so this
+    // assertion tracks `PEDESTAL_SIZE`/`ICON_SIZE`/`ICON_FLOAT_GAP` even if their values change later.
+    const pedestalTop = pedestal.y + view.pedestalGeometry.parameters.height / 2;
+    const iconBottom = icon.y - view.iconGeometry.parameters.height / 2;
+    expect(iconBottom).toBeGreaterThan(pedestalTop);
   });
 
   it('draws a SLOW pickup on the SLOW meshes only, in its own colours', () => {
