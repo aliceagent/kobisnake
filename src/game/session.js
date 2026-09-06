@@ -47,6 +47,11 @@ import { createLoop } from './loop.js';
 
 /** @typedef {import('./input.js').Direction} Direction */
 /** @typedef {import('./input.js').MenuAction} MenuAction */
+/**
+ * The subset of {@link MenuAction} a *screen* can be handed — everything except `PAUSE_TOGGLE`, which is
+ * Space and is dealt with in {@link handleMenuAction} before any screen sees it (`DESIGN-DECISIONS §2.8`).
+ * @typedef {import('../ui/focus.js').MenuAction} ScreenAction
+ */
 /** @typedef {import('./loop.js').RequestFrame} RequestFrame */
 /** @typedef {import('./loop.js').VisibilitySource} VisibilitySource */
 /** @typedef {import('./gameStateMachine.js').GameState} GameState */
@@ -103,9 +108,13 @@ import { createLoop } from './loop.js';
  * @typedef {object} SessionUi
  * @property {SessionHud} hud
  * @property {(state: GameState, props?: object) => void} show
- * @property {(action: MenuAction) => void} handleMenuAction - routes one key action into the focus model of
+ * @property {(action: ScreenAction) => void} handleMenuAction - routes one key action into the focus model of
  *   whichever screen is up. The screens deliberately do not listen for keys themselves: `input.js` owns the
  *   keyboard for the whole app, and a second listener would fire Enter twice.
+ *
+ *   A {@link ScreenAction}, not the wider {@link MenuAction} `input.js` emits: `PAUSE_TOGGLE` is Space, and
+ *   Space never reaches a screen ({@link handleMenuAction} translates or drops it first), so the narrower
+ *   type is the true one and the checker enforces it.
  */
 
 /**
@@ -754,7 +763,8 @@ export function createSession({
    * A menu key. Most states hand it straight to the active screen's focus model; the three that do not are
    * the three with no focusable screen of their own:
    *
-   * - **PLAYING / LASER_WARNING** — Esc opens the pause screen (`DESIGN-DECISIONS §2.8`), and nothing else.
+   * - **PLAYING / LASER_WARNING** — Esc *or Space* opens the pause screen (`DESIGN-DECISIONS §2.8`), and
+   *   nothing else.
    * - **COUNTDOWN** — nothing at all. Mashing Enter through the countdown is a thing players do and a thing
    *   this sprint's QA plan explicitly tries; it must not skip the countdown or start anything twice.
    * - **ROUND_OVER** — Enter skips the scoreboard, but only once it has been up for
@@ -764,20 +774,39 @@ export function createSession({
    * @param {MenuAction} action
    */
   function handleMenuAction(action) {
-    switch (machine.getState()) {
+    const state = machine.getState();
+
+    // `Space` (`DESIGN-DECISIONS §2.8`, issue #103): "behaves exactly like Esc for pausing... Space has no
+    // other meaning anywhere". So it becomes the `BACK` Esc would have produced, but only in the three
+    // states where Esc's `BACK` means pause or resume — PLAYING and LASER_WARNING open the pause screen,
+    // PAUSE resumes through the same READY? beat — and is dropped everywhere else, which is what keeps it
+    // from backing out of the main menu or the setup screen. Translating here rather than in `input.js`
+    // keeps "which state is this" in the one module that already knows.
+    /** @type {ScreenAction} */
+    let menuAction;
+    if (action === 'PAUSE_TOGGLE') {
+      const pauses =
+        state === STATES.PLAYING || state === STATES.LASER_WARNING || state === STATES.PAUSE;
+      if (!pauses) return;
+      menuAction = 'BACK';
+    } else {
+      menuAction = action;
+    }
+
+    switch (state) {
       case STATES.PLAYING:
       case STATES.LASER_WARNING:
-        if (action === 'BACK' && readyRemaining === 0) machine.dispatch(GAME_EVENTS.PAUSE);
+        if (menuAction === 'BACK' && readyRemaining === 0) machine.dispatch(GAME_EVENTS.PAUSE);
         return;
       case STATES.COUNTDOWN:
         return;
       case STATES.ROUND_OVER:
-        if (action === 'CONFIRM' && scoreboardElapsed >= SCOREBOARD_SKIP_AFTER_SECONDS) {
+        if (menuAction === 'CONFIRM' && scoreboardElapsed >= SCOREBOARD_SKIP_AFTER_SECONDS) {
           leaveScoreboard();
         }
         return;
       default:
-        ui.handleMenuAction(action);
+        ui.handleMenuAction(menuAction);
     }
   }
 

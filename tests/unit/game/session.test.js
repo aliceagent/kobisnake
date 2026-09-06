@@ -602,6 +602,61 @@ describe('KS-05-03 AC3: pause', () => {
     expect(ui.show).toHaveBeenLastCalledWith(STATES.PLAYING);
   });
 
+  it('KS-07-00 AC3: Space opens PAUSE and reaches the pause screen as BACK, exactly like Esc (#103)', () => {
+    const settings = withOverrides({ snakeSpeed: 0, godMode: true });
+    const { session, ui, target } = buildSession({ settings });
+    playTo(session);
+    runFrames(session, 5, 50);
+
+    fireKeydown(target, 'Space');
+    expect(session.getState()).toBe(STATES.PAUSE);
+
+    // On PAUSE, Space is translated to the `BACK` Esc produces and falls through to the active screen's
+    // focus model — the identical assertion the Esc test above makes, which is what "exactly like Esc"
+    // has to mean (`DESIGN-DECISIONS §2.8`).
+    fireKeydown(target, 'Space');
+    expect(ui.handleMenuAction).toHaveBeenLastCalledWith('BACK');
+  });
+
+  it('KS-07-00 AC3: Space on a menu screen reaches nothing at all (#103)', () => {
+    // `§2.8`: "Space on a menu does nothing". The session drops it before any screen sees it, so the fake
+    // `ui` must not be called — not with `BACK` (which would leave the setup screen) and not with
+    // `CONFIRM` (which on the main menu would start a match).
+    const { session, ui, target } = buildSession({});
+    expect(session.getState()).toBe(STATES.MAIN_MENU);
+
+    ui.handleMenuAction.mockClear();
+    fireKeydown(target, 'Space');
+    fireKeydown(target, 'Space');
+
+    expect(ui.handleMenuAction).not.toHaveBeenCalled();
+    expect(session.getState()).toBe(STATES.MAIN_MENU);
+  });
+
+  it('KS-07-00 AC3: Space is ignored through the READY? beat, exactly as Esc is (#103)', () => {
+    // `handleMenuAction`'s `readyRemaining === 0` guard is shared by both keys; a Space that skipped it
+    // would re-open the pause screen during the beat the player just resumed through.
+    const settings = withOverrides({ snakeSpeed: 0, godMode: true });
+    const { session, ui, target } = buildSession({ settings });
+    playTo(session);
+    runFrames(session, 5, 50);
+
+    fireKeydown(target, 'Space');
+    expect(session.getState()).toBe(STATES.PAUSE);
+    lastShow(ui, STATES.PAUSE).onBack();
+    expect(session.getState()).toBe(STATES.PLAYING);
+
+    // Mid-beat: still frozen, still showing READY?.
+    runFrames(session, 0.5, 5);
+    fireKeydown(target, 'Space');
+    expect(session.getState()).toBe(STATES.PLAYING);
+
+    // Once the beat is over it works again.
+    runFrames(session, 0.6, 6);
+    fireKeydown(target, 'Space');
+    expect(session.getState()).toBe(STATES.PAUSE);
+  });
+
   it('KS-06-00 AC1: Esc during the crash slow-mo beat resumes back into the same beat', () => {
     const { session, ui } = buildSession({});
     playTo(session);

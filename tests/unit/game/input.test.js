@@ -269,6 +269,62 @@ describe('KS-03-02 keyboard input', () => {
     });
   });
 
+  describe('KS-07-00 AC3 Space is the pause key (DESIGN-DECISIONS §2.8, issue #103)', () => {
+    it('KS-07-00 AC3: Space fires onMenu(PAUSE_TOGGLE) and never a direction', () => {
+      const target = new NodeEventTarget();
+      const onMenu = vi.fn();
+      const onDirection = vi.fn();
+      createInput({ onMenu, onDirection, mode: 'both', target });
+
+      fireKeydown(target, 'Space');
+
+      expect(onMenu).toHaveBeenCalledWith('PAUSE_TOGGLE');
+      expect(onMenu).toHaveBeenCalledTimes(1);
+      expect(onDirection).not.toHaveBeenCalled();
+    });
+
+    it('KS-07-00 AC3: Space is never CONFIRM and never BACK — Enter and Escape keep those', () => {
+      // `§2.8`: "Space has no other meaning anywhere (Enter remains select on menus)". A Space that
+      // arrived as `CONFIRM` would activate whatever menu item happened to be focused; one that arrived as
+      // `BACK` would back out of the main menu. Neither is allowed, so neither string may ever appear here.
+      const target = new NodeEventTarget();
+      const onMenu = vi.fn();
+      createInput({ onMenu, mode: 'both', target });
+
+      fireKeydown(target, 'Space');
+
+      expect(onMenu).not.toHaveBeenCalledWith('CONFIRM');
+      expect(onMenu).not.toHaveBeenCalledWith('BACK');
+    });
+
+    it("KS-07-00 AC3: Space fires nothing in mode 'game', like every other menu key", () => {
+      const target = new NodeEventTarget();
+      const onMenu = vi.fn();
+      createInput({ onMenu, mode: 'game', target });
+
+      fireKeydown(target, 'Space');
+
+      expect(onMenu).not.toHaveBeenCalled();
+    });
+
+    it('KS-07-00 AC3: a held Space does not repeat-toggle, but still never scrolls the page', () => {
+      // The repeat guard is what keeps a held Space from pausing, resuming, pausing... at the browser's
+      // auto-repeat rate; `preventDefault` has to keep firing on every repeat anyway, or the page scrolls
+      // (KS-03-02 AC3, which already tested the second half for the arrow keys).
+      const target = new NodeEventTarget();
+      const onMenu = vi.fn();
+      createInput({ onMenu, mode: 'both', target });
+
+      fireKeydown(target, 'Space');
+      const firstRepeat = fireKeydown(target, 'Space', { repeat: true });
+      const secondRepeat = fireKeydown(target, 'Space', { repeat: true });
+
+      expect(onMenu).toHaveBeenCalledTimes(1);
+      expect(firstRepeat.defaultPrevented).toBe(true);
+      expect(secondRepeat.defaultPrevented).toBe(true);
+    });
+  });
+
   describe('soloSteering', () => {
     it('KS-03-02: soloSteering routes both WASD and arrow keys to player 1', () => {
       const target = new NodeEventTarget();
