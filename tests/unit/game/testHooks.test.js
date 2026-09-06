@@ -45,6 +45,7 @@ function createFakeSession() {
 function createFakeRenderer(position = { x: 1, y: 2, z: 3 }) {
   return {
     getHeadWorldPosition: vi.fn(() => ({ x: 0, y: 0, z: 0, ...position })),
+    getDrawCalls: vi.fn(() => 0),
   };
 }
 
@@ -324,6 +325,17 @@ describe('KS-03-06 createTestHooks', () => {
       const { hooks, renderer } = buildHooks();
       hooks.getHeadWorldPosition(2);
       expect(renderer.getHeadWorldPosition).toHaveBeenCalledWith(2);
+    });
+  });
+
+  describe('getDrawCalls', () => {
+    it("KS-04-02: getDrawCalls forwards three's own render-call counter", () => {
+      const renderer = createFakeRenderer();
+      renderer.getDrawCalls = vi.fn(() => 42);
+      const { hooks } = buildHooks({ renderer });
+
+      expect(hooks.getDrawCalls()).toBe(42);
+      expect(renderer.getDrawCalls).toHaveBeenCalled();
     });
   });
 });

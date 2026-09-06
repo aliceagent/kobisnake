@@ -44,6 +44,13 @@ export const COLORS = {
    * multiplies the two, so the material has to be white for the instance colour to come out unchanged.
    */
   instanceBase: 0xffffff,
+  /**
+   * The laser beams (`DESIGN-DECISIONS §3` "Materials bible": "Lasers: red `#FF2A2A` emissive intensity 4").
+   * KS-04-02 is grey-box geometry only — the additive floor glow the same line describes is Sprint 10 — but
+   * the colour itself is already locked, so the beams, their emitters' lenses and the closing-phase direction
+   * arrows all draw from this one name rather than inventing a shade.
+   */
+  laserRed: 0xff2a2a,
 };
 
 /** Plastic look shared by every brick in the game: matte, not metal (DESIGN-DECISIONS §3). */
@@ -111,6 +118,26 @@ export function createEyeMaterials() {
     white: createPlasticMaterial(COLORS.eyeWhite),
     pupil: createPlasticMaterial(COLORS.eyePupil),
   };
+}
+
+/**
+ * Emissive intensity of the laser material (`DESIGN-DECISIONS §3` "Materials bible"). Not a colour, so it
+ * lives beside {@link createLaserMaterial} rather than in {@link COLORS}, but it is quoted from the same line
+ * as `laserRed` for the same reason: KS-04-02 draws grey-box beams in the locked colour, not an invented one.
+ */
+const LASER_EMISSIVE_INTENSITY = 4;
+
+/**
+ * The laser beams, their emitter lenses and the closing-phase direction arrows (KS-04-02): the plastic look
+ * with an emissive push, so the beam still reads as lit red without depending on the scene's key light.
+ *
+ * @returns {THREE.MeshStandardMaterial}
+ */
+export function createLaserMaterial() {
+  const material = createPlasticMaterial(COLORS.laserRed);
+  material.emissive = new THREE.Color(COLORS.laserRed);
+  material.emissiveIntensity = LASER_EMISSIVE_INTENSITY;
+  return material;
 }
 
 /**

@@ -5,7 +5,7 @@ import { cellToWorld } from '../../../src/render/arenaView.js';
 import { COLORS } from '../../../src/render/materials.js';
 import { RoundSimulation } from '../../../src/core/round.js';
 import { DIRECTIONS } from '../../../src/core/grid.js';
-import { SETTINGS } from '../../../src/core/settings.js';
+import { SETTINGS, withOverrides } from '../../../src/core/settings.js';
 
 /**
  * The scene composition, without WebGL. `createGameplayScene` is deliberately split out of
@@ -136,9 +136,40 @@ describe('createGameplayScene', () => {
   it('adds every view to the scene, and dispose() empties it', () => {
     const composition = createGameplayScene({ reducedFx: true });
     const groups = composition.scene.children.filter((child) => child instanceof THREE.Group);
-    expect(groups).toHaveLength(4); // arena, two snakes, pickups
+    expect(groups).toHaveLength(5); // arena, two snakes, pickups, lasers (KS-04-02)
 
     composition.dispose();
     expect(composition.scene.children).toHaveLength(0);
+  });
+
+  it('KS-04-02: the laser view stays hidden and costs nothing before the lasers exist', () => {
+    const composition = createGameplayScene({ reducedFx: true });
+    const sim = new RoundSimulation({ seed: 1, players: [{ id: 'p1' }, { id: 'p2' }] });
+    composition.update(runTicks(sim, 60));
+
+    expect(composition.lasers.drawCalls).toBe(0);
+  });
+
+  it('KS-04-02: the floor darkens in step with the beams once the lasers are closing', () => {
+    const composition = createGameplayScene({ reducedFx: true });
+    const sim = new RoundSimulation({
+      seed: 1,
+      players: [{ id: 'p1' }, { id: 'p2' }],
+      settings: withOverrides({ godMode: true, snakeSpeed: 0 }),
+    });
+
+    // Straight to a moment well into CLOSING: `advance` runs on simulated time regardless of how many real
+    // ticks that takes, so one big call reaches the same state a real round would (`core/round.js`).
+    sim.advance(SETTINGS.roundDuration - 10); // 10 s remaining: inset 7 (`DESIGN-DECISIONS §2.4`)
+    const state = sim.getState();
+    expect(state.lasers.inset).toBe(7);
+
+    composition.update(state);
+
+    expect(composition.lasers.drawCalls).toBe(2); // beams + emitters; CLOSING has no arrows
+    // `?reducedFx=1` skips the glide outright, so the floor is already at the sim's own inset.
+    const color = new THREE.Color();
+    composition.arena.floor.getColorAt(0, color); // cell (0,0): inside the dead zone at inset 6
+    expect(color.getHex()).not.toBe(COLORS.floorGreen);
   });
 });

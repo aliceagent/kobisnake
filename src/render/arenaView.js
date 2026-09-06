@@ -42,6 +42,14 @@ export const WALL_THICKNESS = 1;
 const TILE_GAP = 0;
 
 /**
+ * How far a dead-zone floor tile's colour is multiplied down (KS-04-02 ticket spec: "Floor tiles in the
+ * dead zone darken (material colour × 0.35) as the beam passes"). Not a colour itself — a plain scalar — so
+ * it lives beside the code that uses it rather than in `materials.js`, which "never write a hex colour
+ * outside" governs.
+ */
+const DEAD_ZONE_DARKEN = 0.35;
+
+/**
  * The world position of the centre of a grid cell.
  *
  * @param {Cell} cell
@@ -87,6 +95,8 @@ export function yawFromGridDirection(dx, dy) {
  * @property {THREE.DirectionalLight} keyLight - the one shadow-casting light (`ARCHITECTURE §7`)
  * @property {THREE.InstancedMesh} floor
  * @property {THREE.InstancedMesh} walls
+ * @property {(insetContinuous: number) => void} setDeadZoneInset - KS-04-02: darken every floor tile the
+ *   lasers have swept past
  * @property {() => void} dispose
  */
 
@@ -212,11 +222,47 @@ export function createArenaView({
   fill.name = 'fill';
   group.add(fill);
 
+  // Scratch for `setDeadZoneInset`, reused every call so the laser phase — which calls it every frame while
+  // the beams are gliding — allocates nothing. `lastInset` skips the recompute entirely once the glide
+  // settles (in particular, the common case of `null` while parked never touches the floor at all).
+  const deadZoneColor = new THREE.Color();
+  /** @type {number | null} */
+  let lastDeadZoneInset = null;
+
   return {
     group,
     keyLight,
     floor,
     walls,
+    /**
+     * Darken every floor tile the lasers have swept past, and restore every tile they have not
+     * (`DESIGN-DECISIONS §2.4`'s dead zone: `x < inset`, `x >= width − inset`, and the same for `y`).
+     * `insetContinuous` is a float — `laserView.js`'s eased `visualInset` — so a tile flips the instant the
+     * glide's boundary line crosses it, which is what makes the darkening sweep with the beam rather than
+     * jump in one step (ticket spec: "darken … as the beam passes").
+     *
+     * @param {number} insetContinuous
+     */
+    setDeadZoneInset(insetContinuous) {
+      if (insetContinuous === lastDeadZoneInset) return;
+      lastDeadZoneInset = insetContinuous;
+
+      let i = 0;
+      for (let y = 0; y < grid.height; y += 1) {
+        for (let x = 0; x < grid.width; x += 1) {
+          const dead =
+            x < insetContinuous ||
+            x >= grid.width - insetContinuous ||
+            y < insetContinuous ||
+            y >= grid.height - insetContinuous;
+          deadZoneColor.setHex((x + y) % 2 === 0 ? COLORS.floorGreen : COLORS.floorGreenAlt);
+          if (dead) deadZoneColor.multiplyScalar(DEAD_ZONE_DARKEN);
+          floor.setColorAt(i, deadZoneColor);
+          i += 1;
+        }
+      }
+      if (floor.instanceColor) floor.instanceColor.needsUpdate = true;
+    },
     dispose() {
       floor.geometry.dispose();
       /** @type {THREE.Material} */ (floor.material).dispose();
