@@ -330,6 +330,92 @@ describe('createSession', () => {
     });
   });
 
+  describe('KS-03-06: advanceSimulation/renderFrame/setSeed (testHooks.js support)', () => {
+    it('advanceSimulation(dt) advances the sim and runs ROUND_OVER handling, without rendering', () => {
+      const settings = withOverrides({ roundDuration: 1, foodCount: 0 });
+      const { session, ui, renderer, target } = buildSession({ settings });
+
+      pressEnter(target);
+      renderer.render.mockClear();
+
+      // One big call, same as `RoundSimulation.advance`'s own contract (core/round.js): 1 s is enough to
+      // time the round out and trip the placeholder round flow's ROUND_OVER handling.
+      session.advanceSimulation(1);
+
+      expect(session.getSim()?.getState().timeRemaining).toBe(0);
+      expect(session.getPhase()).toBe('roundOver');
+      expect(ui.showOverlay).toHaveBeenLastCalledWith('DRAW — PRESS ENTER');
+      expect(renderer.render).not.toHaveBeenCalled();
+    });
+
+    it('advanceSimulation(dt) is a no-op-safe call before any round has started', () => {
+      const { session, renderer } = buildSession();
+      expect(() => session.advanceSimulation(1)).not.toThrow();
+      expect(session.getSim()).toBeNull();
+      expect(renderer.render).not.toHaveBeenCalled();
+    });
+
+    it("renderFrame() draws exactly one frame of the sim's current state", () => {
+      const { session, renderer, target } = buildSession();
+
+      pressEnter(target);
+      renderer.render.mockClear();
+      session.renderFrame();
+
+      expect(renderer.render).toHaveBeenCalledTimes(1);
+      const [snapshot] = renderer.render.mock.calls[0];
+      expect(snapshot.snakes).toHaveLength(2);
+    });
+
+    it('renderFrame() before any round renders the empty snapshot', () => {
+      const { session, renderer } = buildSession();
+      session.renderFrame();
+      expect(renderer.render).toHaveBeenLastCalledWith({ snakes: [], apples: [] }, 0);
+    });
+
+    it('setSeed fixes the seed the NEXT round starts with, leaving the round in progress alone', () => {
+      const settings = withOverrides({ roundDuration: 1 });
+      const { session, target } = buildSession({ seed: 1, settings });
+
+      pressEnter(target);
+      const round1Apples = session.getSim()?.getState().apples;
+
+      session.setSeed(2);
+      // The round already in progress must not be affected by a seed set mid-round.
+      expect(session.getSim()?.getState().apples).toEqual(round1Apples);
+
+      for (let i = 0; i < 10; i += 1) session.loop.step(0.1);
+      expect(session.getPhase()).toBe('roundOver');
+      pressEnter(target);
+      const round2Apples = session.getSim()?.getState().apples;
+
+      expect(round2Apples).not.toEqual(round1Apples);
+    });
+
+    it('setSeed(null) restores a fresh board every round', () => {
+      // Starts well away from the fixed seed (1) round 1 plays with, so `randomSeed()`'s first draw for
+      // round 2 cannot coincidentally collide with it and produce a false failure.
+      let nextSeed = 100;
+      const settings = withOverrides({ roundDuration: 1 });
+      const { session, target } = buildSession({
+        seed: 1,
+        settings,
+        randomSeed: () => (nextSeed += 1),
+      });
+
+      pressEnter(target);
+      session.setSeed(null);
+      for (let i = 0; i < 10; i += 1) session.loop.step(0.1);
+      expect(session.getPhase()).toBe('roundOver');
+      const round1Apples = session.getSim()?.getState().apples;
+
+      pressEnter(target);
+      const round2Apples = session.getSim()?.getState().apples;
+
+      expect(round2Apples).not.toEqual(round1Apples);
+    });
+  });
+
   describe('start/stop/dispose', () => {
     it('start() begins scheduling frames and dispose() tears the input listener down', () => {
       const requested = vi.fn();

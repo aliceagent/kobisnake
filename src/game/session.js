@@ -152,15 +152,23 @@ export function createSession({
   let phase = 'idle';
   /** @type {RoundSimulation | null} */
   let sim = null;
+  /**
+   * The `?seed` fixed for every round this session plays. Mutable, not the plain `seed` parameter, so
+   * `__kobi.setSeed()` (KS-03-06, `ARCHITECTURE §11`) can change which seed the *next* round draws from
+   * without disturbing whatever round is already in progress — a round already under way keeps the seed it
+   * was built with.
+   * @type {number | null}
+   */
+  let fixedSeed = seed;
 
   /**
-   * Starts a fresh round: a clean sim, fresh apples, fresh snakes — and, unless `?seed` fixed one, a fresh
-   * board too. A fixed `seed` is reused every round (that is what makes a `?seed` visual baseline
+   * Starts a fresh round: a clean sim, fresh apples, fresh snakes — and, unless a seed is fixed, a fresh
+   * board too. A fixed seed is reused every round (that is what makes a `?seed` visual baseline
    * reproducible across a replay); without one, `randomSeed()` is drawn again each time, so five rounds in a
    * row do not hand a human playtester the same four apples five times running.
    */
   function startRound() {
-    const roundSeed = seed ?? randomSeed();
+    const roundSeed = fixedSeed ?? randomSeed();
     sim = new RoundSimulation({ settings, seed: roundSeed, players, mode: 'match' });
     phase = 'playing';
     ui.hideOverlay();
@@ -227,21 +235,44 @@ export function createSession({
   // so the value is always the one from the frame that just happened.
   let lastDt = 0;
 
+  /**
+   * Advances the round `dt` simulated seconds: the sim tick, `ROUND_OVER` handling and the throttled HUD
+   * write — everything a frame's worth of gameplay logic does, except drawing it. This is `loop.js`'s own
+   * `update` callback (below); it is also, unchanged, what `testHooks.js`'s `fastForward` calls directly
+   * (KS-03-06 tech-lead notes) instead of looping `loop.step(dt)`, which would clamp every call to 0.1 s and
+   * render on each one — exactly what the ticket's "without rendering frames in between" rules out.
+   * `RoundSimulation.advance` is built so that one big call and many small ones agree exactly
+   * (`core/round.js`), so calling this once with a whole fast-forward duration is not a shortcut around the
+   * normal path, it *is* the normal path.
+   *
+   * Deviation from KS-03-06's own `Files:` list (`session.js` is not on it) — declared in the PR description.
+   *
+   * @param {number} dt
+   */
+  function runRoundUpdate(dt) {
+    lastDt = dt;
+    if (sim !== null) {
+      handleRoundEvents(sim.advance(dt));
+    }
+    hudAccumulator += dt;
+    if (hudAccumulator >= HUD_INTERVAL_SECONDS) {
+      hudAccumulator = 0;
+      writeHud();
+    }
+  }
+
+  /**
+   * Draws exactly one frame of whatever the sim currently looks like, without advancing anything. This is
+   * `loop.js`'s own `render` callback (below); `testHooks.js`'s `fastForward` calls it once after
+   * `advanceSimulation`, which is the "one render at the end" the ticket asks for.
+   */
+  function drawFrame() {
+    renderer.render(sim === null ? EMPTY_SNAPSHOT : sim.getState(), lastDt);
+  }
+
   const loop = createLoop({
-    update(dt) {
-      lastDt = dt;
-      if (sim !== null) {
-        handleRoundEvents(sim.advance(dt));
-      }
-      hudAccumulator += dt;
-      if (hudAccumulator >= HUD_INTERVAL_SECONDS) {
-        hudAccumulator = 0;
-        writeHud();
-      }
-    },
-    render() {
-      renderer.render(sim === null ? EMPTY_SNAPSHOT : sim.getState(), lastDt);
-    },
+    update: runRoundUpdate,
+    render: drawFrame,
     requestFrame,
     cancelFrame,
     now,
@@ -273,6 +304,28 @@ export function createSession({
     /** The live `RoundSimulation`, or `null` before the first round starts. Tests read it directly. */
     getSim() {
       return sim;
+    },
+    /**
+     * Runs the round update path for `dt` simulated seconds with no render — see the doc comment on the
+     * internal `runRoundUpdate` above for why this exists and why it is safe to call with a large `dt`.
+     * `testHooks.js`'s `fastForward` is the caller (KS-03-06).
+     * @param {number} dt
+     */
+    advanceSimulation(dt) {
+      runRoundUpdate(dt);
+    },
+    /** Draws one frame of the sim's current state, without advancing it. Paired with `advanceSimulation` by
+     * `testHooks.js`'s `fastForward` for the "one render at the end" the ticket asks for. */
+    renderFrame() {
+      drawFrame();
+    },
+    /**
+     * Fixes the seed the **next** round starts with; a round already in progress keeps its own seed.
+     * `null` restores "draw a fresh seed every round" (`testHooks.js`'s `__kobi.setSeed`, KS-03-06).
+     * @param {number | null} nextSeed
+     */
+    setSeed(nextSeed) {
+      fixedSeed = nextSeed;
     },
   };
 }
