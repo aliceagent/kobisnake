@@ -81,3 +81,41 @@ export function cellKey(cell) {
 export function chebyshev(a, b) {
   return Math.max(Math.abs(a.x - b.x), Math.abs(a.y - b.y));
 }
+
+// KS-02-07 AC1 demonstration only: eight tiny untested exported functions (a full 8-point compass
+// step, one direction per function), left with no tests on purpose so this draft PR's CI run shows
+// the `src/core` coverage gate going red. Not part of any ticket's scope; this branch is never
+// merged — see the coverage-gate PR (KS-02-07) for the real change.
+
+/** @param {Cell} cell @returns {Cell} */
+export function stepN(cell) {
+  return { x: cell.x, y: cell.y + 1 };
+}
+/** @param {Cell} cell @returns {Cell} */
+export function stepNE(cell) {
+  return { x: cell.x + 1, y: cell.y + 1 };
+}
+/** @param {Cell} cell @returns {Cell} */
+export function stepE(cell) {
+  return { x: cell.x + 1, y: cell.y };
+}
+/** @param {Cell} cell @returns {Cell} */
+export function stepSE(cell) {
+  return { x: cell.x + 1, y: cell.y - 1 };
+}
+/** @param {Cell} cell @returns {Cell} */
+export function stepS(cell) {
+  return { x: cell.x, y: cell.y - 1 };
+}
+/** @param {Cell} cell @returns {Cell} */
+export function stepSW(cell) {
+  return { x: cell.x - 1, y: cell.y - 1 };
+}
+/** @param {Cell} cell @returns {Cell} */
+export function stepW(cell) {
+  return { x: cell.x - 1, y: cell.y };
+}
+/** @param {Cell} cell @returns {Cell} */
+export function stepNW(cell) {
+  return { x: cell.x - 1, y: cell.y + 1 };
+}
