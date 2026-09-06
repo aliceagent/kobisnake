@@ -37,6 +37,9 @@ import { DIRECTIONS } from '../core/grid.js';
  * @property {() => {matchSeed: number, roundIndex: number, roundSeeds: number[]}} getSeeds
  * @property {() => import('../core/match.js').MatchState | null} getMatch
  * @property {() => object} getMatchSettings
+ * @property {() => import('./inputLatency.js').InputLatencyStats} getInputStats - KS-07-06. Answers with
+ *   `{enabled: false, ...}` when the session was not built with `enableInputStats: true` — the whole point
+ *   being that this always exists to call, never throws, and a caller only has to check `.enabled`.
  */
 
 /**
@@ -92,6 +95,8 @@ import { DIRECTIONS } from '../core/grid.js';
  * @property {(player: 1 | 2, dir: Direction | DirectionName) => void} pressKey
  * @property {(player: number) => {x: number, y: number, z: number}} getHeadWorldPosition
  * @property {() => number} getDrawCalls - see {@link TestHooksRenderer.getDrawCalls}.
+ * @property {() => import('./inputLatency.js').InputLatencyStats} getInputStats - see
+ *   {@link TestHooksSession.getInputStats}; forwarded unchanged.
  */
 
 /**
@@ -279,6 +284,14 @@ export function createTestHooks({ session, renderer, eventTarget, KeyboardEventC
     },
     getMatchSettings() {
       return session.getMatchSettings();
+    },
+    /**
+     * KS-07-06. The returned object is plain data throughout (numbers, strings, arrays, `null`) — no `Map`,
+     * no class instance, no function — so it survives `page.evaluate`'s structured clone with nothing to
+     * evaluate here, unlike {@link getMatch} above.
+     */
+    getInputStats() {
+      return session.getInputStats();
     },
     fastForward,
     advance,
