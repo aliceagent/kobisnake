@@ -79,7 +79,15 @@ export class Snake {
     this.queue = [];
     /** Segments still owed from eaten apples; one is paid off per step. @type {number} */
     this.pendingGrowth = 0;
-    /** Product of the active effect multipliers (Sprint 06 sets it; 1 means base speed). @type {number} */
+    /**
+     * Active timed power-up effects (Sprint 06, `DESIGN-DECISIONS §1 rows 3/4`). At most one entry per
+     * `type` — re-collecting the same power-up refreshes it in place (see {@link applyEffect}) rather than
+     * ever holding two. `remainingTicks` counts down in whole simulation ticks, never seconds, for the same
+     * reason `round.js`'s own clock is an integer tick count rather than an accumulated float.
+     * @type {{type: string, remainingTicks: number, multiplier: number}[]}
+     */
+    this.effects = [];
+    /** Product of every active effect's multiplier (Sprint 06 sets it; 1 means base speed). @type {number} */
     this.speedMultiplier = 1;
     /** @type {boolean} */
     this.alive = true;
@@ -199,5 +207,68 @@ export class Snake {
    */
   grow(amount = 1) {
     this.pendingGrowth += amount;
+  }
+
+  /**
+   * Starts, or refreshes, a timed power-up effect (`DESIGN-DECISIONS §1 rows 3/4`). Re-collecting the same
+   * `type` replaces the existing entry's timer and multiplier in place rather than adding a second one, so
+   * two Speed Boosts two seconds apart end up at 1.5×, never 2.25× (KS-06-01 AC7).
+   *
+   * `durationSeconds` is converted to whole ticks once, up front, rather than counted down in seconds:
+   * `round.js`'s `RoundSimulation.tickPowerUpEffects` decrements every active effect by exactly one tick at
+   * the end of *every* simulation tick, including the one this method is called on, so the `+ 1` here offsets
+   * that immediate decrement — without it, an effect applied this tick would only run for
+   * `durationSeconds − 1 tick` before expiring, one tick short of the design's number (KS-06-01 AC3: "for
+   * exactly 5.000 s of sim time").
+   *
+   * @param {string} type
+   * @param {number} multiplier
+   * @param {number} durationSeconds
+   * @param {number} simHz
+   * @returns {boolean} true when this effect newly started (false when it only refreshed an existing one)
+   */
+  applyEffect(type, multiplier, durationSeconds, simHz) {
+    const remainingTicks = Math.round(durationSeconds * simHz) + 1;
+    const existing = this.effects.find((effect) => effect.type === type);
+    const isNew = existing === undefined;
+    if (existing !== undefined) {
+      existing.remainingTicks = remainingTicks;
+      existing.multiplier = multiplier;
+    } else {
+      this.effects.push({ type, remainingTicks, multiplier });
+    }
+    this.recomputeSpeedMultiplier();
+    return isNew;
+  }
+
+  /**
+   * Advances every active effect by one simulation tick, removing any whose timer just ran out and
+   * recomputing {@link speedMultiplier}. Called once per tick regardless of whether this snake is due to
+   * step — an effect's clock is sim time, not movement, and keeps running through `LASER_WARNING` and
+   * `CLOSING` (`DESIGN-DECISIONS §2.4`).
+   *
+   * @returns {string[]} the types that expired on this tick, in effect order, for `EFFECT_ENDED`
+   */
+  tickEffects() {
+    if (this.effects.length === 0) return [];
+    /** @type {string[]} */
+    const expired = [];
+    this.effects = this.effects.filter((effect) => {
+      effect.remainingTicks -= 1;
+      if (effect.remainingTicks > 0) return true;
+      expired.push(effect.type);
+      return false;
+    });
+    if (expired.length > 0) this.recomputeSpeedMultiplier();
+    return expired;
+  }
+
+  /**
+   * Recomputes {@link speedMultiplier} as the product of every active effect's multiplier
+   * (`DESIGN-DECISIONS §1 rows 3/4`) — its only legal values are therefore 1, 1.5, 0.6 and 0.9 (boosted and
+   * slowed at once).
+   */
+  recomputeSpeedMultiplier() {
+    this.speedMultiplier = this.effects.reduce((product, effect) => product * effect.multiplier, 1);
   }
 }

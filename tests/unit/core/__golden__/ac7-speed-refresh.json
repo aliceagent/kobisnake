@@ -1,0 +1,10 @@
+{
+  "description": "KS-06-01 AC7: two SPEED pickups end 5 s after the second, at 1.5x, never 2.25x. initialPickup and secondPickup sit directly in P1's straight path so no input is needed; the test injects secondPickup onto the board itself once the first POWERUP_COLLECTED is observed, since a real round never has two power-ups on the board at once.",
+  "seed": 7,
+  "mode": "match",
+  "settingsOverrides": { "powerUpsEnabled": false, "godMode": true },
+  "initialPickup": { "cell": { "x": 11, "y": 12 }, "type": "SPEED" },
+  "secondPickup": { "cell": { "x": 17, "y": 12 }, "type": "SPEED" },
+  "inputs": [],
+  "runToElapsed": 10
+}

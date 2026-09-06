@@ -34,12 +34,19 @@ const GOLDEN_LASER_ROUND = JSON.parse(
  * A round nobody can lose: `snakeSpeed: 0` so no snake ever steps, and `godMode` so the beams closing over
  * where they stand cannot kill them either (KS-04-01 QA). What is left is the schedule on its own.
  *
+ * `powerUpsEnabled: false` (KS-06-01 declared deviation): before Sprint 06 this made no difference — the
+ * power-up system was an inert stub regardless of the flag — but it is real now, and this file's golden log
+ * and every threshold in it are about the *laser* schedule. Letting power-ups spawn for real here would draw
+ * from the same seeded `rng` the food system uses, entangling this file's numbers with an unrelated system's
+ * cell/type draws for no reason this file cares about. A test that wants power-ups active passes its own
+ * `powerUpsEnabled: true` override.
+ *
  * @param {import('../../../src/core/settings.js').SettingsOverride} [overrides]
  * @returns {RoundSimulation}
  */
 function frozenRound(overrides = {}) {
   return new RoundSimulation({
-    settings: withOverrides({ snakeSpeed: 0, godMode: true, ...overrides }),
+    settings: withOverrides({ snakeSpeed: 0, godMode: true, powerUpsEnabled: false, ...overrides }),
     seed: 1,
     players: TWO_PLAYERS,
   });

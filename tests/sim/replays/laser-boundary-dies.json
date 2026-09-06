@@ -4,7 +4,8 @@
     "roundDuration": 2,
     "laserStartTime": 2,
     "laserWarningDuration": 1.1666666666666667,
-    "laserStepInterval": 10
+    "laserStepInterval": 10,
+    "powerUpsEnabled": false
   },
   "inputs": [
     {
