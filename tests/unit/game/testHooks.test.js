@@ -61,6 +61,22 @@ function createFakeRenderer(position = { x: 1, y: 2, z: 3 }) {
   };
 }
 
+/**
+ * Records the seconds every `advanceSimulation` call was given, in order, and where any render fell.
+ *
+ * @param {{session: ReturnType<typeof createFakeSession>}} built
+ */
+function recordCallsFor({ session }) {
+  const chunks = /** @type {number[]} */ ([]);
+  const order = /** @type {string[]} */ ([]);
+  session.advanceSimulation.mockImplementation((/** @type {number} */ seconds) => {
+    chunks.push(seconds);
+    order.push('advance');
+  });
+  session.renderFrame.mockImplementation(() => order.push('render'));
+  return { chunks, order };
+}
+
 /** @param {object} [overrides] */
 function buildHooks(overrides = {}) {
   const session = createFakeSession();
@@ -186,21 +202,7 @@ describe('KS-03-06 createTestHooks', () => {
   });
 
   describe('KS-03-06 AC2: fastForward drives the session, not the renderer, in between', () => {
-    /**
-     * The seconds every `advanceSimulation` call was given, in order, and where the single render fell.
-     *
-     * @param {ReturnType<typeof buildHooks>} built
-     */
-    function recordCalls({ session }) {
-      const chunks = /** @type {number[]} */ ([]);
-      const order = /** @type {string[]} */ ([]);
-      session.advanceSimulation.mockImplementation((/** @type {number} */ seconds) => {
-        chunks.push(seconds);
-        order.push('advance');
-      });
-      session.renderFrame.mockImplementation(() => order.push('render'));
-      return { chunks, order };
-    }
+    const recordCalls = recordCallsFor;
 
     it('KS-03-06: fastForward(seconds) drives session.advanceSimulation then session.renderFrame() once, in order', () => {
       const built = buildHooks();
@@ -245,6 +247,42 @@ describe('KS-03-06 createTestHooks', () => {
 
       expect(chunks).toEqual([]);
       expect(order).toEqual(['render']);
+    });
+  });
+
+  describe('KS-06-06: advance is fastForward without the render', () => {
+    it('KS-06-06: advance(seconds) chunks exactly like fastForward but never renders', () => {
+      const built = buildHooks();
+      const { chunks, order } = recordCallsFor(built);
+
+      built.hooks.advance(1);
+
+      expect(chunks.length).toBe(10);
+      expect(Math.max(...chunks)).toBeLessThanOrEqual(0.1 + 1e-9);
+      expect(chunks.reduce((sum, chunk) => sum + chunk, 0)).toBeCloseTo(1, 9);
+      expect(built.session.renderFrame).not.toHaveBeenCalled();
+      expect(new Set(order)).toEqual(new Set(['advance']));
+    });
+
+    it('KS-06-06: a stepping loop costs one render, not one per step', () => {
+      const built = buildHooks();
+      recordCallsFor(built);
+
+      // What `tests/e2e/helpers.js` now does: step to a state boundary, then draw one frame. Before this
+      // ticket the loop body was `fastForward(0.1)`, which rendered every time — 32 full three.js draws for
+      // one countdown, and up to 120 for one `nextRoundInPage`.
+      for (let i = 0; i < 32; i += 1) built.hooks.advance(0.1);
+      built.hooks.fastForward(0);
+
+      expect(built.session.renderFrame).toHaveBeenCalledTimes(1);
+    });
+
+    it('KS-06-06: advance(0) does nothing at all, not even a render', () => {
+      const built = buildHooks();
+      built.hooks.advance(0);
+
+      expect(built.session.advanceSimulation).not.toHaveBeenCalled();
+      expect(built.session.renderFrame).not.toHaveBeenCalled();
     });
   });
 
