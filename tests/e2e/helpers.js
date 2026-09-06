@@ -82,3 +82,34 @@ export function hidePauseScreenInPage() {
   const panel = doc.querySelector('[data-screen="PAUSE"]');
   if (panel !== null) panel.hidden = true;
 }
+
+/**
+ * Steers player 1 into the top wall and runs past the crash and the slow-mo beat that follows it, leaving
+ * the game on the scoreboard with player 2 the round's winner.
+ *
+ * P1 spawns at (5, 12) heading RIGHT (`DESIGN-DECISIONS §2.3`); UP is a legal turn and, left uncorrected,
+ * kills it twelve grid steps later — exactly 2.0 simulated seconds at 6 cells/s. P2 gets no input and does
+ * not reach the opposite wall until ≈ 3.167 s, so P1 dies alone and P2 takes the round. Three seconds covers
+ * the crash and the 0.6 s crash slow-mo beat (`§2.5`) with room to spare.
+ *
+ * Moved here from `match-flow.spec.js` (KS-05-05, tech-lead note B: shared page-side helpers belong in this
+ * file) once a second spec file needed the identical script; `match-flow.spec.js`'s own four KS-05-03 tests
+ * are unchanged by the move, only where the function they call lives.
+ */
+export function crashPlayerOneInPage() {
+  const kobi = /** @type {any} */ (globalThis).__kobi;
+  kobi.pressKey(1, 'UP');
+  kobi.fastForward(3);
+  return { state: kobi.getState(), match: kobi.getMatch() };
+}
+
+/**
+ * Leaves the scoreboard and plays the next round's countdown out, landing back in PLAYING. Moved here for
+ * the same reason as {@link crashPlayerOneInPage}.
+ */
+export function nextRoundInPage() {
+  const kobi = /** @type {any} */ (globalThis).__kobi;
+  kobi.fastForward(3); // scoreboardSeconds is 2.5 (`DESIGN-DECISIONS §2.6`)
+  kobi.fastForward(3.21); // 3 · 2 · 1 · GO
+  return kobi.getState();
+}
