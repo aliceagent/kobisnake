@@ -53,25 +53,53 @@ import { DEFAULT_QUERY } from '../../playwright.config.js';
  * `fastForward` drew, for however long the screenshot then takes to settle.
  */
 
+/**
+ * Starts a round and stops the frame loop **in one synchronous step inside the page**, then draws exactly one
+ * frame. Returns the simulation tick that frame shows, which is always `0`.
+ *
+ * This exists because a baseline captured after `page.keyboard.press('Enter')` is not reproducible. That
+ * keypress and the `page.evaluate()` that follows it are two separate round-trips to the browser, and the
+ * game's frame loop keeps advancing the simulation in real time in between — so the frame a screenshot
+ * catches depends on how long that gap happened to be on that machine, on that run. Measured here, the gap
+ * ranged from **85 to 134 ticks** (0.7 s to 1.1 s of simulated time) across four runs on one machine, and a
+ * baseline approved at one end of that range differs from the other end by **1 % of all pixels** — five times
+ * the 0.2 % budget of `QA-STRATEGY §1`. That is what turned `main` red after KS-03-07 merged, having passed
+ * on the same commit's pull-request run.
+ *
+ * Dispatching the `Enter` keydown from inside the page removes the gap entirely rather than trying to
+ * measure or tolerate it: JavaScript is single-threaded, so no `requestAnimationFrame` callback can run
+ * between the keydown that starts the round and the `visibilitychange` that stops the loop. The round is
+ * therefore frozen at tick 0, every time, on any machine.
+ *
+ * `Enter` is dispatched at `window` because that is where `createInput` listens (`src/game/input.js`), so
+ * this goes through the real input path exactly as `__kobi.pressKey` does for the direction keys.
+ */
+function startRoundAndFreeze() {
+  const win = /** @type {any} */ (globalThis);
+  const doc = /** @type {any} */ (globalThis).document;
+  const kobi = win.__kobi;
+
+  win.dispatchEvent(
+    new win.KeyboardEvent('keydown', { code: 'Enter', bubbles: true, cancelable: true }),
+  );
+  Object.defineProperty(doc, 'hidden', { configurable: true, get: () => true });
+  doc.dispatchEvent(new win.Event('visibilitychange'));
+
+  kobi.fastForward(0);
+  return kobi.sim.tick;
+}
+
 test.describe('KS-03-07 visual', () => {
   test('KS-03-07 scenario (e): gameplay baseline at t=0', async ({ page }) => {
     await page.goto(DEFAULT_QUERY);
-    await page.keyboard.press('Enter');
-    await expect(page.locator('.overlay')).toBeHidden();
 
-    // One deliberate render of whatever the just-started round looks like, through the same `fastForward`
-    // path every other scripted moment in this suite uses rather than trusting a background frame to have
-    // drawn one already — then freeze the loop in the same script, before the screenshot's own stability
-    // wait gives the still-running background loop a chance to carry the round past this moment (see the
-    // module doc comment).
-    await page.evaluate(() => {
-      const kobi = /** @type {any} */ (globalThis).__kobi;
-      kobi.fastForward(0);
+    // The round is started from *inside* this script, not with a Playwright `keyboard.press` before it, and
+    // that is the whole of what makes a t=0 baseline reproducible — see {@link startRoundAndFreeze}.
+    const tick = await page.evaluate(startRoundAndFreeze);
 
-      const doc = /** @type {any} */ (globalThis).document;
-      Object.defineProperty(doc, 'hidden', { configurable: true, get: () => true });
-      doc.dispatchEvent(new (/** @type {any} */ (globalThis).Event)('visibilitychange'));
-    });
+    // t=0 means t=0. If this ever reads anything else, the frame below is not the picture this baseline was
+    // approved as, and the test should say so rather than fail later as an unexplained pixel diff.
+    expect(tick).toBe(0);
 
     await expect(page).toHaveScreenshot('gameplay-t0.png');
   });
@@ -80,15 +108,25 @@ test.describe('KS-03-07 visual', () => {
     page,
   }) => {
     await page.goto(DEFAULT_QUERY);
-    await page.keyboard.press('Enter');
-    await expect(page.locator('.overlay')).toBeHidden();
 
-    // The steering, the freeze and the snapshot read all happen in this one script — not split across
-    // separate `evaluate()` calls — for the same reason the module doc comment gives for the freeze itself:
-    // any gap here is a gap the background loop could use to advance the sim before it is frozen.
+    // The round start, the steering, the freeze and the snapshot read all happen in this one script — not
+    // split across separate `evaluate()` calls — for the same reason the module doc comment gives for the
+    // freeze itself: any gap here is a gap the background loop could use to advance the sim before it is
+    // frozen, and starting the round outside the script leaves the biggest gap of all (see
+    // {@link startRoundAndFreeze}).
     const snapshot = await page.evaluate(() => {
       const kobi = /** @type {any} */ (globalThis).__kobi;
-      const simHz = kobi.sim.settings.simHz;
+      const simHz = kobi.sim === null ? 120 : kobi.sim.settings.simHz;
+
+      // Start the round and stop the frame loop in the same breath, so every absolute tick target below is
+      // measured from a real tick 0 rather than from wherever a background frame happened to leave the sim.
+      const win = /** @type {any} */ (globalThis);
+      const doc = /** @type {any} */ (globalThis).document;
+      win.dispatchEvent(
+        new win.KeyboardEvent('keydown', { code: 'Enter', bubbles: true, cancelable: true }),
+      );
+      Object.defineProperty(doc, 'hidden', { configurable: true, get: () => true });
+      doc.dispatchEvent(new win.Event('visibilitychange'));
 
       /** Fast-forwards from wherever `sim.tick` is right now to the given *absolute* tick count. */
       const advanceToTick = (/** @type {number} */ targetTick) => {
@@ -111,13 +149,11 @@ test.describe('KS-03-07 visual', () => {
       kobi.pressKey(2, 'LEFT');
       advanceToTick(600); // P1 RIGHT x2, P2 LEFT x2 — 30 steps, 5.0 simulated seconds
 
-      const doc = /** @type {any} */ (globalThis).document;
-      Object.defineProperty(doc, 'hidden', { configurable: true, get: () => true });
-      doc.dispatchEvent(new (/** @type {any} */ (globalThis).Event)('visibilitychange'));
-
       return kobi.getSnapshot();
     });
 
+    // Exactly 5.0 simulated seconds, every run — not "about five seconds, wherever the loop had got to".
+    expect(/** @type {any} */ (snapshot).tick).toBe(600);
     // Both must still be alive for this to be the "gameplay" baseline the ticket asks for, not a crash.
     for (const snake of /** @type {any} */ (snapshot).snakes) {
       expect(snake.alive).toBe(true);
