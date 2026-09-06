@@ -63,18 +63,72 @@ const PLAYERS = [
   { id: 'p2', color: 'blue' },
 ];
 
+/**
+ * `__kobi.advance`'s chunking, mirrored exactly (`src/game/testHooks.js`) so the Node-side replay is fed the
+ * identical sequence of `dt` values the browser feeds its own simulation.
+ *
+ * **This is load-bearing, and it is why issue #100 was not just a timing flake.** Since KS-06-00 the browser
+ * never advances by more than `maxFrameSeconds` at a time, so `fastForward(1.9)` is not one `advance(1.9)` —
+ * it is nineteen chunks whose last one is `0.09999999999999937`, because `remaining -= chunk` accumulates a
+ * float residue. That leaves the chunked path a few femtoseconds short of 1.9 s, and 1.9 s at 120 Hz is
+ * *exactly* 228 ticks — so one path lands a hair above the boundary and the other a hair below, and they
+ * disagree by a whole tick. Reproduced deterministically:
+ *
+ * ```
+ * one-shot   advance(1.9) + advance(0.1) -> tick 240
+ * chunked at 0.1 s boundaries            -> tick 239
+ * ```
+ *
+ * Neither is wrong. The simulation is deterministic *given a sequence of `dt`s*, which is all it ever
+ * promised; what it cannot do is make two different sequences summing to nominally the same duration land on
+ * the same tick when that duration sits exactly on a tick boundary. The game itself is unaffected — a real
+ * browser always chunks, because `loop.js` clamps every frame — so the only thing that can see this is a test
+ * comparing a chunked browser against a one-shot replay. AC2 is that test, and the fix is for it to compare
+ * like with like.
+ *
+ * @param {RoundSimulation} sim
+ * @param {number} seconds
+ */
+function advanceLikeTheBrowser(sim, seconds) {
+  let remaining = seconds;
+  while (remaining > 1e-9) {
+    const chunk = Math.min(remaining, 0.1);
+    sim.advance(chunk);
+    remaining -= chunk;
+  }
+}
+
 test.describe('KS-03-07 first playable', () => {
   test('KS-03-07 AC2: the browser and the headless sim agree exactly on segment cells', async ({
     page,
   }) => {
     await page.goto(DEFAULT_QUERY);
-    await page.evaluate(startMatchInPage);
 
-    // The scripted log itself: P1 turns UP, then LEFT; P2 turns DOWN; the round is fast-forwarded a total
-    // of 2 simulated seconds (the ticket's scenario (a), verbatim). `startTick` is read first, before this
-    // script touches anything, so it captures exactly the module doc comment's "gap" above and nothing more.
+    // **Reaching the round and playing the scripted log happen in ONE `page.evaluate` (KS-06-07, issue
+    // #100).** They used to be two, and the gap between them was a real number of live `requestAnimationFrame`
+    // frames — however many fitted into one Playwright round-trip. The test compensated by reading a
+    // `startTick` and replaying the Node side from there, which is exact arithmetic and was still not enough,
+    // because *which* tick the round starts from changes what the scripted log does:
+    //
+    // P1 turns UP from (5, 12) and travels eleven cells to y = 23 — the top row, **one step from the wall** —
+    // and the LEFT at 1.9 s is what turns it away in time. Whether that step lands before or after the LEFT
+    // depends on the gap. Measured over the plausible range, **P1 dies in 16 of the 41 gaps from 0 to 40
+    // ticks**: the scenario was a coin toss weighted by how fast the machine happened to be, and on a loaded
+    // two-worker CI run it came up tails.
+    //
+    // `startMatchInPage` leaves the round at tick 0 exactly, and JavaScript is single-threaded, so no frame
+    // can run in the middle of one script. Doing both here pins the gap at zero and makes the comparison the
+    // thing it was always meant to be: the browser's engine against the headless one, on an identical log,
+    // with no timing left in it. (The same reasoning `gameplay.visual.spec.js`'s module comment gives for its
+    // own single-script setup.)
     const browserResult = await page.evaluate(() => {
       const kobi = /** @type {any} */ (globalThis).__kobi;
+      kobi.startMatch();
+      for (let i = 0; i < 60 && kobi.getState() === 'COUNTDOWN'; i += 1) kobi.advance(0.1);
+      kobi.fastForward(0);
+
+      // The scripted log itself: P1 turns UP, then LEFT; P2 turns DOWN; the round is fast-forwarded a total
+      // of 2 simulated seconds (the ticket's scenario (a), verbatim).
       const startTick = kobi.sim.tick;
       kobi.pressKey(1, 'UP');
       kobi.fastForward(1.9);
@@ -84,6 +138,10 @@ test.describe('KS-03-07 first playable', () => {
       return { startTick, seeds: kobi.getSeeds(), snapshot: kobi.getSnapshot() };
     });
 
+    // The gap is now zero by construction, and this says so out loud: if a frame ever does sneak in again,
+    // this fails with a clear reason instead of the scenario quietly becoming a coin toss once more.
+    expect(browserResult.startTick).toBe(0);
+
     // KS-05-03: `?seed=1` now seeds the *match*, and each round derives its own seed from it plus the round
     // index. So the replay below must be built on the round's seed, not the match's — and this asserts the
     // browser really did derive it the documented way rather than taking the test's word for it.
@@ -92,8 +150,9 @@ test.describe('KS-03-07 first playable', () => {
     expect(browserResult.seeds.roundSeeds[0]).toBe(roundSeed);
 
     // The Node-side replay: the same seed and players `session.js` uses, brought up to the exact same tick
-    // the browser's sim happened to be at when our script began (see the module doc comment), then driven
-    // through the identical log at the identical chunk boundaries.
+    // the browser's sim was at when the script began — which is now always 0 (KS-06-07), so the catch-up loop
+    // below is a no-op. It is kept rather than deleted because it is what makes the replay *say* it starts
+    // where the browser started, and it costs nothing.
     //
     // Advanced one whole tick at a time rather than `advance(startTick / SETTINGS.simHz)` — that division is
     // safe on the browser side below (a real fractional accumulator absorbs the float error), but not here:
@@ -107,10 +166,10 @@ test.describe('KS-03-07 first playable', () => {
     // that plainly instead of surfacing as a wall of unrelated segment diffs below.
     expect(sim.tick).toBe(browserResult.startTick);
     sim.applyInput('p1', DIRECTIONS.UP);
-    sim.advance(1.9);
+    advanceLikeTheBrowser(sim, 1.9);
     sim.applyInput('p1', DIRECTIONS.LEFT);
     sim.applyInput('p2', DIRECTIONS.DOWN);
-    sim.advance(0.1);
+    advanceLikeTheBrowser(sim, 0.1);
     const nodeState = sim.getState();
 
     const browserSnapshot = /** @type {any} */ (browserResult.snapshot);
