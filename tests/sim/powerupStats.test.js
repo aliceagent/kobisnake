@@ -39,15 +39,32 @@ import { runRound } from './harness.js';
  *    ever dies, `0 / roundEndTick` contributed by one that doesn't, ticks not seconds throughout so the two
  *    numbers use one exact definition of "window". The gap between the boost rate and this baseline, not the
  *    raw boost rate alone, is the real claim about whether the boost is dangerous.
- * 3. **Effect of SLOW on win rate** — for every round where a snake's `POWERUP_COLLECTED` was `SLOW` (SLOW
- *    slows every *other* living snake, never the collector — `DESIGN-DECISIONS §1 row 3`, `round.js`), that
- *    collector's win rate in the power-ups-ON run, against the same collector's win rate on the exact same
- *    seed replayed with `withOverrides({ powerUpsEnabled: false })` — same bots, same seeds, the one variable
- *    named in the ticket's tech-lead note.
+ * 3. **Effect of SLOW on win rate — two comparisons, because one alone is ambiguous.** `greedyBot` only ever
+ *    reaches a power-up by detouring off its straight-line apple path, and that detour has its own cost
+ *    independent of which power-up type sits on the pedestal (see the tech-lead note below) — so a bare
+ *    "collector's win rate when they got a SLOW" conflates "the detour" with "the SLOW". Two rows separate
+ *    them:
+ *    - **Detour-controlled: SLOW-collector win rate vs SPEED-collector win rate, both inside the power-ups-ON
+ *      run.** Both samples paid the identical detour cost to reach a pedestal; the only thing that differs
+ *      between the rows is which power-up type was sitting on it. This is the row that answers "does SLOW
+ *      underperform SPEED for the collector", uncontaminated by detour cost.
+ *    - **Practical value: SLOW-collector win rate ON vs the same collector's win rate on the exact same seed
+ *      replayed with `withOverrides({ powerUpsEnabled: false })`.** This one *includes* the detour cost — it
+ *      answers the honest player-facing question "is going for a SLOW worth it", which is a real question
+ *      even if the answer turns out to be "no, because reaching it is dangerous, not because the effect is
+ *      bad". Same bots, same seeds, the one variable named in the ticket's tech-lead note.
  *
- * Nothing here is tuned to make the ≤ 15 % target true (`CLAUDE.md` "never change a tunable", the ticket's
- * own tech-lead note): the seeds, the bot and the window are all fixed by the spec above, independent of what
- * the numbers turn out to be.
+ *    **Tech-lead finding (posted as a PR comment on this ticket):** on `main` (power-ups active, the
+ *    *pre-this-ticket* `greedyBot`) `laserStats.test.js` reports greedy-vs-survivor "ends before 0:30" at
+ *    66.2 % — unchanged from before power-ups existed. On this branch (same power-ups, the *updated*
+ *    `greedyBot`) the same figure is 79.0 %. Since power-ups are active in both runs, that 13-point move is
+ *    caused by the bot's new detour behaviour alone, not by power-ups being switched on — which is exactly
+ *    why the two comparisons above are kept separate rather than reported as one number.
+ *
+ * Nothing here is tuned to make the ≤ 15 % target true, or to make SLOW look better or worse (`CLAUDE.md`
+ * "never change a tunable", the ticket's own tech-lead note, and the tech lead's follow-up: "do not add
+ * danger-awareness... that would be inventing a mechanic and it would destroy the finding"): the seeds, the
+ * bot and the window are all fixed by the spec above, independent of what the numbers turn out to be.
  */
 
 /** @typedef {import('../../src/core/round.js').SimEvent} SimEvent */
@@ -179,26 +196,29 @@ function boostKilledMeStats(rounds, windowTicks) {
 }
 
 /**
- * Statistic 3 (module doc): effect of SLOW on win rate, ON vs OFF on the exact same seeds.
+ * Statistic 3 (module doc): a collector's win rate, restricted to rounds where they collected `type`, in the
+ * power-ups-ON run — and, when `offResultBySeed` is supplied, the same collector's win rate on the identical
+ * seed replayed with power-ups off. Shared by both SLOW and SPEED so the two ON-arm samples are built exactly
+ * the same way (module doc's "detour-controlled" row compares this function's SPEED and SLOW output; its
+ * "practical value" row compares this function's SLOW output against itself with `offResultBySeed` supplied).
  *
  * @param {RoundRun[]} onRounds
- * @param {Map<number, import('../../src/core/events.js').RoundResult | null>} offResultBySeed
+ * @param {import('../../src/core/powerups.js').PowerUpType} type
+ * @param {Map<number, import('../../src/core/events.js').RoundResult | null>} [offResultBySeed] - when
+ *   omitted, `offWinRatePct` is `null` and no OFF seeds are looked up at all
  */
-function slowWinRateEffect(onRounds, offResultBySeed) {
+function collectorWinRateForType(onRounds, type, offResultBySeed) {
   /** @type {{seed: number, playerId: 'p1' | 'p2'}[]} */
   const collectorSeeds = [];
   for (const { seed, events } of onRounds) {
     /** @type {Set<'p1' | 'p2'>} */
-    const collectedSlowBy = new Set();
+    const collectedByForType = new Set();
     for (const event of events) {
-      if (
-        event.type === EVENTS.POWERUP_COLLECTED &&
-        /** @type {any} */ (event).powerUpType === POWERUP_TYPES.SLOW
-      ) {
-        collectedSlowBy.add(/** @type {any} */ (event).playerId);
+      if (event.type === EVENTS.POWERUP_COLLECTED && /** @type {any} */ (event).powerUpType === type) {
+        collectedByForType.add(/** @type {any} */ (event).playerId);
       }
     }
-    for (const playerId of collectedSlowBy) collectorSeeds.push({ seed, playerId });
+    for (const playerId of collectedByForType) collectorSeeds.push({ seed, playerId });
   }
 
   const onResultBySeed = new Map(onRounds.map((round) => [round.seed, round.result]));
@@ -208,14 +228,18 @@ function slowWinRateEffect(onRounds, offResultBySeed) {
   const onWon = collectorSeeds.map(
     ({ seed, playerId }) => onResultBySeed.get(seed) === RESULT_FOR_PLAYER[playerId],
   );
-  const offWon = collectorSeeds.map(
-    ({ seed, playerId }) => offResultBySeed.get(seed) === RESULT_FOR_PLAYER[playerId],
-  );
 
   return {
     sampleSize: collectorSeeds.length,
     onWinRatePct: wonPct(onWon),
-    offWinRatePct: wonPct(offWon),
+    offWinRatePct:
+      offResultBySeed === undefined
+        ? null
+        : wonPct(
+            collectorSeeds.map(
+              ({ seed, playerId }) => offResultBySeed.get(seed) === RESULT_FOR_PLAYER[playerId],
+            ),
+          ),
   };
 }
 
@@ -241,8 +265,10 @@ describe('KS-06-04 power-up bots and statistics', () => {
   let pickup;
   /** @type {ReturnType<typeof boostKilledMeStats>} */
   let boost;
-  /** @type {ReturnType<typeof slowWinRateEffect>} */
+  /** @type {ReturnType<typeof collectorWinRateForType>} */
   let slowEffect;
+  /** @type {ReturnType<typeof collectorWinRateForType>} */
+  let speedEffect;
   /** @type {ReturnType<typeof overallP1Rates>} */
   let overallOn;
   /** @type {ReturnType<typeof overallP1Rates>} */
@@ -261,7 +287,10 @@ describe('KS-06-04 power-up bots and statistics', () => {
     pickup = pickupRateStats(onRounds);
     boost = boostKilledMeStats(onRounds, BOOST_WINDOW_TICKS);
     const offResultBySeed = new Map(offRounds.map((round) => [round.seed, round.result]));
-    slowEffect = slowWinRateEffect(onRounds, offResultBySeed);
+    // SLOW gets the OFF comparison too (the "practical value" row); SPEED only needs the ON-arm win rate — it
+    // exists here purely as the detour-matched control for SLOW's ON-arm number (module doc, statistic 3).
+    slowEffect = collectorWinRateForType(onRounds, POWERUP_TYPES.SLOW, offResultBySeed);
+    speedEffect = collectorWinRateForType(onRounds, POWERUP_TYPES.SPEED);
     overallOn = overallP1Rates(onRounds);
     overallOff = overallP1Rates(offRounds);
 
@@ -285,14 +314,22 @@ describe('KS-06-04 power-up bots and statistics', () => {
     ]);
     console.table([
       {
-        arm: 'power-ups ON (recorded win)',
-        'collector win rate': `${(slowEffect.onWinRatePct ?? NaN).toFixed(1)}%`,
-        'sample (rounds where a snake collected a SLOW)': slowEffect.sampleSize,
+        row: 'SPEED collected (power-ups ON)',
+        question: 'detour-controlled: SPEED vs SLOW, same arm',
+        'collector win rate': `${(speedEffect.onWinRatePct ?? NaN).toFixed(1)}%`,
+        sample: speedEffect.sampleSize,
       },
       {
-        arm: 'power-ups OFF (same seeds, same collector slot)',
+        row: 'SLOW collected (power-ups ON)',
+        question: 'detour-controlled: SPEED vs SLOW, same arm',
+        'collector win rate': `${(slowEffect.onWinRatePct ?? NaN).toFixed(1)}%`,
+        sample: slowEffect.sampleSize,
+      },
+      {
+        row: 'SLOW collected (power-ups OFF, same seeds)',
+        question: 'practical value: SLOW ON vs OFF, same collector/seed',
         'collector win rate': `${(slowEffect.offWinRatePct ?? NaN).toFixed(1)}%`,
-        'sample (rounds where a snake collected a SLOW)': slowEffect.sampleSize,
+        sample: slowEffect.sampleSize,
       },
     ]);
     console.log(
@@ -303,9 +340,15 @@ describe('KS-06-04 power-up bots and statistics', () => {
         `SNAKE_DIED within ${BOOST_WINDOW_TICKS} ticks (1 simulated second, ${SETTINGS.simHz}Hz); the control ` +
         'row is the same 1-second-window death probability computed analytically from every snake\'s own ' +
         'death tick (or the round\'s end tick if it survives), over the same 500 rounds — not a separate run. ' +
-        '"collector win rate" (SLOW) = win rate of whichever snake\'s POWERUP_COLLECTED was SLOW in that round ' +
-        '(SLOW slows every *other* living snake, never the collector, DESIGN-DECISIONS §1 row 3), ON vs the ' +
-        'exact same seed replayed with powerUpsEnabled:false — same bots, same seeds, one variable.',
+        'Second table, "collector win rate" = win rate of whichever snake\'s POWERUP_COLLECTED was that row\'s ' +
+        'type, in the rounds where that happened. Rows 1-2 ("detour-controlled") are both power-ups-ON, both ' +
+        'paid the identical cost of detouring to a pedestal (greedyBot only reaches a power-up by detouring, ' +
+        'DESIGN-DECISIONS §1 row 3), so their gap isolates the difference between the two power-up types with ' +
+        'the detour cancelled out. Row 3 vs row 2 ("practical value") is SLOW ON vs the exact same seed ' +
+        'replayed with powerUpsEnabled:false — same bots, same seeds, one variable — and DOES include the ' +
+        'detour cost, because "was going for it worth it" is the real player-facing question. Read row 1 vs 2 ' +
+        'as a claim about SLOW itself; read row 2 vs 3 as a claim about grabbing a SLOW in practice. They are ' +
+        'different questions and can disagree.',
     );
     console.log(
       `Target (PLAYTEST-SCRIPT §5): "boost killed me" <= 15% (not asserted here as an engine contract, per ` +
@@ -334,9 +377,10 @@ describe('KS-06-04 power-up bots and statistics', () => {
       expect(pct).toBeGreaterThanOrEqual(0);
       expect(pct).toBeLessThanOrEqual(100);
     }
-    // slowEffect's two rates can be `null` (only if the sample were empty — checked as its own AC below), but
-    // whenever present they are percentages too.
-    for (const pct of [slowEffect.onWinRatePct, slowEffect.offWinRatePct]) {
+    // slowEffect's two rates and speedEffect's ON rate can be `null` (only if a sample were empty — checked
+    // as its own AC below), but whenever present they are percentages too. speedEffect.offWinRatePct is
+    // always `null` by construction (no offResultBySeed was passed for it) and is intentionally not checked.
+    for (const pct of [slowEffect.onWinRatePct, slowEffect.offWinRatePct, speedEffect.onWinRatePct]) {
       if (pct !== null) {
         expect(pct).toBeGreaterThanOrEqual(0);
         expect(pct).toBeLessThanOrEqual(100);
@@ -366,6 +410,13 @@ describe('KS-06-04 power-up bots and statistics', () => {
     expect(slowEffect.sampleSize).toBeGreaterThan(0);
     expect(slowEffect.onWinRatePct).not.toBeNull();
     expect(slowEffect.offWinRatePct).not.toBeNull();
+  });
+
+  it('KS-06-04 AC1: the detour-controlled SPEED-vs-SLOW comparison had a non-empty sample on both sides', () => {
+    // Both rows are power-ups-ON: this is the comparison that cancels the detour cost (module doc statistic
+    // 3), so it needs its own non-empty check independent of the ON/OFF pairing above.
+    expect(speedEffect.sampleSize).toBeGreaterThan(0);
+    expect(speedEffect.onWinRatePct).not.toBeNull();
   });
 
   it('KS-06-04 AC1: 500 rounds per arm completed inside the timeout with a comparable wall time to laserStats.test.js', () => {
