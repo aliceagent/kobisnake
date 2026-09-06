@@ -411,7 +411,9 @@ describe('SnakeView', () => {
         effects: [{ type: 'SPEED', remaining: 5, multiplier: 1.5 }],
       });
 
-      expect(`#${view.bodyMaterial.emissive.getHexString()}`.toUpperCase()).toBe(SETTINGS.colors.yellow);
+      expect(`#${view.bodyMaterial.emissive.getHexString()}`.toUpperCase()).toBe(
+        SETTINGS.colors.yellow,
+      );
       expect(view.bodyMaterial.emissiveIntensity).toBeGreaterThan(0);
     });
 
@@ -450,7 +452,9 @@ describe('SnakeView', () => {
         ],
       });
 
-      expect(`#${view.bodyMaterial.emissive.getHexString()}`.toUpperCase()).toBe(SETTINGS.colors.yellow);
+      expect(`#${view.bodyMaterial.emissive.getHexString()}`.toUpperCase()).toBe(
+        SETTINGS.colors.yellow,
+      );
     });
 
     it('treats a snapshot with no effects field as unaffected, not a throw', () => {
