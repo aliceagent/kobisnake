@@ -53,6 +53,12 @@ jobs:
   unit:
     name: unit
     runs-on: ubuntu-latest
+    # KS-02-07: coverage thresholds in vitest.config.js (90% src/core, 75% src/game) are pinned to
+    # 0 unless COVERAGE_STRICT=1. src/core hit real coverage in Sprint 02, so flip the gate on here
+    # — vitest exits non-zero on a missed threshold and the step below is a plain `run:` (no pipe,
+    # no continue-on-error), so that failure fails this job for real.
+    env:
+      COVERAGE_STRICT: '1'
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
