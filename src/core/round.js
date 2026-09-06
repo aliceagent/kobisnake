@@ -3,7 +3,7 @@ import { CAUSES, resolveStep } from './collisions.js';
 import { END_REASONS, EVENTS, PHASES, RESULTS } from './events.js';
 import { FoodState } from './food.js';
 import { DIRECTIONS, cellKey, inBounds } from './grid.js';
-import { createInactive as createInactiveLasers } from './lasers.js';
+import { createLasers } from './lasers.js';
 import { createInactive as createInactivePowerUps } from './powerups.js';
 import { createRng } from './rng.js';
 import { SETTINGS } from './settings.js';
@@ -33,6 +33,22 @@ import { Snake } from './snake.js';
 
 /** @typedef {{type: EventType, tick: number, t: number, [key: string]: unknown}} SimEvent */
 /** @typedef {{id: string, color?: string}} Player */
+
+/**
+ * Whether this process is a test run. `import.meta.env.TEST` is Vitest's own flag; in a Vite production
+ * build the key simply does not exist, so this is `false` there and {@link RoundSimulation}'s `godMode`
+ * cannot be switched on by a hand-crafted settings object in a shipped game — which is the guard
+ * KS-04-01's QA line asks for ("allowed only under `import.meta.env.TEST`"). It arrives as the *string*
+ * `'true'` under Vitest (the flag is read out of the environment), hence the loose test rather than `===`.
+ *
+ * The optional chaining is not decoration: `import.meta.env` is added by Vite and by Vitest, and this module
+ * is also imported straight into a plain Node process by `tests/e2e/first-playable.spec.js`, which runs the
+ * headless engine beside the browser to compare them. There `import.meta.env` does not exist at all, and
+ * reading `.TEST` off it would throw at import time. `import.meta` itself is never parenthesised, which is
+ * what Vite's own replacement needs (see the same note in `src/main.js`).
+ */
+// @ts-expect-error import.meta.env is Vite's own addition; not present in this project's jsconfig types.
+const UNDER_TEST = Boolean(import.meta.env?.TEST);
 
 /**
  * Where each player starts and which way they face (`DESIGN-DECISIONS §2.3`). The rows are deliberately
@@ -113,25 +129,29 @@ export class RoundSimulation {
       });
     });
 
-    this.lasers = createInactiveLasers();
+    this.lasers = createLasers(settings);
     this.powerUps = createInactivePowerUps(powerUpsEnabled ?? settings.powerUpsEnabled);
+
+    /**
+     * Test-only immortality (KS-04-01 QA). With it on, a snake that would die simply refuses the step that
+     * would have killed it and stays where it is: nothing dies, no `SNAKE_DIED` is emitted, and the round
+     * runs its full 90 seconds. That is what lets a golden log cover the *whole* laser timeline — a real
+     * no-input round is over in 3.167 s, long before the lasers do anything. It is off unless the settings
+     * ask for it **and** this is a test process; see {@link UNDER_TEST}.
+     *
+     * @type {boolean}
+     */
+    this.godMode = UNDER_TEST && settings.godMode === true;
 
     /** Events produced by the `advance` call in progress. @type {SimEvent[]} */
     this.events = [];
 
     this.food = new FoodState({ foodCount: settings.foodCount });
-    this.food.fill({
-      grid: settings.grid,
-      occupied: this.occupiedCells(),
-      heads: this.heads(),
-      deadZone: this.lasers.inDeadZone,
-      rng: this.rng,
-      minDistance: settings.foodMinDistanceFromHead,
-    });
+    this.food.fill(this.foodPlacement());
     // The apples that are on the board when the round opens are announced like any other, so a view built
     // purely from the event stream sees the same board as one built from `getState()`.
     this.food.apples.forEach((cell, index) => {
-      this.emit(EVENTS.FOOD_SPAWNED, { index, cell: { ...cell } });
+      if (cell !== null) this.emit(EVENTS.FOOD_SPAWNED, { index, cell: { ...cell } });
     });
   }
 
@@ -248,6 +268,11 @@ export class RoundSimulation {
   simulateTick() {
     this.tick += 1;
 
+    // The lasers run off the round clock, not off anybody's movement, so they are advanced before the
+    // snakes and on every tick — including the ticks on which nobody is due to step.
+    this.updateLasers();
+    if (this.phase !== PHASES.PLAYING) return;
+
     /** @type {Snake[]} */
     const due = [];
     for (const snake of this.snakes) {
@@ -265,6 +290,21 @@ export class RoundSimulation {
       allSnakes: this.snakes,
       isDeadly: (cell) => this.deadlyCause(cell),
     });
+
+    if (this.godMode) {
+      // Immortal snakes refuse the fatal step instead of taking it: committing it would walk a head out of
+      // bounds and every later query — food placement, the dead-zone test, the snapshot — would be reasoning
+      // about a board position that cannot exist. Standing still is the only "did not die" that stays legal.
+      const blocked = new Set(deaths.map((death) => death.snakeId));
+      for (const snake of due) {
+        if (!blocked.has(snake.id)) snake.commitStep();
+      }
+      for (const snake of due) {
+        if (!blocked.has(snake.id)) this.eatIfApple(snake);
+      }
+      this.checkTimeout();
+      return;
+    }
 
     for (const death of deaths) {
       const snake = /** @type {Snake} */ (this.snakes.find((s) => s.id === death.snakeId));
@@ -293,17 +333,23 @@ export class RoundSimulation {
   }
 
   /**
-   * Whether a cell kills a head entering it, and why. The arena edge is deadly from second 0
-   * (`DESIGN-DECISIONS §1 row 9`); from Sprint 04 the same query also answers for the laser dead zone, which
-   * is why `collisions.js` needs only one callback for both.
+   * Whether a cell kills a head entering it, and why — the single `isDeadly` callback `collisions.js` needs
+   * for both the wall and the lasers (`ARCHITECTURE §4`).
+   *
+   * `lasers.isDeadly` answers the "is it fatal" half for both, because the wall is just inset −1: at inset 0
+   * it is exactly "off the board", which is the arena edge being deadly from second 0
+   * (`DESIGN-DECISIONS §1 row 9`). Only the *name* of the death depends on where the cell is, and only this
+   * method knows both halves, which is why the mapping lives here: on the board with the lasers moved in, a
+   * beam killed you; anywhere else it was the wall. At inset 0 the two coincide and `WALL` is the honest
+   * answer — a `LASER` cause while `inset === 0` would be a mislabel, and KS-04-04 AC2 asserts it never
+   * happens.
    *
    * @param {Cell} cell
    * @returns {DeathCause | false}
    */
   deadlyCause(cell) {
-    if (!inBounds(cell, this.settings.grid)) return CAUSES.WALL;
-    if (this.lasers.inDeadZone(cell)) return CAUSES.LASER;
-    return false;
+    if (!this.lasers.isDeadly(cell)) return false;
+    return this.lasers.inset > 0 && inBounds(cell, this.settings.grid) ? CAUSES.LASER : CAUSES.WALL;
   }
 
   /**
@@ -319,15 +365,117 @@ export class RoundSimulation {
 
     this.emit(EVENTS.FOOD_EATEN, { snakeId: snake.id, index, cell: { ...snake.head } });
     snake.grow(this.settings.growthPerFood);
-    this.food.respawn(index, {
+    const cell = this.food.respawn(index, this.foodPlacement());
+    // `null` means the shrunken arena had nowhere legal to put it (`DESIGN-DECISIONS §2.3`, issue #39). The
+    // slot stays empty and {@link RoundSimulation#refillFood} retries it on every following tick, so there
+    // is nothing to announce yet.
+    if (cell !== null) this.emit(EVENTS.FOOD_SPAWNED, { index, cell: { ...cell } });
+  }
+
+  /**
+   * The placement constraints an apple must satisfy right now (`DESIGN-DECISIONS §2.3`), gathered in one
+   * place because three callers need exactly the same set. `region` is the safe square rather than the whole
+   * board: it is redundant with `deadZone` — both exclude the same cells — but it is what keeps the endgame
+   * cheap, since the candidate scan then walks 36 cells instead of 576 on every retry of an empty slot.
+   *
+   * @returns {{grid: import('./grid.js').GridSize, occupied: Set<string>, heads: Cell[],
+   *   deadZone: (cell: Cell) => boolean, rng: import('./rng.js').Rng, minDistance: number,
+   *   region: import('./lasers.js').SafeRegion}}
+   */
+  foodPlacement() {
+    return {
       grid: this.settings.grid,
       occupied: this.occupiedCells(),
       heads: this.heads(),
       deadZone: this.lasers.inDeadZone,
       rng: this.rng,
       minDistance: this.settings.foodMinDistanceFromHead,
-    });
-    this.emit(EVENTS.FOOD_SPAWNED, { index, cell: { ...this.food.apples[index] } });
+      region: this.lasers.safeRegion(),
+    };
+  }
+
+  /**
+   * Advances the laser schedule to this tick and applies everything a step does to the board
+   * (`DESIGN-DECISIONS §2.4`).
+   *
+   * The order inside a step is deliberate: the beam sweeps the cells first (apples in the dead zone are gone
+   * "the moment a laser passes over" them, and the slots they leave are refilled immediately), and only then
+   * are the heads it swept over killed. Doing it the other way round would end the round on the kill and
+   * leave an apple sitting inside the dead zone in the final snapshot — a state `§2.4` says cannot exist, and
+   * one KS-04-05's fuzz invariants check after every single tick.
+   */
+  updateLasers() {
+    // `timeRemaining` is `null` in practice mode and `lasers.update` answers "nothing is due" to that, which
+    // is why there is no mode test here: "practice has no laser schedule" is the laser system's rule to know.
+    for (const event of this.lasers.update(this.timeRemaining)) {
+      if (event.type === EVENTS.LASER_WARNING) {
+        this.emit(EVENTS.LASER_WARNING, {});
+        continue;
+      }
+      this.emit(EVENTS.LASER_STEP, { inset: event.inset });
+      this.sweepDeadZone();
+      this.refillFood();
+      this.killHeadsInDeadZone();
+      if (this.phase !== PHASES.PLAYING) return;
+    }
+    // `§2.3`: a slot the arena had no room for is retried every tick, not only on a laser step — the space
+    // that frees it up is usually a snake's tail moving, not a beam.
+    this.refillFood();
+  }
+
+  /**
+   * Takes every apple and power-up the lasers have just swept over off the board (`DESIGN-DECISIONS §2.4`).
+   *
+   * Power-ups are filtered rather than announced: `powerups.js` is still Sprint 02's inactive stub and its
+   * `pickups` array is always empty, so this is the seam Sprint 06 fills in — with its own removal event,
+   * which is Sprint 06's to name.
+   */
+  sweepDeadZone() {
+    for (let index = 0; index < this.food.apples.length; index += 1) {
+      const apple = this.food.apples[index];
+      if (apple === null || !this.lasers.inDeadZone(apple)) continue;
+      this.food.clear(index);
+      this.emit(EVENTS.FOOD_REMOVED, { index, cell: { ...apple } });
+    }
+    this.powerUps.pickups = this.powerUps.pickups.filter(
+      (pickup) => !this.lasers.inDeadZone(pickup.cell),
+    );
+  }
+
+  /**
+   * Tries to fill every empty apple slot, announcing the ones that succeed. A slot that still has nowhere to
+   * go costs nothing — `placeFoodWithFallback` finds no candidate and draws no random number — so calling
+   * this every tick is the cheap half of `§2.3`'s "retried every tick" and keeps the `rng` stream identical
+   * to a round that never had an empty slot at all.
+   */
+  refillFood() {
+    for (let index = 0; index < this.food.apples.length; index += 1) {
+      if (this.food.apples[index] !== null) continue;
+      const cell = this.food.respawn(index, this.foodPlacement());
+      if (cell !== null) this.emit(EVENTS.FOOD_SPAWNED, { index, cell: { ...cell } });
+    }
+  }
+
+  /**
+   * Kills every snake the beam has just closed over. Only the **head** counts (`DESIGN-DECISIONS §2.4`: "A
+   * snake *body* in the dead zone does not die"), and this is the one death that happens to a snake standing
+   * still — every other death in the game happens to a head that moved into something.
+   */
+  killHeadsInDeadZone() {
+    if (this.godMode) return;
+    /** @type {Snake[]} */
+    const killed = this.snakes.filter((snake) => snake.alive && this.lasers.inDeadZone(snake.head));
+    if (killed.length === 0) return;
+
+    for (const snake of killed) {
+      snake.alive = false;
+      this.emit(EVENTS.SNAKE_DIED, {
+        snakeId: snake.id,
+        cause: CAUSES.LASER,
+        cell: { ...snake.head },
+      });
+    }
+    this.endRound(END_REASONS.DEATH);
   }
 
   /**
