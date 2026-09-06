@@ -92,10 +92,18 @@ export const POWERUP_TYPES = Object.freeze({ SPEED: 'SPEED', SLOW: 'SLOW' });
 const EPSILON = 1e-9;
 
 /**
- * How many spawn/despawn cycles will ever happen this round: the number of `k = 0, 1, 2, …` for which the
- * cycle's own time-remaining threshold (`firstSpawnAt − k · interval`) is still *strictly after*
- * `laserStartTime` (`DESIGN-DECISIONS §2.4`: "no further power-up spawns" once the warning fires; `§1`'s "at
- * or after" is what makes the boundary itself excluded, matching the shipping timeline's 75/60/45-and-not-30).
+ * How many spawn/despawn cycles a round with these settings can *ever* hold: the number of `k = 0, 1, 2, …`
+ * for which the cycle's own time-remaining threshold (`firstSpawnAt − k · interval`) is still strictly after
+ * `laserStartTime` (matching the shipping timeline's 75/60/45-and-not-30).
+ *
+ * This is a **size**, not the enforcement of "no spawns at or after `laserStartTime`" — `updateSpawns`'s own
+ * `timeRemaining <= laserStartTime` guard is what actually enforces that against the live clock, on every
+ * call, regardless of how the round got there. The two happen to agree under the shipping settings, where a
+ * cycle's threshold *is* the moment it fires, but they come apart the instant a round is shorter than
+ * `firstSpawnAt`: `cyclesDueAt` would otherwise report every one of these `maxCycles` cycles as due on tick 1
+ * (all after `LASER_WARNING`, in the same tick) with nothing left to stop it, because counting thresholds and
+ * reading the clock are two different questions and only the guard answers the second one. Keeping both is
+ * deliberate: this caps how many cycles remain for the guard to allow; the guard is the rule.
  *
  * @param {number} firstSpawnAt
  * @param {number} laserStartTime
@@ -170,6 +178,13 @@ export function createPowerUps({ settings, enabled, rng }) {
       // "nothing ever spawns" and, just as importantly, "no rng draw ever happens for a power-up" — checked
       // before anything below touches `rng`, `cyclesProcessed` or `getPlacement`.
       if (!powerUps.enabled || timeRemaining === null) return events;
+
+      // `DESIGN-DECISIONS §2.4`: "no further power-up spawns" once the warning fires — checked directly
+      // against the live clock, not inferred from `maxCycles` (see that function's own doc comment for why
+      // the two are different jobs). Without this, a round shorter than `powerUpFirstSpawnAt` would have
+      // every cycle up to `maxCycles` come due on its very first tick, after `LASER_WARNING` has already
+      // fired in that same tick — exactly the case a settings override can produce and real play cannot.
+      if (timeRemaining <= laserStartTime + EPSILON) return events;
 
       const due = cyclesDueAt(timeRemaining, powerUpFirstSpawnAt, powerUpInterval, maxCycles);
       if (cyclesProcessed >= due) return events;

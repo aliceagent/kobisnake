@@ -34,19 +34,12 @@ const GOLDEN_LASER_ROUND = JSON.parse(
  * A round nobody can lose: `snakeSpeed: 0` so no snake ever steps, and `godMode` so the beams closing over
  * where they stand cannot kill them either (KS-04-01 QA). What is left is the schedule on its own.
  *
- * `powerUpsEnabled: false` (KS-06-01 declared deviation): before Sprint 06 this made no difference — the
- * power-up system was an inert stub regardless of the flag — but it is real now, and this file's golden log
- * and every threshold in it are about the *laser* schedule. Letting power-ups spawn for real here would draw
- * from the same seeded `rng` the food system uses, entangling this file's numbers with an unrelated system's
- * cell/type draws for no reason this file cares about. A test that wants power-ups active passes its own
- * `powerUpsEnabled: true` override.
- *
  * @param {import('../../../src/core/settings.js').SettingsOverride} [overrides]
  * @returns {RoundSimulation}
  */
 function frozenRound(overrides = {}) {
   return new RoundSimulation({
-    settings: withOverrides({ snakeSpeed: 0, godMode: true, powerUpsEnabled: false, ...overrides }),
+    settings: withOverrides({ snakeSpeed: 0, godMode: true, ...overrides }),
     seed: 1,
     players: TWO_PLAYERS,
   });
@@ -494,7 +487,14 @@ describe('KS-04-01 laser schedule', () => {
 
   describe('the golden laser timeline', () => {
     it('KS-04-01 QA: a no-input round with immortal snakes replays event-for-event', () => {
-      const sim = frozenRound({ snakeSpeed: SETTINGS.snakeSpeed });
+      // `powerUpsEnabled: false` (KS-06-01 declared deviation, narrower than an earlier draft of this same
+      // fix): unlike the four `tests/sim/replays/laser-*.json` fixtures, this is a full 90 s round under the
+      // *default* settings, where power-ups spawning at 75/60/45 s remaining is correct, real behaviour —
+      // not the short-round threshold bug KS-06-01's tech-lead review found and fixed in `powerups.js`'s
+      // `updateSpawns` guard. `GOLDEN_LASER_ROUND` was recorded before Sprint 06 existed, so only this one
+      // call site keeps power-ups off to keep matching it, rather than the whole file defaulting to it —
+      // every other test below still runs `frozenRound()`'s real, unmodified `powerUpsEnabled: true` default.
+      const sim = frozenRound({ snakeSpeed: SETTINGS.snakeSpeed, powerUpsEnabled: false });
       const events = [...sim.events, ...runTo(sim, SETTINGS.roundDuration)];
 
       expect(events).toEqual(GOLDEN_LASER_ROUND.events);

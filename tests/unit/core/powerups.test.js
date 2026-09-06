@@ -152,6 +152,32 @@ describe('KS-06-01 power-up spawn cycle (RoundSimulation)', () => {
       }
       expect(counting.calls).toBe(0);
     });
+
+    it('KS-06-01: no power-up ever spawns at or after laserStartTime, even in a round shorter than the first spawn threshold', () => {
+      // `powerUpFirstSpawnAt` (75) is unmodified — the whole point is a round whose clock never reaches it.
+      // `maxCycleCount` alone would allow every one of `maxCycles` cycles onto the very first tick here (all
+      // after LASER_WARNING, in the same tick); `updateSpawns`'s own clock guard is what actually stops it.
+      const sim = new RoundSimulation({
+        settings: withOverrides({
+          roundDuration: 2,
+          laserStartTime: 2,
+          laserWarningDuration: 1,
+          laserStepInterval: 10,
+          godMode: true,
+          powerUpsEnabled: true,
+        }),
+        seed: 1,
+        players: TWO_PLAYERS,
+      });
+      const events = runTo(sim, 2);
+
+      expect(only(events, EVENTS.POWERUP_SPAWNED)).toEqual([]);
+      expect(only(events, EVENTS.POWERUP_DESPAWNED)).toEqual([]);
+      expect(sim.powerUps.pickups).toEqual([]);
+      // Sanity: the warning really did fire this round, so "nothing spawned" is the guard working, not the
+      // laser schedule simply never reaching the threshold.
+      expect(only(events, EVENTS.LASER_WARNING)).toHaveLength(1);
+    });
   });
 
   describe('AC2 despawn/spawn pairing', () => {
@@ -245,6 +271,35 @@ describe('KS-06-01 power-up spawn cycle (RoundSimulation)', () => {
     });
   });
 
+  describe('POWERUP_REMOVED — a laser step sweeping an uncollected pickup off the board', () => {
+    it('KS-06-01: fires with the exact swept cell, empties the board, and spares a pickup inside the safe square', () => {
+      // The ticket names this event specifically ("this ticket adds the event and the test"): `round.js`'s
+      // `sweepDeadZone` already filtered `powerUps.pickups`, but nothing asserted on the event or on what
+      // survives. Two pickups are seeded directly (`round.test.js`'s own technique for reaching a laser
+      // state without waiting out the schedule) so one real `LASER_STEP` can be shown to remove exactly one
+      // of them and leave the other untouched.
+      const sim = frozenRound({ powerUpsEnabled: false });
+      sim.powerUps.pickups = [
+        { cell: { x: 0, y: 12 }, type: POWERUP_TYPES.SPEED }, // x=0 < inset 1 after the first LASER_STEP
+        { cell: { x: 12, y: 12 }, type: POWERUP_TYPES.SLOW }, // deep inside the safe square
+      ];
+
+      const firstStepAt = SETTINGS.laserStartTime - SETTINGS.laserWarningDuration; // 25 s remaining
+      const events = runTo(sim, SETTINGS.roundDuration - firstStepAt);
+
+      expect(only(events, EVENTS.LASER_STEP)).toHaveLength(1); // sanity: exactly the first step happened
+      const removed = only(events, EVENTS.POWERUP_REMOVED);
+      expect(removed).toHaveLength(1);
+      expect(removed[0]).toMatchObject({ cell: { x: 0, y: 12 } });
+      // `POWERUP_REMOVED` stays `{ cell }` — no type, unlike `POWERUP_SPAWNED`/`POWERUP_DESPAWNED`.
+      expect(removed[0].powerUpType).toBeUndefined();
+      expect(Object.keys(removed[0]).sort()).toEqual(['cell', 't', 'tick', 'type']);
+
+      expect(sim.powerUps.pickups).toEqual([{ cell: { x: 12, y: 12 }, type: POWERUP_TYPES.SLOW }]);
+      expect(sim.lasers.inDeadZone({ x: 12, y: 12 })).toBe(false);
+    });
+  });
+
   describe('Tech-lead ruling — a power-up never lands on an apple', () => {
     it("KS-06-01: RoundSimulation's power-up placement occupies every current apple cell", () => {
       const sim = frozenRound({ powerUpsEnabled: true });
@@ -274,6 +329,49 @@ describe('KS-06-01 power-up spawn cycle (RoundSimulation)', () => {
         );
         expect(events).toHaveLength(1);
         expect(events[0].payload.cell).toEqual({ x: 5, y: 5 });
+      }
+    });
+
+    it('KS-06-01: an apple never respawns onto a standing power-up, across 2000 seeded trials', () => {
+      // Tech-lead review adversarial finding (KS-06-05 fuzz): `powerUpPlacement()` already avoided apple
+      // cells, but nothing made *apple* placement avoid a standing power-up — two objects cannot occupy one
+      // cell regardless of which arrived second. `round.js`'s own `foodPlacement()` was the bug, not
+      // `placeFoodWithFallback` (already correct), so this drives a real `RoundSimulation` end to end
+      // (`eatIfApple`, the actual caller) rather than handing the placement helper a hand-built `occupied`
+      // set that could quietly agree with whichever side of the bug it was written to match.
+      const grid = { width: 6, height: 6 };
+      const settings = withOverrides({ grid, foodMinDistanceFromHead: 0, powerUpsEnabled: false });
+      const pickupCell = { x: 5, y: 5 };
+      // (0, 0) is the slot being eaten — it frees up as part of this very respawn — so two cells, not one,
+      // are legitimately free afterwards; the invariant under test is only that neither of them is ever the
+      // power-up's cell, which a bugged `occupied` set would have allowed as a *third* candidate.
+      const eatenCell = { x: 0, y: 0 };
+      const otherFreeCell = { x: 4, y: 5 };
+      const freeCells = [eatenCell, otherFreeCell];
+
+      for (let seed = 0; seed < 2000; seed += 1) {
+        const sim = new RoundSimulation({ settings, seed, players: TWO_PLAYERS });
+        /** @type {Cell[]} */
+        const filler = [];
+        for (let x = 0; x < grid.width; x += 1) {
+          for (let y = 0; y < grid.height; y += 1) {
+            const isPickup = x === pickupCell.x && y === pickupCell.y;
+            const isFree = freeCells.some((cell) => cell.x === x && cell.y === y);
+            if (!isPickup && !isFree) filler.push({ x, y });
+          }
+        }
+        // Every cell but the power-up's and the two legitimately-free ones is another apple, so the only way
+        // a respawn can land on `pickupCell` is if it is missing from `occupied` — exactly the bug.
+        sim.food.apples = [eatenCell, ...filler];
+        sim.powerUps.pickups = [{ cell: pickupCell, type: POWERUP_TYPES.SPEED }];
+        sim.snakes[0].segments[0] = { ...eatenCell };
+
+        sim.eatIfApple(sim.snakes[0]);
+
+        const respawned = sim.food.apples[0];
+        expect(respawned).not.toBeNull();
+        expect(respawned).not.toEqual(pickupCell);
+        expect(freeCells).toContainEqual(respawned);
       }
     });
   });

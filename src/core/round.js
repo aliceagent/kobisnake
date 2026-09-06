@@ -427,14 +427,22 @@ export class RoundSimulation {
    * board: it is redundant with `deadZone` — both exclude the same cells — but it is what keeps the endgame
    * cheap, since the candidate scan then walks 36 cells instead of 576 on every retry of an empty slot.
    *
+   * `occupied` includes every power-up cell (KS-06-01 tech-lead review, adversarial finding): `§2.3` states
+   * "never on an apple" from the power-up's side, but two objects cannot occupy one cell regardless of which
+   * one arrived second — an apple respawning onto a *standing* power-up is exactly the same board state as a
+   * power-up spawning onto a standing apple, and only the latter half was guarded before this. `power-ups`
+   * being a plain snake/apple-sized handful of cells (at most one, ever) makes this cheap on every call.
+   *
    * @returns {{grid: import('./grid.js').GridSize, occupied: Set<string>, heads: Cell[],
    *   deadZone: (cell: Cell) => boolean, rng: import('./rng.js').Rng, minDistance: number,
    *   region: import('./lasers.js').SafeRegion}}
    */
   foodPlacement() {
+    const occupied = this.occupiedCells();
+    for (const pickup of this.powerUps.pickups) occupied.add(cellKey(pickup.cell));
     return {
       grid: this.settings.grid,
-      occupied: this.occupiedCells(),
+      occupied,
       heads: this.heads(),
       deadZone: this.lasers.inDeadZone,
       rng: this.rng,
