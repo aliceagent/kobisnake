@@ -15,14 +15,20 @@
  */
 
 /**
- * Wall seconds needed to play the countdown out: four beats at `SETTINGS.countdownStepSeconds` (0.8 s), plus
- * a hundredth of a second so a frame lands *past* the final boundary rather than exactly on it.
+ * Wall seconds the countdown lasts: four beats at `SETTINGS.countdownStepSeconds` (0.8 s).
+ *
+ * **Not what a spec should fast-forward by, since KS-06-00.** `__kobi.fastForward` advances in frame-sized
+ * chunks now (#84), so one fixed call cannot land exactly on the countdown's last boundary: 3.2 s sums to a
+ * hair under it in binary float and leaves the countdown unfinished, and the 3.21 s that used to be right
+ * spills its last hundredth of a second into the round, starting it at tick 1 instead of tick 0. Every
+ * helper below therefore *steps until the state changes* rather than fast-forwarding a fixed duration, and
+ * so does every spec that plays a countdown out inline. This constant is kept because it is still the honest
+ * answer to "how long is the countdown", which a spec occasionally needs to reason about.
  *
  * Deliberately a plain number here rather than an import from `src/core/settings.js`: these helpers are
- * serialised into the page, and a serialised function cannot reach a module-level constant. A spec that
- * needs the value outside `page.evaluate` imports this one.
+ * serialised into the page, and a serialised function cannot reach a module-level constant.
  */
-export const COUNTDOWN_SECONDS = 3.21;
+export const COUNTDOWN_SECONDS = 3.2;
 
 /**
  * Starts a two-player match and plays the countdown out, all inside one synchronous script.
@@ -38,7 +44,24 @@ export const COUNTDOWN_SECONDS = 3.21;
 export function startMatchInPage() {
   const kobi = /** @type {any} */ (globalThis).__kobi;
   kobi.startMatch();
-  kobi.fastForward(3.21);
+  // Stepped rather than fast-forwarded a fixed 3.21 s (KS-06-00, see COUNTDOWN_SECONDS above). The chunk
+  // that ends the countdown gives the round nothing — `session.js`'s `advanceCountdown` dispatches
+  // COUNTDOWN_DONE and returns — so the loop leaves the round at tick 0 exactly, as it always did. The bound
+  // is nearly twice the countdown's own 3.2 s, so it can only be reached if the countdown is truly stuck.
+  for (let i = 0; i < 60 && kobi.getState() === 'COUNTDOWN'; i += 1) kobi.fastForward(0.1);
+  return kobi.getState();
+}
+
+/**
+ * Plays a countdown already in progress out, leaving the round at tick 0 in PLAYING. For a spec that reached
+ * COUNTDOWN some other way than {@link startMatchInPage} — `__kobi.startMatch()` on its own, say, when the
+ * countdown itself is what the spec wants to look at first.
+ *
+ * @returns {string} the state afterwards — `'PLAYING'`.
+ */
+export function playCountdownInPage() {
+  const kobi = /** @type {any} */ (globalThis).__kobi;
+  for (let i = 0; i < 60 && kobi.getState() === 'COUNTDOWN'; i += 1) kobi.fastForward(0.1);
   return kobi.getState();
 }
 
@@ -64,7 +87,7 @@ export function startMatchInPage() {
 export function startMatchAndPauseInPage() {
   const kobi = /** @type {any} */ (globalThis).__kobi;
   kobi.startMatch();
-  kobi.fastForward(3.21);
+  for (let i = 0; i < 60 && kobi.getState() === 'COUNTDOWN'; i += 1) kobi.fastForward(0.1);
   kobi.pause();
   kobi.fastForward(0);
   return kobi.sim.tick;
@@ -109,7 +132,12 @@ export function crashPlayerOneInPage() {
  */
 export function nextRoundInPage() {
   const kobi = /** @type {any} */ (globalThis).__kobi;
-  kobi.fastForward(3); // scoreboardSeconds is 2.5 (`DESIGN-DECISIONS §2.6`)
-  kobi.fastForward(3.21); // 3 · 2 · 1 · GO
+  // Both beats stepped rather than fast-forwarded a fixed duration (KS-06-00). The old pair of coarse calls
+  // used to consume each beat whole; chunked, the leftover of the scoreboard's 3 s ran on into the countdown
+  // and the countdown's leftover ran on into the round, so the second round of a match started roughly half
+  // a second in — enough to change which snake reached a wall first, and how `match-flow.spec.js`'s Bo3 came
+  // out. Stepping to each state boundary is both faithful to real time and exact.
+  for (let i = 0; i < 60 && kobi.getState() === 'ROUND_OVER'; i += 1) kobi.fastForward(0.1);
+  for (let i = 0; i < 60 && kobi.getState() === 'COUNTDOWN'; i += 1) kobi.fastForward(0.1);
   return kobi.getState();
 }

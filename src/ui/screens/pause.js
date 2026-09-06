@@ -6,9 +6,10 @@ import { createFocusModel } from '../focus.js';
  * The pause screen (`PAUSE`, `DESIGN-DECISIONS §2.8`: "Esc during PLAYING opens PAUSE (Resume / Restart
  * match / Quit to menu)."). Three focusables, in that exact order.
  *
- * `gameStateMachine.js`'s `TRANSITIONS[PAUSE]` carries no `BACK` row (only `RESUME`, `REMATCH`,
- * `QUIT_TO_MENU`), so Esc is wired to nothing here, same reasoning as `matchOver.js` — there is no `onBack`
- * prop in the tech-lead contract for this screen, and DESIGN-DECISIONS never says Esc-while-paused resumes.
+ * Esc resumes (KS-06-00, the design lead's ruling on issue #82; `DESIGN-DECISIONS §2.8` now says so
+ * explicitly). `ARCHITECTURE §8` gives Esc one universal meaning — "back" — and back out of the pause screen
+ * is back into the round, so `onBack` is routed to the same session handler as the RESUME item and gets the
+ * same one-second READY? beat. A player who pressed Esc to pause presses it again to unpause.
  */
 
 /** @typedef {import('../focus.js').MenuAction} MenuAction */
@@ -18,6 +19,8 @@ import { createFocusModel } from '../focus.js';
  * @property {() => void} onResume
  * @property {() => void} onRestart
  * @property {() => void} onMenu
+ * @property {() => void} onBack - Esc. Resumes, like `onResume`, but as its own callback so `session.js`
+ *   can dispatch the `BACK` the player actually expressed rather than a `RESUME` they did not.
  */
 
 /**
@@ -71,7 +74,7 @@ export function createPauseScreen(root) {
   root.appendChild(container);
 
   /** @type {PauseProps} */
-  let props = { onResume: () => {}, onRestart: () => {}, onMenu: () => {} };
+  let props = { onResume: () => {}, onRestart: () => {}, onMenu: () => {}, onBack: () => {} };
 
   const rows = [resumeRow, restartRow, menuRow];
 
@@ -82,6 +85,7 @@ export function createPauseScreen(root) {
       { onSelect: () => props.onRestart() },
       { onSelect: () => props.onMenu() },
     ],
+    onBack: () => props.onBack(),
   });
 
   function updateFocusClasses() {

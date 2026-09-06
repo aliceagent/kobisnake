@@ -232,7 +232,10 @@ describe('KS-04-04 closing-phase statistics and fairness', () => {
 
     it('KS-04-04 AC1: every row of the table adds to 100% of the rounds actually run', () => {
       for (const stats of [survivorVsSurvivor, greedyVsSurvivor, greedyVsGreedy]) {
-        expect(stats.beforeThirtyPct + stats.thirtyToZeroPct + stats.timeoutPct).toBeCloseTo(100, 0);
+        expect(stats.beforeThirtyPct + stats.thirtyToZeroPct + stats.timeoutPct).toBeCloseTo(
+          100,
+          0,
+        );
         expect(stats.endsByDeathPct + stats.timeoutPct).toBeCloseTo(100, 0);
       }
     });

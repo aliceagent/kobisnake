@@ -78,7 +78,7 @@ test.describe('KS-05-05 screen baselines', () => {
       // Freeze first (module doc comment): COUNTDOWN has no PAUSE row, so this is the only freeze available,
       // and it must be in place before anything else runs so no real frame can land in between.
       Object.defineProperty(doc, 'hidden', { configurable: true, get: () => true });
-      doc.dispatchEvent(new (/** @type {any} */ (globalThis).Event)('visibilitychange'));
+      doc.dispatchEvent(new /** @type {any} */ (globalThis).Event('visibilitychange'));
 
       const kobi = /** @type {any} */ (globalThis).__kobi;
       kobi.startMatch();
@@ -104,11 +104,15 @@ test.describe('KS-05-05 screen baselines', () => {
       // scoreboard is shown for `scoreboardSeconds` (2.5 s) of real wall time before `NEXT_ROUND`/`MATCH_OVER`
       // fires and the screen changes out from under a slow screenshot.
       Object.defineProperty(doc, 'hidden', { configurable: true, get: () => true });
-      doc.dispatchEvent(new (/** @type {any} */ (globalThis).Event)('visibilitychange'));
+      doc.dispatchEvent(new /** @type {any} */ (globalThis).Event('visibilitychange'));
 
       const kobi = /** @type {any} */ (globalThis).__kobi;
       kobi.startMatch();
-      kobi.fastForward(3.21); // 3 · 2 · 1 · GO
+      // KS-06-00: `fastForward` advances in frame-sized chunks now (#84), so the countdown is played out
+      // by stepping until it hands the round over, rather than by one fixed 3.21 s call — which would spill
+      // its last hundredth of a second into the round and start it at tick 1 instead of tick 0. The bound is
+      // nearly twice the countdown's own 3.2 s, so it can only be reached if the countdown is truly stuck.
+      for (let i = 0; i < 60 && kobi.getState() === 'COUNTDOWN'; i += 1) kobi.fastForward(0.1);
       // P1 spawns at (5, 12) heading RIGHT and turning UP kills it on the top wall at 2.0 s
       // (`DESIGN-DECISIONS §2.3`); P2 is unsteered and does not reach its own wall until ≈ 3.167 s, so P1
       // dies alone and P2 takes the round. Three seconds covers the crash and the 0.6 s slow-mo beat.
@@ -132,12 +136,16 @@ test.describe('KS-05-05 screen baselines', () => {
       // tick (module doc comment). Applied for the whole script anyway, for the same "one script, no gaps"
       // discipline every other step in this file follows.
       Object.defineProperty(doc, 'hidden', { configurable: true, get: () => true });
-      doc.dispatchEvent(new (/** @type {any} */ (globalThis).Event)('visibilitychange'));
+      doc.dispatchEvent(new /** @type {any} */ (globalThis).Event('visibilitychange'));
 
       const kobi = /** @type {any} */ (globalThis).__kobi;
       // Bo1: the single scripted crash below both ends the round and decides the match.
       kobi.startMatch({ bestOf: 1 });
-      kobi.fastForward(3.21);
+      // KS-06-00: `fastForward` advances in frame-sized chunks now (#84), so the countdown is played out
+      // by stepping until it hands the round over, rather than by one fixed 3.21 s call — which would spill
+      // its last hundredth of a second into the round and start it at tick 1 instead of tick 0. The bound is
+      // nearly twice the countdown's own 3.2 s, so it can only be reached if the countdown is truly stuck.
+      for (let i = 0; i < 60 && kobi.getState() === 'COUNTDOWN'; i += 1) kobi.fastForward(0.1);
       kobi.pressKey(1, 'UP');
       kobi.fastForward(3); // crash + slow-mo -> ROUND_OVER
       kobi.fastForward(3); // scoreboardSeconds (2.5 s) -> MATCH_OVER, decided

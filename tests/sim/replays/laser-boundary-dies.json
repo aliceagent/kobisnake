@@ -88,10 +88,7 @@
       "result": "P2_WIN",
       "reason": "DEATH",
       "winnerId": "p2",
-      "lengths": [
-        4,
-        4
-      ]
+      "lengths": [4, 4]
     }
   ]
 }
