@@ -1,5 +1,5 @@
-/* Page layout for the game shell. Colours belong in src/render/materials.js (3D) or, when the UI screens
-   arrive, in the UI token stylesheet — never here.
+/* Page layout for the game shell, plus the grey-box overlay and HUD (KS-03-05). This is the one place a DOM
+   hex colour is allowed (the other is src/render/materials.js, for the 3D scene — CLAUDE.md "never" list).
 
    This lives in a real stylesheet rather than a <style> block in index.html so that production can send a
    Content-Security-Policy with a plain `style-src 'self'`: no 'unsafe-inline' anywhere, which is what makes
@@ -23,4 +23,74 @@ body {
   position: absolute;
   inset: 0;
   pointer-events: none;
+  font-family:
+    system-ui,
+    -apple-system,
+    sans-serif;
+  color: #ffffff;
+}
+
+/* The "PRESS ENTER" / round-over screen (KS-03-05). Grey-box: a dark panel over a dimmed arena, no toy
+   styling yet — Sprint 11 replaces this with the real menu look (docs/reference/images/14-main-menu.png). */
+.overlay {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 2rem;
+  background: rgba(10, 12, 16, 0.55);
+  font-size: 2.5rem;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-align: center;
+  text-transform: uppercase;
+}
+
+.overlay[hidden] {
+  display: none;
+}
+
+/* The minimal HUD: a centred timer with a player readout either side, matching the layout of
+   docs/reference/images/13-gameplay-hud.png and 02-standard-gameplay-camera.png (timer sits centre-top,
+   P1 to its left, P2 to its right). Sprint 11 replaces the pill/BEST-OF styling; this stays grey-box. */
+.hud {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 1rem;
+  padding: 1rem 1.5rem;
+  font-size: 1.25rem;
+  font-weight: 600;
+}
+
+.hud-player {
+  min-width: 4rem;
+  padding: 0.5rem 1rem;
+  border-radius: 0.75rem;
+  background: rgba(20, 22, 28, 0.7);
+  text-align: center;
+}
+
+/* Coloured by player, not just position, so "find your head in under a second" (PLAYTEST-SCRIPT §3) works
+   from the HUD too. Red/Blue are the two colours DESIGN-DECISIONS §2.7 assigns before either player has
+   picked one (S05+); a left border is the smallest change that still reads instantly. */
+.hud-player--p1 {
+  border-left: 0.35rem solid #e3261b;
+}
+
+.hud-player--p2 {
+  border-left: 0.35rem solid #1f6fe5;
+}
+
+.hud-timer {
+  padding: 0.5rem 1.25rem;
+  border-radius: 0.75rem;
+  background: rgba(20, 22, 28, 0.85);
+  font-size: 1.5rem;
+  text-align: center;
 }
