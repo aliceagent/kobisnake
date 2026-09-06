@@ -487,7 +487,14 @@ describe('KS-04-01 laser schedule', () => {
 
   describe('the golden laser timeline', () => {
     it('KS-04-01 QA: a no-input round with immortal snakes replays event-for-event', () => {
-      const sim = frozenRound({ snakeSpeed: SETTINGS.snakeSpeed });
+      // `powerUpsEnabled: false` (KS-06-01 declared deviation, narrower than an earlier draft of this same
+      // fix): unlike the four `tests/sim/replays/laser-*.json` fixtures, this is a full 90 s round under the
+      // *default* settings, where power-ups spawning at 75/60/45 s remaining is correct, real behaviour —
+      // not the short-round threshold bug KS-06-01's tech-lead review found and fixed in `powerups.js`'s
+      // `updateSpawns` guard. `GOLDEN_LASER_ROUND` was recorded before Sprint 06 existed, so only this one
+      // call site keeps power-ups off to keep matching it, rather than the whole file defaulting to it —
+      // every other test below still runs `frozenRound()`'s real, unmodified `powerUpsEnabled: true` default.
+      const sim = frozenRound({ snakeSpeed: SETTINGS.snakeSpeed, powerUpsEnabled: false });
       const events = [...sim.events, ...runTo(sim, SETTINGS.roundDuration)];
 
       expect(events).toEqual(GOLDEN_LASER_ROUND.events);

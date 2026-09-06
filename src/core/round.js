@@ -4,7 +4,7 @@ import { END_REASONS, EVENTS, PHASES, RESULTS } from './events.js';
 import { FoodState } from './food.js';
 import { DIRECTIONS, cellKey, inBounds } from './grid.js';
 import { createLasers } from './lasers.js';
-import { createInactive as createInactivePowerUps } from './powerups.js';
+import { POWERUP_TYPES, createPowerUps } from './powerups.js';
 import { createRng } from './rng.js';
 import { SETTINGS } from './settings.js';
 import { Snake } from './snake.js';
@@ -83,7 +83,8 @@ export class RoundSimulation {
    * @param {Settings} [options.settings] - defaults to the shipping `SETTINGS`
    * @param {number} options.seed - every random draw in the round comes from this
    * @param {Player[]} options.players - one or two players; a single player is only legal in practice mode
-   * @param {boolean} [options.powerUpsEnabled] - remembered for Sprint 06; nothing acts on it yet
+   * @param {boolean} [options.powerUpsEnabled] - defaults to `settings.powerUpsEnabled`; `false` means no
+   *   `POWERUP_*` event is ever emitted and no random draw is ever made for one (`DESIGN-DECISIONS §1 row 20`)
    * @param {'match' | 'practice'} [options.mode] - practice has no round timer (`DESIGN-DECISIONS §5`)
    */
   constructor({ settings = SETTINGS, seed, players, powerUpsEnabled, mode = 'match' }) {
@@ -109,6 +110,17 @@ export class RoundSimulation {
     this.tick = 0;
     /** Leftover fraction of a tick from the last `advance`, in tick units. @type {number} */
     this.tickAccumulator = 0;
+    /**
+     * Simulation ticks withheld from the laser clock by the solo-SLOW rule (KS-06-01 Ruling 1, `powerups.js`
+     * module doc) — 0 in every round that never runs it, so {@link laserTimeRemaining} equals
+     * {@link timeRemaining} by construction rather than by a second counter kept in step with `tick`. See
+     * {@link advanceLaserClock}.
+     * @type {number}
+     */
+    this.laserTicksWithheld = 0;
+    /** Fractional tick owed to {@link laserTicksWithheld} so far, an integer carry never a float sum.
+     * @type {number} */
+    this.laserWithholdCarry = 0;
     /** @type {Phase} */
     this.phase = PHASES.PLAYING;
     /** @type {RoundResult | null} */
@@ -130,7 +142,11 @@ export class RoundSimulation {
     });
 
     this.lasers = createLasers(settings);
-    this.powerUps = createInactivePowerUps(powerUpsEnabled ?? settings.powerUpsEnabled);
+    this.powerUps = createPowerUps({
+      settings,
+      enabled: powerUpsEnabled ?? settings.powerUpsEnabled,
+      rng: this.rng,
+    });
 
     /**
      * Test-only immortality (KS-04-01 QA). With it on, a snake that would die simply refuses the step that
@@ -175,6 +191,28 @@ export class RoundSimulation {
   get timeRemaining() {
     if (this.mode === 'practice') return null;
     return this.settings.roundDuration - this.elapsed;
+  }
+
+  /**
+   * Seconds left on the **laser** clock — identical to {@link timeRemaining} unless the solo-SLOW rule
+   * (`powerups.js`) is currently running or has run, in which case it lags behind it by
+   * {@link laserTicksWithheld} ticks (KS-06-01 AC5).
+   *
+   * Deliberately **derived from `tick`**, not from a second counter kept in lockstep with it: an earlier
+   * version of this getter read a `laserClockTicks` field that only {@link advanceLaserClock} ever advanced,
+   * which agreed with `tick` for as long as nothing else moved it — but a test staging a mid-round board by
+   * assigning `sim.tick` directly (`round.test.js`'s own technique for `lasers.inset`, and
+   * `tests/visual/laser.visual.spec.js`'s for a whole frame) left that second counter behind, and the beams
+   * never fired. Subtracting {@link laserTicksWithheld} from the *live* `tick` instead means anything that
+   * moves `tick` — this getter included — carries the laser clock with it automatically, and the identity
+   * "equals `timeRemaining` when the rule never runs" holds by construction (`laserTicksWithheld` starts and
+   * stays at 0) rather than by a promise `advanceLaserClock` has to keep.
+   *
+   * @returns {number | null}
+   */
+  get laserTimeRemaining() {
+    if (this.mode === 'practice') return null;
+    return this.settings.roundDuration - (this.tick - this.laserTicksWithheld) / this.settings.simHz;
   }
 
   /**
@@ -248,6 +286,11 @@ export class RoundSimulation {
         stepProgress: snake.stepProgress,
         pendingGrowth: snake.pendingGrowth,
         speedMultiplier: snake.speedMultiplier,
+        effects: snake.effects.map((effect) => ({
+          type: effect.type,
+          remaining: effect.remainingTicks / this.settings.simHz,
+          multiplier: effect.multiplier,
+        })),
       })),
       apples: this.food.getApples(),
       lasers: this.lasers.getState(),
@@ -273,6 +316,12 @@ export class RoundSimulation {
     this.updateLasers();
     if (this.phase !== PHASES.PLAYING) return;
 
+    // Same reasoning for power-ups (DESIGN-DECISIONS §2.4): the spawn/despawn cycle is driven by the round
+    // clock, not by movement, so it is checked every tick regardless of who steps. Unlike the laser clock,
+    // this always reads the real `timeRemaining` — the solo-SLOW rule slows the lasers, never the power-up
+    // schedule itself (`powerups.js` "Ruling 1").
+    this.updatePowerUpSpawns();
+
     /** @type {Snake[]} */
     const due = [];
     for (const snake of this.snakes) {
@@ -281,6 +330,9 @@ export class RoundSimulation {
       }
     }
     if (due.length === 0) {
+      // Nobody moved, but effect timers are sim time, not step count (DESIGN-DECISIONS §2.4: "Effects tick
+      // in sim time and continue through LASER_WARNING and CLOSING") — they still tick down every tick.
+      this.tickPowerUpEffects();
       this.checkTimeout();
       return;
     }
@@ -302,6 +354,10 @@ export class RoundSimulation {
       for (const snake of due) {
         if (!blocked.has(snake.id)) this.eatIfApple(snake);
       }
+      for (const snake of due) {
+        if (!blocked.has(snake.id)) this.resolvePowerUpPickup(snake);
+      }
+      this.tickPowerUpEffects();
       this.checkTimeout();
       return;
     }
@@ -322,6 +378,10 @@ export class RoundSimulation {
     for (const snake of due) {
       if (snake.alive) this.eatIfApple(snake);
     }
+    for (const snake of due) {
+      if (snake.alive) this.resolvePowerUpPickup(snake);
+    }
+    this.tickPowerUpEffects();
 
     if (deaths.length > 0) {
       // A death ends the round immediately (DESIGN-DECISIONS §2.5). The 0.25x slow-mo beat that follows is
@@ -378,20 +438,44 @@ export class RoundSimulation {
    * board: it is redundant with `deadZone` — both exclude the same cells — but it is what keeps the endgame
    * cheap, since the candidate scan then walks 36 cells instead of 576 on every retry of an empty slot.
    *
+   * `occupied` includes every power-up cell (KS-06-01 tech-lead review, adversarial finding): `§2.3` states
+   * "never on an apple" from the power-up's side, but two objects cannot occupy one cell regardless of which
+   * one arrived second — an apple respawning onto a *standing* power-up is exactly the same board state as a
+   * power-up spawning onto a standing apple, and only the latter half was guarded before this. `power-ups`
+   * being a plain snake/apple-sized handful of cells (at most one, ever) makes this cheap on every call.
+   *
    * @returns {{grid: import('./grid.js').GridSize, occupied: Set<string>, heads: Cell[],
    *   deadZone: (cell: Cell) => boolean, rng: import('./rng.js').Rng, minDistance: number,
    *   region: import('./lasers.js').SafeRegion}}
    */
   foodPlacement() {
+    const occupied = this.occupiedCells();
+    for (const pickup of this.powerUps.pickups) occupied.add(cellKey(pickup.cell));
     return {
       grid: this.settings.grid,
-      occupied: this.occupiedCells(),
+      occupied,
       heads: this.heads(),
       deadZone: this.lasers.inDeadZone,
       rng: this.rng,
       minDistance: this.settings.foodMinDistanceFromHead,
       region: this.lasers.safeRegion(),
     };
+  }
+
+  /**
+   * The placement constraints a power-up must satisfy right now (`DESIGN-DECISIONS §2.3`; tech-lead ruling on
+   * KS-06-01): everything an apple needs, minus the dead-zone/region fields (no power-up spawn is ever
+   * attempted once the laser phase exists — see `powerups.js`'s `maxCycleCount`), plus every apple cell.
+   * `food.js`'s own `occupied` set is snake cells only — an apple has no reason to avoid another apple's
+   * *replacement* — but a power-up must never land on one, so this method adds them itself rather than
+   * teaching `food.js` a rule that is only ever power-ups' to know.
+   *
+   * @returns {import('./powerups.js').PlacementContext}
+   */
+  powerUpPlacement() {
+    const occupied = this.occupiedCells();
+    for (const apple of this.food.present()) occupied.add(cellKey(apple));
+    return { grid: this.settings.grid, occupied, heads: this.heads() };
   }
 
   /**
@@ -405,9 +489,11 @@ export class RoundSimulation {
    * one KS-04-05's fuzz invariants check after every single tick.
    */
   updateLasers() {
-    // `timeRemaining` is `null` in practice mode and `lasers.update` answers "nothing is due" to that, which
-    // is why there is no mode test here: "practice has no laser schedule" is the laser system's rule to know.
-    for (const event of this.lasers.update(this.timeRemaining)) {
+    this.advanceLaserClock();
+    // `laserTimeRemaining` is `null` in practice mode and `lasers.update` answers "nothing is due" to that,
+    // which is why there is no mode test here: "practice has no laser schedule" is the laser system's rule
+    // to know.
+    for (const event of this.lasers.update(this.laserTimeRemaining)) {
       if (event.type === EVENTS.LASER_WARNING) {
         this.emit(EVENTS.LASER_WARNING, {});
         continue;
@@ -424,11 +510,35 @@ export class RoundSimulation {
   }
 
   /**
-   * Takes every apple and power-up the lasers have just swept over off the board (`DESIGN-DECISIONS §2.4`).
+   * Decides whether *this* simulation tick is withheld from the laser clock (KS-06-01 Ruling 1, `powerups.js`
+   * module doc: the solo-SLOW rule is a laser *clock*, not a mutated interval) — the only thing that ever
+   * changes {@link laserTicksWithheld}, which is what makes `laserTimeRemaining`'s derivation in terms of
+   * `tick` correct rather than merely convenient.
    *
-   * Power-ups are filtered rather than announced: `powerups.js` is still Sprint 02's inactive stub and its
-   * `pickups` array is always empty, so this is the seam Sprint 06 fills in — with its own removal event,
-   * which is Sprint 06's to name.
+   * `denom` is `1` normally and `laserMultiplierWhenSolo` (2 in the shipping settings) while the rule is
+   * running, read fresh off `this.powerUps.laserRateMultiplier` every tick. `laserWithholdCarry` is an
+   * integer, incremented by exactly 1 every call; a tick is withheld exactly when the carry has *not* yet
+   * reached `denom` — "an integer count of ticks withheld from the laser clock, never a running float sum of
+   * seconds". With `denom` always 1 the carry reaches 1 on every single call and is immediately reset, so no
+   * tick is ever withheld: {@link laserTicksWithheld} stays 0 for the whole round, which is the *identity*
+   * `laserTimeRemaining === timeRemaining` promised for a round that never runs the rule (see that getter).
+   *
+   * While the rule runs, exactly one tick in every `denom` is withheld, so the clock falls behind by that
+   * fraction of real time — which is what shifts every later laser threshold later by the same amount once
+   * the rule ends (KS-06-01 AC5).
+   */
+  advanceLaserClock() {
+    const denom = Math.round(1 / this.powerUps.laserRateMultiplier);
+    this.laserWithholdCarry += 1;
+    if (this.laserWithholdCarry >= denom) {
+      this.laserWithholdCarry -= denom;
+    } else {
+      this.laserTicksWithheld += 1;
+    }
+  }
+
+  /**
+   * Takes every apple and power-up the lasers have just swept over off the board (`DESIGN-DECISIONS §2.4`).
    */
   sweepDeadZone() {
     for (let index = 0; index < this.food.apples.length; index += 1) {
@@ -437,9 +547,99 @@ export class RoundSimulation {
       this.food.clear(index);
       this.emit(EVENTS.FOOD_REMOVED, { index, cell: { ...apple } });
     }
-    this.powerUps.pickups = this.powerUps.pickups.filter(
-      (pickup) => !this.lasers.inDeadZone(pickup.cell),
-    );
+    /** @type {{cell: Cell, type: import('./powerups.js').PowerUpType}[]} */
+    const survivors = [];
+    for (const pickup of this.powerUps.pickups) {
+      if (this.lasers.inDeadZone(pickup.cell)) {
+        this.emit(EVENTS.POWERUP_REMOVED, { cell: { ...pickup.cell } });
+      } else {
+        survivors.push(pickup);
+      }
+    }
+    this.powerUps.pickups = survivors;
+  }
+
+  /**
+   * Advances the power-up spawn/despawn cycle to `timeRemaining` and announces whatever happened
+   * (`DESIGN-DECISIONS §2.4`).
+   */
+  updatePowerUpSpawns() {
+    const events = this.powerUps.updateSpawns(this.timeRemaining, () => this.powerUpPlacement());
+    for (const event of events) {
+      this.emit(event.type, event.payload);
+    }
+  }
+
+  /**
+   * Checks whether `snake`'s head just landed on the board's one power-up and, if so, applies its effect
+   * (`DESIGN-DECISIONS §1 rows 3/4/20/21`). Only called for a snake that just committed a step — same as
+   * {@link eatIfApple} — since a head that has not moved cannot have just entered a new cell.
+   *
+   * @param {Snake} snake
+   */
+  resolvePowerUpPickup(snake) {
+    const type = this.powerUps.collectAt(snake.head);
+    if (type === null) return;
+    // `powerUpType`, not `type` — see the "Declared deviations" note in this ticket's PR description:
+    // `emit` flattens `{type: EventType, tick, t, ...payload}` onto one object, and `.type` is the
+    // EventType discriminant every consumer in the engine relies on; a payload key also called `type`
+    // would silently overwrite it the instant `emit` spreads the payload.
+    this.emit(EVENTS.POWERUP_COLLECTED, { playerId: snake.id, powerUpType: type });
+    this.applyPowerUpEffect(snake, type);
+  }
+
+  /**
+   * Turns a collected power-up into its effect (`DESIGN-DECISIONS §1 rows 3/4/20/21`).
+   *
+   * SPEED always boosts the collector. SLOW slows every *other* living snake — unless there is none, in which
+   * case (practice/solo) it slows the laser clock instead (`powerups.js`'s solo-SLOW rule; see that module's
+   * doc comment for why this path cannot be reached by playing in Sprint 06).
+   *
+   * @param {Snake} collector
+   * @param {import('./powerups.js').PowerUpType} type
+   */
+  applyPowerUpEffect(collector, type) {
+    if (type === POWERUP_TYPES.SPEED) {
+      const { multiplier, duration } = this.settings.speedBoost;
+      const isNew = collector.applyEffect(type, multiplier, duration, this.settings.simHz);
+      if (isNew) this.emit(EVENTS.EFFECT_STARTED, { playerId: collector.id, powerUpType: type });
+      return;
+    }
+
+    const { multiplier, duration, laserMultiplierWhenSolo } = this.settings.slow;
+    const others = this.snakes.filter((snake) => snake !== collector && snake.alive);
+    if (others.length === 0) {
+      const isNew = this.powerUps.applySoloSlow(
+        collector.id,
+        duration,
+        laserMultiplierWhenSolo,
+        this.settings.simHz,
+      );
+      if (isNew) this.emit(EVENTS.EFFECT_STARTED, { playerId: collector.id, powerUpType: type });
+      return;
+    }
+    for (const other of others) {
+      const isNew = other.applyEffect(type, multiplier, duration, this.settings.simHz);
+      if (isNew) this.emit(EVENTS.EFFECT_STARTED, { playerId: other.id, powerUpType: type });
+    }
+  }
+
+  /**
+   * Advances every snake's power-up effect timers by one tick, and the solo-SLOW laser-clock timer with
+   * them, announcing whichever expire (`DESIGN-DECISIONS §2.4`: effects tick in sim time regardless of
+   * movement or the laser phase).
+   */
+  tickPowerUpEffects() {
+    for (const snake of this.snakes) {
+      if (!snake.alive) continue;
+      for (const type of snake.tickEffects()) {
+        this.emit(EVENTS.EFFECT_ENDED, { playerId: snake.id, powerUpType: type });
+      }
+    }
+    const expiredSoloPlayerId = this.powerUps.tickSoloSlow();
+    if (expiredSoloPlayerId !== null) {
+      this.emit(EVENTS.EFFECT_ENDED, { playerId: expiredSoloPlayerId, powerUpType: POWERUP_TYPES.SLOW });
+    }
   }
 
   /**

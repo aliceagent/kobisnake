@@ -1,0 +1,9 @@
+{
+  "description": "KS-06-01 AC6: collecting SPEED at 0:31 keeps it active until 0:26, across the 0:30 warning. startTick jumps the round clock to one step before collection (see powerups.test.js's loadReplay) instead of simulating the 58+ leading seconds tick by tick; initialPickup seeds the one power-up P1's next step walks onto. No input is needed — P1 is already heading straight at the pickup.",
+  "seed": 1,
+  "mode": "match",
+  "settingsOverrides": { "powerUpsEnabled": false, "godMode": true },
+  "startTick": 7060,
+  "initialPickup": { "cell": { "x": 6, "y": 12 }, "type": "SPEED" },
+  "inputs": []
+}
