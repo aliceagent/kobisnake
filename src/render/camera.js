@@ -32,6 +32,15 @@ const SHAKE_FREQUENCY_X = 17;
 const SHAKE_FREQUENCY_Y = 13;
 
 /**
+ * The camera's reaction to `LASER_WARNING` (ticket KS-04-03): two zoom pulses, back-to-back. The size and
+ * count are the ticket's own numbers, not a `SETTINGS` value — `DESIGN-DECISIONS §1 row 24` only caps the
+ * size ("≤ 2 % zoom pulse on laser warning, no rotation"); the "0.4 s, twice" shape is this ticket's call.
+ */
+const LASER_WARNING_ZOOM_PERCENT = 2;
+const LASER_WARNING_PULSE_SECONDS = 0.4;
+const LASER_WARNING_PULSE_COUNT = 2;
+
+/**
  * Solve the camera distance that fits `halfWidth` x `halfDepth` of arena (margin already included) into the
  * frustum, at this pitch and this aspect.
  *
@@ -133,6 +142,12 @@ export class GameplayCamera extends THREE.PerspectiveCamera {
     this.shakeState = { amplitude: 0, remaining: 0, duration: 0 };
     /** @type {{percent: number, remaining: number, duration: number}} */
     this.zoomState = { percent: 0, remaining: 0, duration: 0 };
+    /**
+     * Extra zoom pulses still owed once the current one finishes. A lone `zoomPulse()` call never sets
+     * this; only `pulseLaserWarning()` (KS-04-03) chains pulses back-to-back.
+     * @type {number}
+     */
+    this.queuedZoomPulses = 0;
 
     this.setAspect(aspect);
   }
@@ -219,6 +234,21 @@ export class GameplayCamera extends THREE.PerspectiveCamera {
     return this;
   }
 
+  /**
+   * The camera's whole reaction to `LASER_WARNING` (ticket KS-04-03): `zoomPulse(2 %, 0.4 s)` twice,
+   * back-to-back, so the picture "breathes" rather than pulsing once. A no-op under `?reducedFx=1`, same as
+   * a lone `zoomPulse` call — `queuedZoomPulses` staying at 0 in that case means `update()` never chains a
+   * second pulse it was never asked to play.
+   *
+   * @returns {this}
+   */
+  pulseLaserWarning() {
+    if (this.reducedFx) return this;
+    this.queuedZoomPulses = LASER_WARNING_PULSE_COUNT - 1;
+    this.zoomPulse(LASER_WARNING_ZOOM_PERCENT, LASER_WARNING_PULSE_SECONDS);
+    return this;
+  }
+
   /** How much of the current shake is left, 0..1. @returns {number} */
   shakeDecay() {
     const { remaining, duration } = this.shakeState;
@@ -260,7 +290,17 @@ export class GameplayCamera extends THREE.PerspectiveCamera {
     if (this.zoomState.remaining > 0) {
       this.zoomState.remaining -= dt;
       if (this.zoomState.remaining <= 0) {
-        this.zoomState = { percent: 0, remaining: 0, duration: 0 };
+        if (this.queuedZoomPulses > 0) {
+          // Chain straight into the next queued pulse (`pulseLaserWarning`'s "twice"), carrying over the
+          // slice of `dt` that ran past this one's end so back-to-back pulses do not drift apart when a
+          // frame does not divide 0.4 s evenly. The chained pulse's own envelope is picked up next frame.
+          const overshoot = -this.zoomState.remaining;
+          const { percent, duration } = this.zoomState;
+          this.queuedZoomPulses -= 1;
+          this.zoomState = { percent, remaining: duration - overshoot, duration };
+        } else {
+          this.zoomState = { percent: 0, remaining: 0, duration: 0 };
+        }
       } else {
         // A half-sine envelope: starts at zero, peaks halfway, returns to zero. Zooming *in* is a narrower
         // field of view, hence the subtraction.
