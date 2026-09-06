@@ -112,6 +112,13 @@
  * @property {ColorCatalogue} colors
  * @property {ShopPrices} shopPrices
  * @property {CameraSettings} camera
+ * @property {boolean} [godMode] - **test-only, and absent from the shipping defaults on purpose.** Snakes
+ *   that would die refuse the fatal step and stay put instead, so a round runs its full clock — which is
+ *   what lets a golden log cover the whole laser timeline, since a real no-input round is over in 3.167 s
+ *   (`docs/sprints/sprint-04-closing-laser-arena.md` KS-04-01 QA). It exists only in the type, never in
+ *   {@link SETTINGS}: a test opts in with `withOverrides({ godMode: true })`, and `round.js` additionally
+ *   ignores it unless `import.meta.env.TEST` is set, so a hand-crafted settings object cannot switch it on
+ *   in a shipped game. It is not a tunable and `DESIGN-DECISIONS §4` neither has it nor should.
  */
 
 /**

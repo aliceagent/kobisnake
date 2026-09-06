@@ -235,7 +235,7 @@ function driveWithBots(sim, bots, settings, events) {
       const direction = bots[i]({
         self,
         others: sim.snakes.filter((_, j) => j !== i),
-        apples: sim.food.apples,
+        apples: sim.food.present(),
         grid: settings.grid,
         rng: rngs[i],
         decisionIndex: decisionIndex[i],

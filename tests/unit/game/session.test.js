@@ -148,7 +148,11 @@ describe('createSession', () => {
       // itself runs out — `roundDuration` is the one number this scenario needs to shrink, and `withOverrides`
       // (settings.js's own sanctioned way to build a test variant) is how a test does that without touching
       // the shipping `SETTINGS`.
-      const settings = withOverrides({ roundDuration: 1, foodCount: 0 });
+      // `godMode` (KS-04-01, test-only) because the laser schedule is written in seconds *remaining*: in a
+      // round that is only 1 s long every threshold in DESIGN-DECISIONS §2.4 is already in the past, so the
+      // beams close to the 6x6 minimum on the first tick and kill both snakes where they spawn. This test
+      // is about the timer reaching 0:00, so nothing may kill them first.
+      const settings = withOverrides({ roundDuration: 1, foodCount: 0, godMode: true });
       const { session, ui, target } = buildSession({ settings });
 
       pressEnter(target);
@@ -181,7 +185,11 @@ describe('createSession', () => {
 
   describe('KS-03-05 AC3: round over, then a fresh round', () => {
     it('KS-03-05 AC3: Enter after ROUND_OVER starts a new round with fresh apples and snakes', () => {
-      const settings = withOverrides({ roundDuration: 1, foodCount: 0 });
+      // `godMode` (KS-04-01, test-only) because the laser schedule is written in seconds *remaining*: in a
+      // round that is only 1 s long every threshold in DESIGN-DECISIONS §2.4 is already in the past, so the
+      // beams close to the 6x6 minimum on the first tick and kill both snakes where they spawn. This test
+      // is about the timer reaching 0:00, so nothing may kill them first.
+      const settings = withOverrides({ roundDuration: 1, foodCount: 0, godMode: true });
       const { session, ui, target } = buildSession({ settings });
 
       pressEnter(target);
@@ -332,7 +340,9 @@ describe('createSession', () => {
 
   describe('KS-03-06: advanceSimulation/renderFrame/setSeed (testHooks.js support)', () => {
     it('advanceSimulation(dt) advances the sim and runs ROUND_OVER handling, without rendering', () => {
-      const settings = withOverrides({ roundDuration: 1, foodCount: 0 });
+      // `godMode` for the same reason as the 0:00 timer test above: a 1 s round is entirely inside the
+      // laser window, and this test is about ROUND_OVER handling on a timeout.
+      const settings = withOverrides({ roundDuration: 1, foodCount: 0, godMode: true });
       const { session, ui, renderer, target } = buildSession({ settings });
 
       pressEnter(target);

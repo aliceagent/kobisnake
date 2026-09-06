@@ -18,6 +18,7 @@
  * @type {{
  *   FOOD_SPAWNED: 'FOOD_SPAWNED',
  *   FOOD_EATEN: 'FOOD_EATEN',
+ *   FOOD_REMOVED: 'FOOD_REMOVED',
  *   SNAKE_DIED: 'SNAKE_DIED',
  *   ROUND_OVER: 'ROUND_OVER',
  *   LASER_WARNING: 'LASER_WARNING',
@@ -33,21 +34,32 @@ export const EVENTS = Object.freeze({
   FOOD_SPAWNED: 'FOOD_SPAWNED',
   /** A snake's head entered an apple's cell. `{ snakeId, index, cell }`. */
   FOOD_EATEN: 'FOOD_EATEN',
+  /**
+   * An apple was taken off the board without being eaten: `{ index, cell }`. The only thing that does this is
+   * a laser step sweeping over its cell (`DESIGN-DECISIONS §2.4`: "Anything in it is removed the moment a
+   * laser passes over it"), which is why the payload names no snake. A `FOOD_SPAWNED` for the same slot
+   * normally follows in the same tick — unless the shrunken arena has nowhere legal to put it, in which case
+   * the slot stays empty and is retried (`§2.3`, issue #39).
+   */
+  FOOD_REMOVED: 'FOOD_REMOVED',
   /** `{ snakeId, cause, cell }` where `cause` is a `collisions.js` `CAUSES` value. */
   SNAKE_DIED: 'SNAKE_DIED',
   /** `{ result, reason, lengths, winnerId }`. Always the last event of a round. */
   ROUND_OVER: 'ROUND_OVER',
 
-  // Not emitted in Sprint 02 — the laser system arrives in Sprint 04 and power-ups in Sprint 06.
+  /** The beams ignite on the wall line at `laserStartTime`, once per round. No payload. */
   LASER_WARNING: 'LASER_WARNING',
+  /** Each side stepped one cell inward: `{ inset }`, the new inset (`DESIGN-DECISIONS §2.4`). */
   LASER_STEP: 'LASER_STEP',
+
+  // Not emitted before Sprint 06, which is where power-ups arrive.
   POWERUP_SPAWNED: 'POWERUP_SPAWNED',
   POWERUP_COLLECTED: 'POWERUP_COLLECTED',
   EFFECT_STARTED: 'EFFECT_STARTED',
   EFFECT_ENDED: 'EFFECT_ENDED',
 });
 
-/** @typedef {'FOOD_SPAWNED' | 'FOOD_EATEN' | 'SNAKE_DIED' | 'ROUND_OVER' | 'LASER_WARNING' | 'LASER_STEP' | 'POWERUP_SPAWNED' | 'POWERUP_COLLECTED' | 'EFFECT_STARTED' | 'EFFECT_ENDED'} EventType */
+/** @typedef {'FOOD_SPAWNED' | 'FOOD_EATEN' | 'FOOD_REMOVED' | 'SNAKE_DIED' | 'ROUND_OVER' | 'LASER_WARNING' | 'LASER_STEP' | 'POWERUP_SPAWNED' | 'POWERUP_COLLECTED' | 'EFFECT_STARTED' | 'EFFECT_ENDED'} EventType */
 
 /**
  * How a round ended (`DESIGN-DECISIONS §2.5`). A draw never counts towards a match; the match simply replays

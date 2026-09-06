@@ -219,7 +219,11 @@ describe('KS-02-05 RoundSimulation', () => {
     it('KS-02-05 AC3: a round that runs the full 90 s ticks exactly 10800 times', () => {
       // The arithmetic AC3 rests on: `dt * simHz` is accumulated in tick units, so 90 x 120 is exactly
       // 10 800 and one big call cannot land on a different tick from ten thousand small ones.
-      const sim = makeRound({ seed: 4, settings: withOverrides({ snakeSpeed: 0 }) });
+      // `godMode` (KS-04-01) is what "nobody can crash" now costs: from Sprint 04 a snake standing still
+      // outside the shrinking safe square is killed by the beam that closes over it (DESIGN-DECISIONS
+      // §2.4), so `snakeSpeed: 0` alone no longer guarantees the clock is the only way out. The rule this
+      // test is about — 90 s is exactly 10 800 ticks — is untouched.
+      const sim = makeRound({ seed: 4, settings: withOverrides({ snakeSpeed: 0, godMode: true }) });
       sim.advance(SETTINGS.roundDuration);
       expect(sim.tick).toBe(10800);
       expect(sim.endReason).toBe(END_REASONS.TIMEOUT);
@@ -250,15 +254,17 @@ describe('KS-02-05 RoundSimulation', () => {
 
   describe('AC4 timeout', () => {
     /**
-     * A round where nobody can crash: `snakeSpeed` 0 means no snake ever steps, so the only way out is the
-     * clock. Lengths are set directly, which is the point of the test — the timeout rule reads length and
-     * nothing else.
+     * A round where nobody can crash: `snakeSpeed` 0 means no snake ever steps, and `godMode` (KS-04-01)
+     * means the lasers cannot kill the two snakes where they stand — from Sprint 04 the beams close over
+     * both spawn cells (DESIGN-DECISIONS §2.4), so speed 0 on its own would end this round by DEATH at
+     * inset 6 instead of by the clock. With both, the only way out is the clock, which is the point of the
+     * test. Lengths are set directly — the timeout rule reads length and nothing else.
      *
      * @param {number} p1Growth
      * @param {number} p2Growth
      */
     function timeoutRound(p1Growth, p2Growth) {
-      const sim = makeRound({ seed: 2, settings: withOverrides({ snakeSpeed: 0 }) });
+      const sim = makeRound({ seed: 2, settings: withOverrides({ snakeSpeed: 0, godMode: true }) });
       for (let i = 0; i < p1Growth; i += 1) sim.snakes[0].segments.push({ x: -50 - i, y: -50 });
       for (let i = 0; i < p2Growth; i += 1) sim.snakes[1].segments.push({ x: -50 - i, y: -60 });
       sim.advance(SETTINGS.roundDuration);
@@ -296,7 +302,7 @@ describe('KS-02-05 RoundSimulation', () => {
     });
 
     it('KS-02-05 AC4: the timer counts simulated seconds, and hits 0 exactly at tick 10800', () => {
-      const sim = makeRound({ seed: 2, settings: withOverrides({ snakeSpeed: 0 }) });
+      const sim = makeRound({ seed: 2, settings: withOverrides({ snakeSpeed: 0, godMode: true }) });
       expect(sim.timeRemaining).toBe(SETTINGS.roundDuration);
       sim.advance(SETTINGS.roundDuration - 1);
       expect(sim.timeRemaining).toBeCloseTo(1, 12);
@@ -455,7 +461,7 @@ describe('KS-02-05 RoundSimulation', () => {
       }
       expect(state.snakes[0].color).toBe('red');
       expect(state.apples).toHaveLength(SETTINGS.foodCount);
-      expect(state.lasers).toEqual({ insetCells: 0 });
+      expect(state.lasers).toEqual({ phase: 'PARKED', inset: 0, insetCells: 0 });
       expect(state.powerUps).toEqual({ pickups: [] });
     });
   });
@@ -555,14 +561,12 @@ describe('KS-02-05 RoundSimulation', () => {
     });
 
     it('KS-02-05: the laser seam reports LASER, not WALL, for a dead-zone cell', () => {
-      // Sprint 04 replaces the inactive stub with the real laser system. This proves the wiring it will
-      // plug into: a cell inside the arena but inside the dead zone kills, and says so.
+      // Written in Sprint 02 against a hand-made stub, to prove the wiring the real laser system would plug
+      // into. Sprint 04 built that system, so the stub is gone and the same assertion now runs against it:
+      // the inset is moved to 1 directly instead of waiting 65 simulated seconds for the schedule to do it,
+      // which leaves x=23 inside the arena but inside the dead zone. It must kill, and say LASER.
       const sim = makeRound({ seed: 8 });
-      sim.lasers = {
-        insetCells: 1,
-        inDeadZone: (cell) => cell.x >= 23,
-        getState: () => ({ insetCells: 1 }),
-      };
+      sim.lasers.inset = 1;
       const events = runToEnd(sim);
       const died = events.filter((event) => event.type === EVENTS.SNAKE_DIED);
       expect(died[0]).toMatchObject({ snakeId: 'p1', cause: CAUSES.LASER, cell: { x: 23, y: 12 } });
@@ -578,7 +582,10 @@ describe('KS-02-05 RoundSimulation', () => {
       expect(sim.heads()).toHaveLength(1);
     });
 
-    it('KS-02-05: the laser and power-up hooks are inert in Sprint 02', () => {
+    it('KS-02-05: the power-up hook is inert, and a round decided before 0:30 sees no laser event', () => {
+      // The power-up half is still Sprint 06's stub. The laser half changed meaning in Sprint 04: the
+      // system is real now, and what this asserts is the other half of the timeline — a round that ends
+      // long before `laserStartTime` never hears from it. Seed 6 is a no-input round, over at 3.167 s.
       const sim = makeRound({ seed: 6 });
       const events = runToEnd(sim);
       const laserOrPowerUp = events.filter((event) =>
