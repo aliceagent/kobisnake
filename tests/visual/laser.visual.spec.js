@@ -38,6 +38,21 @@ import { DEFAULT_QUERY } from '../../playwright.config.js';
  * `?reducedFx=1` (`DEFAULT_QUERY`) is what makes the laser geometry itself safe to screenshot immediately:
  * `laserView.js` skips its 0.3 s glide entirely under reduced effects and snaps straight to the sim's own
  * inset, so there is no timing race between the catch-up above and capturing the frame.
+ *
+ * **The HUD is hidden before every screenshot (tech-lead review of an earlier version of this file, after
+ * KS-04-03 merged).** KS-04-03 puts the "LASERS CLOSING!" banner up on `LASER_WARNING` and expires it 5 s
+ * later on the HUD's own real-time countdown — but the catch-up above jumps `sim.tick` straight to a moment
+ * up to 27 simulated seconds after the warning, in one `advance(0.1)`. The warning fires inside that single
+ * call regardless, so every checkpoint's banner "just happened" and is still on screen when the frame is
+ * captured — including the `t = 3` frame, where a design reviewer holding it next to `06-final-shrink-
+ * showdown.png` would see a fresh 0:30 banner over the final 6×6. That is an artefact of how this file
+ * reaches the moment, not something `laserView.js`/`arenaView.js` did wrong, and dressing it — hiding only
+ * the banner element, or forcing the HUD's internal timer past the warning — would still be showing a HUD
+ * state no real clock produces at these checkpoints. A visual baseline should pin one subsystem: these four
+ * are about beams, emitters, arrows and dead-zone darkening, not the HUD (which is KS-04-03's own ticket,
+ * has its own real-clock browser proof in `tests/e2e/laser-warning-banner.spec.js`, and is wholly restyled in
+ * Sprint 11 — coupling these baselines to it would fail all four on an unrelated CSS change). So the whole
+ * `.hud` element is hidden, not faked, before the screenshot.
  */
 
 /**
@@ -88,6 +103,10 @@ function startFrozenRoundAtLaserState(timeRemaining) {
   // short of the 20 a step at `snakeSpeed` 6 needs, so neither snake moves from where it was just placed.
   sim.tick = Math.round((sim.settings.roundDuration - timeRemaining) * sim.settings.simHz) - 12;
   kobi.fastForward(0.1); // one ordinary advance: fires every due LASER_STEP, sweeps/refills food, writes the HUD.
+
+  // Hide the whole HUD, not just the KS-04-03 warning banner it carries — see the module doc comment for why
+  // these four frames pin the laser/dead-zone view alone rather than also being a HUD baseline.
+  doc.querySelector('.hud').style.display = 'none';
 
   return kobi.getSnapshot().lasers;
 }
