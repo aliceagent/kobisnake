@@ -181,6 +181,24 @@ test.describe('KS-07-06 input-feel instrumentation', () => {
     );
     const { stats, frameMs } = result;
 
+    // Greppable for CI (and for a human reading the job log): the tech lead's QA-report number, straight
+    // from the run that just produced it — median and full distribution, sample count, both units (ms and
+    // sim ticks/steps), plus the measured frame time this run's own AC1 bound is built from.
+    console.log(
+      'KS-07-06 INPUT LATENCY:',
+      JSON.stringify({
+        sampleCount: stats.sampleCount,
+        totalMs: stats.totalMs,
+        overheadMs: stats.overheadMs,
+        stepWaitMs: stats.stepWaitMs,
+        renderMs: stats.renderMs,
+        stepWaitTicks: stats.stepWaitTicks,
+        context: stats.context,
+        frameMs,
+        histogram: stats.histogram,
+      }),
+    );
+
     // "1 frame" (AC1's own wording), measured live rather than assumed: a fixed guess is a claim about the
     // hardware this happens to run on, and this repository's own containers run several agents' suites at
     // once (this file's own module comment) — a number generous enough for a quiet box and tight enough for
