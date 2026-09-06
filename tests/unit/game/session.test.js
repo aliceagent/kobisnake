@@ -1,24 +1,28 @@
 // @ts-check
 import { describe, expect, it, vi } from 'vitest';
+import { RESULTS } from '../../../src/core/events.js';
 import { DIRECTIONS } from '../../../src/core/grid.js';
-import { withOverrides } from '../../../src/core/settings.js';
-import { createSession, formatTime } from '../../../src/game/session.js';
+import { SETTINGS, withOverrides } from '../../../src/core/settings.js';
+import { STATES } from '../../../src/game/gameStateMachine.js';
+import { createSession, formatTime, roundSeedFor } from '../../../src/game/session.js';
 
 /**
- * KS-03-05: session wiring, minimal HUD and round flow.
+ * KS-05-03: the session rewritten around the state machine.
  *
- * AC1 ("two humans can play a full round with WASD and Arrows on the Vercel preview") is a human step by
- * construction — it is answered by the sprint's QA-plan playtest, not a test here. AC2 and AC3 are covered
- * below, plus the 10 Hz HUD throttle and the `1`/`2` → `'p1'`/`'p2'` player-id mapping the tech-lead notes
- * asked for explicitly.
+ * The ticket's `QA:` line names `tests/e2e/match-flow.spec.js`, and that spec exists and drives the same four
+ * acceptance criteria through a real browser. This file proves them in Node as well, and it is the more
+ * searching of the two: a browser spec can watch a match play out, but only here can a test hold a frame at
+ * 0.05 s and check what the timer read either side of a pause, or run the crash slow-mo beat one frame at a
+ * time and watch `loop.timeScale` go 1 → 0.25 → 1 while the scoreboard stays away. Timing is most of what
+ * this ticket is made of, so timing is tested where timing can be pinned down exactly.
  *
- * A fake renderer and a fake `ui` stand in for the browser (`session.js` never imports three.js or reaches
- * for `document`), a real `EventTarget` stands in for the keyboard (same pattern as `input.test.js`), and a
- * no-op `requestFrame`/`cancelFrame` pair means every frame in these tests is driven by hand through
- * `session.loop.step(dt)` — the same "fake rAF" `loop.test.js` uses `step()` for.
+ * Everything around the session is a fake: a fake renderer and a fake `ui` (`session.js` never imports
+ * three.js and never touches the DOM), a real `EventTarget` for the keyboard, and a no-op frame scheduler so
+ * every frame is driven by hand. The one thing deliberately *not* faked is the simulation — the rounds below
+ * are real `RoundSimulation`s crashing into real walls, because a session tested against a fake simulation
+ * would prove nothing about the flow it exists to drive.
  */
 
-/** A minimal stand-in for a browser `KeyboardEvent`, built on Node's real `Event` (KS-03-02's own pattern). */
 const NodeEvent = globalThis.Event;
 const NodeEventTarget = globalThis.EventTarget;
 
@@ -36,30 +40,45 @@ function fireKeydown(target, code) {
   target.dispatchEvent(new FakeKeyboardEvent(code));
 }
 
-/** @param {EventTarget} target */
-function pressEnter(target) {
-  fireKeydown(target, 'Enter');
-}
-
 function createFakeRenderer() {
-  // KS-04-03: a fake `camera` alongside `render`/`resize`, exactly the shape `SessionRenderer`'s optional
-  // `camera` field describes — real ones only come from `render/renderer.js`, which `session.js` cannot
-  // import (`ARCHITECTURE §3`), so a test fake is the only `camera` this file ever sees.
   return { render: vi.fn(), resize: vi.fn(), camera: { pulseLaserWarning: vi.fn() } };
 }
 
+/**
+ * The screen router `session.js` talks to (`SessionUi`). `show` records every call, so a test can ask what
+ * the player would be looking at and with which props.
+ */
 function createFakeUi() {
   return {
     hud: {
       setTime: vi.fn(),
       setLengths: vi.fn(),
-      // KS-04-03: the laser-warning banner/timer methods `session.js` now drives.
       showLaserWarning: vi.fn(),
       tick: vi.fn(),
       resetWarning: vi.fn(),
     },
-    showOverlay: vi.fn(),
-    hideOverlay: vi.fn(),
+    show: vi.fn(),
+    handleMenuAction: vi.fn(),
+  };
+}
+
+/** A stand-in for a window, for the `blur` that triggers AUTO_PAUSE (`DESIGN-DECISIONS §2.8`). */
+function createFakeBlurSource() {
+  /** @type {Set<() => void>} */
+  const listeners = new Set();
+  return {
+    /** @param {string} type @param {() => void} listener */
+    addEventListener(type, listener) {
+      if (type === 'blur') listeners.add(listener);
+    },
+    /** @param {string} type @param {() => void} listener */
+    removeEventListener(type, listener) {
+      if (type === 'blur') listeners.delete(listener);
+    },
+    blur() {
+      for (const listener of [...listeners]) listener();
+    },
+    listenerCount: () => listeners.size,
   };
 }
 
@@ -69,9 +88,11 @@ function createFakeVisibility() {
   const listeners = new Set();
   return {
     hidden: false,
+    /** @param {string} type @param {() => void} listener */
     addEventListener(type, listener) {
       if (type === 'visibilitychange') listeners.add(listener);
     },
+    /** @param {string} type @param {() => void} listener */
     removeEventListener(type, listener) {
       if (type === 'visibilitychange') listeners.delete(listener);
     },
@@ -83,16 +104,12 @@ function createFakeVisibility() {
   };
 }
 
-/**
- * Builds a session wired entirely to fakes, with a no-op frame scheduler so every frame in a test is driven
- * by hand through `session.loop.step(dt)` rather than a real `requestAnimationFrame`.
- *
- * @param {object} [overrides] - forwarded to `createSession`, on top of the fakes below.
- */
+/** @param {object} [overrides] - forwarded to `createSession`, on top of the fakes below. */
 function buildSession(overrides = {}) {
   const renderer = createFakeRenderer();
   const ui = createFakeUi();
   const target = new NodeEventTarget();
+  const blurSource = createFakeBlurSource();
 
   const session = createSession({
     renderer,
@@ -102,10 +119,63 @@ function buildSession(overrides = {}) {
     requestFrame: () => 0,
     cancelFrame: () => {},
     visibilitySource: null,
+    blurSource,
     ...overrides,
   });
 
-  return { session, renderer, ui, target };
+  return { session, renderer, ui, target, blurSource };
+}
+
+/**
+ * The props of the most recent `ui.show(state, props)` call for `state`.
+ * @param {any} ui @param {string} state
+ */
+function lastShow(ui, state) {
+  const calls = ui.show.mock.calls.filter((/** @type {any[]} */ call) => call[0] === state);
+  return calls.length === 0 ? undefined : calls[calls.length - 1][1];
+}
+
+/** Every label the countdown screen has been given, in order. @param {any} ui */
+function countdownLabels(ui) {
+  return ui.show.mock.calls
+    .filter((/** @type {any[]} */ call) => call[0] === STATES.COUNTDOWN)
+    .map((/** @type {any[]} */ call) => call[1].label);
+}
+
+/**
+ * Runs `seconds` of wall time as `steps` equal frames, through the session's real update path. Several
+ * small frames rather than one big one, because the transitions this file is about happen *between* frames
+ * and a single 3-second frame would step over most of them.
+ *
+ * @param {any} session @param {number} seconds @param {number} [steps]
+ */
+function runFrames(session, seconds, steps = 1) {
+  for (let i = 0; i < steps; i += 1) session.advanceSimulation(seconds / steps);
+}
+
+/** Gets a session from the main menu into PLAYING, countdown and all. @param {any} session */
+function playTo(session, overrides) {
+  session.startMatch(overrides);
+  runFrames(session, SETTINGS.countdownStepSeconds * 4 + 0.01, 8);
+}
+
+/**
+ * Steers player 1 into the top wall and runs on until the round is over, slow-mo beat included.
+ *
+ * P1 spawns at (5, 12) heading RIGHT (`DESIGN-DECISIONS §2.3`); turning UP is legal and, left uncorrected,
+ * kills it twelve grid steps later — exactly 2.0 simulated seconds at 6 cells/s. P2 gets no input and does
+ * not reach the opposite wall until ≈ 3.167 s (the golden no-input log's own timing), so P1 dies alone and
+ * P2 wins the round. The same trick Sprint 03's e2e used, for the same reason: it is the shortest scripted,
+ * deterministic, non-draw round in the game.
+ *
+ * @param {any} session @param {EventTarget} target
+ */
+function crashPlayerOne(session, target) {
+  fireKeydown(target, 'KeyW');
+  runFrames(session, 2.1, 42);
+  // The crash slow-mo beat is 0.6 s of *wall* time (`crashSlowMo.duration`), during which the machine is
+  // still PLAYING; these frames carry it through to the scoreboard.
+  runFrames(session, SETTINGS.crashSlowMo.duration + 0.05, 14);
 }
 
 describe('formatTime', () => {
@@ -116,436 +186,637 @@ describe('formatTime', () => {
 
   it('pads single-digit seconds and floors fractional ones', () => {
     expect(formatTime(65.9)).toBe('1:05');
-    expect(formatTime(5)).toBe('0:05');
+    expect(formatTime(-3)).toBe('0:00');
   });
 });
 
-describe('createSession', () => {
-  it('shows the "PRESS ENTER" overlay before any round starts', () => {
-    const { ui } = buildSession();
-    expect(ui.showOverlay).toHaveBeenCalledWith('PRESS ENTER');
+describe('KS-05-03 round seeds', () => {
+  it('KS-05-03 AC4: a round seed is a pure function of the match seed and the round index', () => {
+    // Pure: asked for out of order, twice, from nothing but the two numbers.
+    expect(roundSeedFor(1234, 2)).toBe(roundSeedFor(1234, 2));
+    expect(roundSeedFor(1234, 0)).not.toBe(roundSeedFor(1234, 1));
+    expect(roundSeedFor(1234, 1)).not.toBe(roundSeedFor(1234, 2));
+    expect(roundSeedFor(1234, 0)).not.toBe(roundSeedFor(5678, 0));
   });
 
-  it('does nothing before Enter is pressed: no sim exists yet', () => {
+  it('KS-05-03 AC4: the rounds a match plays use exactly those seeds, in order', () => {
+    const { session, target } = buildSession({ seed: 4242 });
+    playTo(session, { bestOf: 3 });
+    expect(session.getSeeds().matchSeed).toBe(4242);
+    expect(session.getSim()?.seed).toBe(roundSeedFor(4242, 0));
+
+    crashPlayerOne(session, target);
+    runFrames(session, SETTINGS.scoreboardSeconds + 0.05, 6);
+
+    expect(session.getState()).toBe(STATES.COUNTDOWN);
+    expect(session.getSim()?.seed).toBe(roundSeedFor(4242, 1));
+    expect(session.getSeeds().roundSeeds).toEqual([roundSeedFor(4242, 0), roundSeedFor(4242, 1)]);
+    // Different boards from round to round, which is the point of deriving rather than reusing.
+    expect(session.getSeeds().roundSeeds[0]).not.toBe(session.getSeeds().roundSeeds[1]);
+  });
+
+  it('KS-05-03: without a fixed seed the match seed is drawn once per match, not once per round', () => {
+    let next = 100;
+    const { session, target } = buildSession({
+      seed: null,
+      randomSeed: () => {
+        next += 1;
+        return next;
+      },
+    });
+    playTo(session, { bestOf: 3 });
+    const first = session.getSeeds().matchSeed;
+
+    crashPlayerOne(session, target);
+    runFrames(session, SETTINGS.scoreboardSeconds + 0.05, 6);
+
+    expect(session.getSeeds().matchSeed).toBe(first);
+    expect(session.getSim()?.seed).toBe(roundSeedFor(first, 1));
+  });
+});
+
+describe('KS-05-03 the main menu and match setup', () => {
+  it('KS-05-03: the game boots into MAIN_MENU with no match and no round', () => {
+    const { session, ui } = buildSession();
+    expect(session.getState()).toBe(STATES.MAIN_MENU);
+    expect(session.getSim()).toBeNull();
+    expect(session.getMatch()).toBeNull();
+    expect(ui.show).toHaveBeenCalledWith(STATES.MAIN_MENU, expect.any(Object));
+  });
+
+  it('KS-05-03: the menu screen can only fire events the machine accepts', () => {
+    const { session, ui } = buildSession();
+    lastShow(ui, STATES.MAIN_MENU).onSelect('SELECT_2P');
+    expect(session.getState()).toBe(STATES.MATCH_SETUP);
+
+    // An event with no row from the current state is refused rather than thrown at the machine, so a screen
+    // wired to a future state cannot crash the game in development.
+    lastShow(ui, STATES.MATCH_SETUP).onBack();
+    expect(() => lastShow(ui, STATES.MAIN_MENU).onSelect('COUNTDOWN_DONE')).not.toThrow();
+    expect(session.getState()).toBe(STATES.MAIN_MENU);
+  });
+
+  it('KS-05-03: the setup screen edits the session’s copy of the match settings and re-renders', () => {
+    const { session, ui } = buildSession();
+    lastShow(ui, STATES.MAIN_MENU).onSelect('SELECT_2P');
+
+    const props = lastShow(ui, STATES.MATCH_SETUP);
+    expect(props.ownedColors).toEqual(['red', 'blue']);
+    props.onChange({ ...props.matchSettings, bestOf: 5, colors: { 1: 'blue', 2: 'red' } });
+
+    expect(session.getMatchSettings().bestOf).toBe(5);
+    expect(lastShow(ui, STATES.MATCH_SETUP).matchSettings.bestOf).toBe(5);
+  });
+
+  it('KS-05-03: a match is played on the settings the setup screen left behind', () => {
+    const { session, ui } = buildSession();
+    lastShow(ui, STATES.MAIN_MENU).onSelect('SELECT_2P');
+    const props = lastShow(ui, STATES.MATCH_SETUP);
+    props.onChange({ ...props.matchSettings, bestOf: 5, colors: { 1: 'blue', 2: 'red' } });
+    props.onStart();
+
+    expect(session.getState()).toBe(STATES.COUNTDOWN);
+    expect(session.getMatch()?.bestOf).toBe(5);
+    // The chosen colours reach the simulation snapshot, which is where the renderer reads them from.
+    const snapshot = /** @type {any} */ (/** @type {any} */ (session.getSim()).getState());
+    expect(snapshot.snakes.map((/** @type {any} */ snake) => snake.color)).toEqual(['blue', 'red']);
+  });
+
+  it('KS-05-03: getMatchSettings hands back a copy, not the session’s own object', () => {
     const { session } = buildSession();
-    expect(session.getPhase()).toBe('idle');
+    const copy = session.getMatchSettings();
+    copy.bestOf = 999;
+    copy.colors[1] = 'gold';
+    expect(session.getMatchSettings().bestOf).not.toBe(999);
+    expect(session.getMatchSettings().colors[1]).toBe('red');
+  });
+
+  it('KS-05-03: menu keys are handed to the active screen, not interpreted here', () => {
+    const { ui, target } = buildSession();
+    fireKeydown(target, 'ArrowDown');
+    fireKeydown(target, 'Enter');
+    expect(ui.handleMenuAction.mock.calls.map((/** @type {any[]} */ c) => c[0])).toEqual([
+      'DOWN',
+      'CONFIRM',
+    ]);
+  });
+
+  it('KS-05-03: startMatch() is only legal from the main menu', () => {
+    const { session } = buildSession();
+    session.startMatch();
+    expect(() => session.startMatch()).toThrow(/only from MAIN_MENU/);
+  });
+});
+
+describe('KS-05-03 the countdown', () => {
+  it('KS-05-03: shows 3, 2, 1, GO at countdownStepSeconds each, then plays', () => {
+    const { session, ui } = buildSession();
+    session.startMatch();
+    expect(countdownLabels(ui)).toEqual(['3']);
+
+    // A hair past each boundary rather than exactly on it: `countdownElapsed` is a running sum of frame
+    // durations, so landing on 0.8 exactly is a coin toss between 0.7999999999999999 and 0.8000000000000003.
+    // What the design fixes is that each label lasts `countdownStepSeconds`, not what happens on the tick
+    // that is neither side of it.
+    const step = SETTINGS.countdownStepSeconds;
+    const justPast = step + 0.001;
+
+    runFrames(session, justPast, 4);
+    expect(countdownLabels(ui)).toEqual(['3', '2']);
+    runFrames(session, justPast, 4);
+    expect(countdownLabels(ui)).toEqual(['3', '2', '1']);
+    runFrames(session, justPast, 4);
+    expect(countdownLabels(ui)).toEqual(['3', '2', '1', 'GO']);
+    expect(session.getState()).toBe(STATES.COUNTDOWN);
+
+    runFrames(session, justPast, 4);
+    expect(session.getState()).toBe(STATES.PLAYING);
+  });
+
+  it('KS-05-03: the snakes are frozen through the countdown, and the HUD already reads 1:30', () => {
+    const { session, ui } = buildSession();
+    session.startMatch();
+    runFrames(session, SETTINGS.countdownStepSeconds * 3, 12);
+    expect(session.getSim()?.tick).toBe(0);
+    expect(ui.hud.setTime).toHaveBeenCalledWith('1:30');
+  });
+
+  it('KS-05-03: inputs are queued during GO and ignored before it (`DESIGN-DECISIONS §2.4`)', () => {
+    const { session, target } = buildSession();
+    session.startMatch();
+
+    // During "3": too early.
+    fireKeydown(target, 'KeyW');
+    expect(session.getSim()?.snakes[0].queue).toEqual([]);
+
+    // During "GO": queued, ready for the first tick of PLAYING.
+    runFrames(session, SETTINGS.countdownStepSeconds * 3 + 0.01, 12);
+    fireKeydown(target, 'KeyW');
+    expect(session.getSim()?.snakes[0].queue).toEqual([DIRECTIONS.UP]);
+  });
+
+  it('KS-05-03: mashing Enter through the countdown changes nothing (sprint QA plan)', () => {
+    const { session, ui, target } = buildSession();
+    session.startMatch();
+    ui.handleMenuAction.mockClear();
+
+    for (let i = 0; i < 20; i += 1) {
+      fireKeydown(target, 'Enter');
+      session.advanceSimulation(0.02);
+    }
+
+    expect(session.getState()).toBe(STATES.COUNTDOWN);
+    expect(session.getSeeds().roundIndex).toBe(0);
+    expect(session.getSeeds().roundSeeds).toHaveLength(1);
+    expect(ui.handleMenuAction).not.toHaveBeenCalled();
+  });
+});
+
+describe('KS-05-03 a round ending', () => {
+  it('KS-05-03: a crash runs the slow-mo beat before the scoreboard, on wall time', () => {
+    const { session, target } = buildSession();
+    playTo(session);
+
+    fireKeydown(target, 'KeyW');
+    runFrames(session, 2.1, 42);
+
+    // Still PLAYING, and time is running at `crashSlowMo.scale` (`DESIGN-DECISIONS §2.5`).
+    expect(session.getState()).toBe(STATES.PLAYING);
+    expect(session.loop.timeScale).toBe(SETTINGS.crashSlowMo.scale);
+
+    // Not over a moment before the beat is. The crash lands at exactly 2.0 s, so 0.1 s of the 0.6 s has
+    // already gone by above; 0.4 s more leaves 0.1 s of beat still to play.
+    runFrames(session, 0.4, 8);
+    expect(session.getState()).toBe(STATES.PLAYING);
+
+    runFrames(session, 0.2, 4);
+    expect(session.getState()).toBe(STATES.ROUND_OVER);
+    expect(session.loop.timeScale).toBe(1);
+  });
+
+  it('KS-05-03: a round that ends on the clock goes straight to the scoreboard, with no beat', () => {
+    const settings = withOverrides({ roundDuration: 2 });
+    const { session } = buildSession({ settings });
+    playTo(session);
+
+    runFrames(session, 2.2, 22);
+    expect(session.getState()).toBe(STATES.ROUND_OVER);
+    expect(session.loop.timeScale).toBe(1);
+  });
+
+  it('KS-05-03: the scoreboard carries the wins, the needs and the format', () => {
+    const { session, ui, target } = buildSession();
+    playTo(session, { bestOf: 5 });
+    crashPlayerOne(session, target);
+
+    const props = lastShow(ui, STATES.ROUND_OVER);
+    expect(props.bestOf).toBe(5);
+    expect(props.result).toBe(RESULTS.P2_WIN);
+    expect(props.wins).toEqual({ 1: 0, 2: 1 });
+    expect(props.winsNeeded).toEqual({ 1: 3, 2: 2 });
+    expect(props.colorNames).toEqual({ 1: 'red', 2: 'blue' });
+  });
+
+  it('KS-05-03: the scoreboard lasts scoreboardSeconds and then the next round counts in', () => {
+    const { session, target } = buildSession();
+    playTo(session, { bestOf: 3 });
+    crashPlayerOne(session, target);
+
+    runFrames(session, SETTINGS.scoreboardSeconds - 0.2, 10);
+    expect(session.getState()).toBe(STATES.ROUND_OVER);
+    runFrames(session, 0.3, 3);
+    expect(session.getState()).toBe(STATES.COUNTDOWN);
+  });
+
+  it('KS-05-03: Enter skips the scoreboard, but not in its first second (`§2.6`)', () => {
+    const { session, target } = buildSession();
+    playTo(session, { bestOf: 3 });
+    crashPlayerOne(session, target);
+
+    runFrames(session, 0.5, 5);
+    fireKeydown(target, 'Enter');
+    expect(session.getState()).toBe(STATES.ROUND_OVER);
+
+    runFrames(session, 0.6, 6);
+    fireKeydown(target, 'Enter');
+    expect(session.getState()).toBe(STATES.COUNTDOWN);
+  });
+});
+
+describe('KS-05-03 AC1: a whole best-of match', () => {
+  it('KS-05-03 AC1: a Bo3 with two scripted crashes ends in MATCH_OVER, with a winner and one key', () => {
+    const { session, ui, target } = buildSession();
+    playTo(session, { bestOf: 3 });
+
+    crashPlayerOne(session, target);
+    expect(session.getMatch()?.wins).toEqual({ 1: 0, 2: 1 });
+
+    runFrames(session, SETTINGS.scoreboardSeconds + 0.05, 6);
+    runFrames(session, SETTINGS.countdownStepSeconds * 4 + 0.02, 20);
+    expect(session.getState()).toBe(STATES.PLAYING);
+
+    crashPlayerOne(session, target);
+    expect(session.getMatch()?.wins).toEqual({ 1: 0, 2: 2 });
+    expect(session.getMatch()?.isOver()).toBe(true);
+
+    runFrames(session, SETTINGS.scoreboardSeconds + 0.05, 6);
+    expect(session.getState()).toBe(STATES.MATCH_OVER);
+
+    const props = lastShow(ui, STATES.MATCH_OVER);
+    expect(props.winner).toBe(2);
+    // Bo3 rewards one key (`DESIGN-DECISIONS §2.6`), read from `SETTINGS.rewards`; display only this sprint.
+    expect(props.keys).toBe(SETTINGS.rewards[3]);
+    expect(props.wins).toEqual({ 1: 0, 2: 2 });
+  });
+
+  it('KS-05-03: a Bo1 is over after one round and rewards nothing', () => {
+    const { session, ui, target } = buildSession();
+    playTo(session, { bestOf: 1 });
+    crashPlayerOne(session, target);
+    runFrames(session, SETTINGS.scoreboardSeconds + 0.05, 6);
+
+    expect(session.getState()).toBe(STATES.MATCH_OVER);
+    expect(lastShow(ui, STATES.MATCH_OVER).keys).toBe(SETTINGS.rewards[1]);
+  });
+
+  it('KS-05-03: REMATCH starts a fresh match on the same settings', () => {
+    const { session, ui, target } = buildSession();
+    playTo(session, { bestOf: 1 });
+    crashPlayerOne(session, target);
+    runFrames(session, SETTINGS.scoreboardSeconds + 0.05, 6);
+
+    lastShow(ui, STATES.MATCH_OVER).onRematch();
+    expect(session.getState()).toBe(STATES.COUNTDOWN);
+    expect(session.getMatch()?.wins).toEqual({ 1: 0, 2: 0 });
+    expect(session.getMatch()?.bestOf).toBe(1);
+    expect(session.getSeeds().roundIndex).toBe(0);
+  });
+
+  it('KS-05-03: MAIN MENU from the match-over screen tears the match down', () => {
+    const { session, ui, target } = buildSession();
+    playTo(session, { bestOf: 1 });
+    crashPlayerOne(session, target);
+    runFrames(session, SETTINGS.scoreboardSeconds + 0.05, 6);
+
+    lastShow(ui, STATES.MATCH_OVER).onMenu();
+    expect(session.getState()).toBe(STATES.MAIN_MENU);
+    expect(session.getSim()).toBeNull();
+    expect(session.getMatch()).toBeNull();
+  });
+});
+
+describe('KS-05-03 AC2: a draw', () => {
+  /**
+   * The golden no-input round: neither snake is ever steered, both reach opposite walls on the same tick at
+   * t ≈ 3.167 s, and the round is a DRAW (`tests/unit/core/round.test.js`'s own golden log). It is the one
+   * scripted draw this repository already trusts, so it is the one this test uses.
+   */
+  it('KS-05-03 AC2: a draw changes no wins and the round is replayed', () => {
+    const { session, ui } = buildSession();
+    playTo(session, { bestOf: 3 });
+
+    runFrames(session, 3.3, 66);
+    runFrames(session, SETTINGS.crashSlowMo.duration + 0.05, 14);
+
+    expect(session.getState()).toBe(STATES.ROUND_OVER);
+    const props = lastShow(ui, STATES.ROUND_OVER);
+    expect(props.result).toBe(RESULTS.DRAW);
+    expect(props.wins).toEqual({ 1: 0, 2: 0 });
+    expect(session.getMatch()?.roundsPlayed).toBe(1);
+    expect(session.getMatch()?.isOver()).toBe(false);
+
+    // "Draws never count; the match simply replays the round" (`§2.5`).
+    runFrames(session, SETTINGS.scoreboardSeconds + 0.05, 6);
+    expect(session.getState()).toBe(STATES.COUNTDOWN);
+    expect(session.getMatch()?.wins).toEqual({ 1: 0, 2: 0 });
+  });
+});
+
+describe('KS-05-03 AC3: pause', () => {
+  it('KS-05-03 AC3: Esc freezes the timer; RESUME shows READY? for a second; the timer carries on', () => {
+    // `snakeSpeed: 0` + `godMode` is this repository's standing recipe for "a round nobody can lose"
+    // (`tests/unit/core/lasers.test.js`): the clock runs, nothing crashes, so there is a round left to pause
+    // five seconds in. A real no-input round is over at 3.167 s.
+    const settings = withOverrides({ snakeSpeed: 0, godMode: true });
+    const { session, ui, target } = buildSession({ settings });
+    playTo(session);
+    runFrames(session, 5, 50);
+
+    const frozenTick = /** @type {any} */ (session.getSim()).tick;
+    fireKeydown(target, 'Escape');
+    expect(session.getState()).toBe(STATES.PAUSE);
+    expect(session.loop.timeScale).toBe(0);
+
+    // Nothing at all moves while paused, however many frames go by.
+    runFrames(session, 2, 20);
+    expect(session.getSim()?.tick).toBe(frozenTick);
+
+    lastShow(ui, STATES.PAUSE).onResume();
+    expect(session.getState()).toBe(STATES.PLAYING);
+    expect(lastShow(ui, STATES.COUNTDOWN).label).toBe('READY?');
+
+    // The READY? beat is a second of wall time, and the round is still frozen through it (`§2.8`).
+    runFrames(session, 0.9, 9);
+    expect(session.getSim()?.tick).toBe(frozenTick);
+    expect(session.loop.timeScale).toBe(0);
+
+    runFrames(session, 0.2, 2);
+    expect(session.loop.timeScale).toBe(1);
+    expect(ui.show).toHaveBeenLastCalledWith(STATES.PLAYING);
+
+    runFrames(session, 0.5, 5);
+    expect(session.getSim()?.tick).toBeGreaterThan(frozenTick);
+  });
+
+  it('KS-05-03 AC3: steering is ignored through the READY? beat', () => {
+    const settings = withOverrides({ snakeSpeed: 0, godMode: true });
+    const { session, ui, target } = buildSession({ settings });
+    playTo(session);
+    runFrames(session, 1, 10);
+    session.pause();
+    lastShow(ui, STATES.PAUSE).onResume();
+
+    fireKeydown(target, 'KeyW');
+    expect(session.getSim()?.snakes[0].queue).toEqual([]);
+
+    runFrames(session, 1.1, 11);
+    fireKeydown(target, 'KeyW');
+    expect(session.getSim()?.snakes[0].queue).toEqual([DIRECTIONS.UP]);
+  });
+
+  it('KS-05-03: Esc through the READY? beat does not re-open the pause screen', () => {
+    const { session, ui, target } = buildSession();
+    playTo(session);
+    session.pause();
+    lastShow(ui, STATES.PAUSE).onResume();
+
+    fireKeydown(target, 'Escape');
+    expect(session.getState()).toBe(STATES.PLAYING);
+  });
+
+  it('KS-05-03: Esc during the slow-mo beat resumes into the same slow-mo (sprint QA plan)', () => {
+    const { session, ui, target } = buildSession();
+    playTo(session);
+    fireKeydown(target, 'KeyW');
+    runFrames(session, 2.1, 42);
+    expect(session.loop.timeScale).toBe(SETTINGS.crashSlowMo.scale);
+
+    fireKeydown(target, 'Escape');
+    expect(session.getState()).toBe(STATES.PAUSE);
+    expect(session.loop.timeScale).toBe(0);
+
+    lastShow(ui, STATES.PAUSE).onResume();
+    runFrames(session, 1.1, 11);
+    // Back into the quarter-speed beat it interrupted, not snapped to full speed.
+    expect(session.loop.timeScale).toBe(SETTINGS.crashSlowMo.scale);
+
+    runFrames(session, SETTINGS.crashSlowMo.duration + 0.05, 14);
+    expect(session.getState()).toBe(STATES.ROUND_OVER);
+  });
+
+  it('KS-05-03: losing window focus pauses automatically (`DESIGN-DECISIONS §2.8`)', () => {
+    const { session, blurSource } = buildSession();
+    playTo(session);
+    blurSource.blur();
+    expect(session.getState()).toBe(STATES.PAUSE);
+  });
+
+  it('KS-05-03: a blur outside a round is ignored rather than thrown at the machine', () => {
+    const { session, blurSource } = buildSession();
+    expect(session.getState()).toBe(STATES.MAIN_MENU);
+    expect(() => blurSource.blur()).not.toThrow();
+    expect(session.getState()).toBe(STATES.MAIN_MENU);
+  });
+
+  it('KS-05-03: a tab coming back auto-pauses through loop.onAutoPause', () => {
+    const visibility = createFakeVisibility();
+    const { session } = buildSession({ visibilitySource: visibility, blurSource: null });
+    playTo(session);
+
+    visibility.setHidden(true);
+    visibility.setHidden(false);
+    // `onAutoPause` fires on the first frame after the tab comes back, before anything advances.
+    session.loop.step(0.016);
+    expect(session.getState()).toBe(STATES.PAUSE);
+  });
+
+  it('KS-05-03: QUIT TO MENU from pause leaves nothing running', () => {
+    const { session, ui } = buildSession();
+    playTo(session);
+    session.pause();
+    lastShow(ui, STATES.PAUSE).onMenu();
+
+    expect(session.getState()).toBe(STATES.MAIN_MENU);
+    expect(session.getSim()).toBeNull();
+    expect(session.loop.timeScale).toBe(1);
+  });
+
+  it('KS-05-03: RESTART MATCH from pause builds a fresh match (`DESIGN-DECISIONS §2.8`)', () => {
+    const { session, ui, target } = buildSession();
+    playTo(session, { bestOf: 3 });
+    crashPlayerOne(session, target);
+    runFrames(session, SETTINGS.scoreboardSeconds + 0.05, 6);
+    runFrames(session, SETTINGS.countdownStepSeconds * 4 + 0.02, 20);
+    expect(session.getMatch()?.wins).toEqual({ 1: 0, 2: 1 });
+
+    session.pause();
+    lastShow(ui, STATES.PAUSE).onRestart();
+
+    expect(session.getState()).toBe(STATES.COUNTDOWN);
+    expect(session.getMatch()?.wins).toEqual({ 1: 0, 2: 0 });
+    expect(session.getSeeds().roundIndex).toBe(0);
+  });
+
+  it('KS-05-03: pause() and resume() outside a round do nothing at all', () => {
+    const { session } = buildSession();
+    expect(() => session.pause()).not.toThrow();
+    expect(() => session.resume()).not.toThrow();
+    expect(session.getState()).toBe(STATES.MAIN_MENU);
+  });
+});
+
+describe('KS-05-03 the laser-warning sub-state', () => {
+  /**
+   * A round short enough that the laser warning is a couple of seconds away, and one nobody can lose while
+   * it plays out: `snakeSpeed: 0` + `godMode` is the same "round nobody can lose" recipe
+   * `tests/unit/core/lasers.test.js` uses, and without it a no-input round is over at 3.167 s — long before
+   * the five-second warning it is here to watch could finish.
+   */
+  const shortRound = withOverrides({ roundDuration: 32, snakeSpeed: 0, godMode: true });
+
+  it('KS-05-03: the sim’s LASER_WARNING moves the machine, raises the banner and pulses the camera', () => {
+    const { session, renderer, ui } = buildSession({ settings: shortRound });
+    playTo(session);
+    runFrames(session, 2.2, 44);
+
+    expect(session.getState()).toBe(STATES.LASER_WARNING);
+    expect(ui.hud.showLaserWarning).toHaveBeenCalledWith(SETTINGS.laserWarningDuration);
+    expect(renderer.camera.pulseLaserWarning).toHaveBeenCalledTimes(1);
+  });
+
+  it('KS-05-03: the sub-state ends after laserWarningDuration of simulated time, back into PLAYING', () => {
+    const { session } = buildSession({ settings: shortRound });
+    playTo(session);
+    runFrames(session, 2.2, 44);
+    expect(session.getState()).toBe(STATES.LASER_WARNING);
+
+    runFrames(session, SETTINGS.laserWarningDuration - 0.3, 20);
+    expect(session.getState()).toBe(STATES.LASER_WARNING);
+    runFrames(session, 0.4, 4);
+    expect(session.getState()).toBe(STATES.PLAYING);
+  });
+
+  it('KS-05-03: Esc during the warning pauses and resumes back into the warning, not out of it', () => {
+    const { session, ui, target } = buildSession({ settings: shortRound });
+    playTo(session);
+    runFrames(session, 2.2, 44);
+
+    fireKeydown(target, 'Escape');
+    expect(session.getState()).toBe(STATES.PAUSE);
+    lastShow(ui, STATES.PAUSE).onResume();
+    expect(session.getState()).toBe(STATES.LASER_WARNING);
+  });
+
+  it('KS-05-03: a renderer with no camera is fine (`SessionRenderer.camera` is optional)', () => {
+    const renderer = { render: vi.fn(), resize: vi.fn() };
+    const { session } = buildSession({ settings: shortRound, renderer });
+    playTo(session);
+    expect(() => runFrames(session, 2.2, 44)).not.toThrow();
+    expect(session.getState()).toBe(STATES.LASER_WARNING);
+  });
+
+  it('KS-05-03: every round starts with the previous round’s warning cleared (KS-04-03 AC2)', () => {
+    const { session, ui } = buildSession();
+    ui.hud.resetWarning.mockClear();
+    session.startMatch();
+    expect(ui.hud.resetWarning).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe('KS-05-03 the HUD and the renderer', () => {
+  it('KS-05-03: the HUD timer is written at most once per 100 ms of wall time', () => {
+    const { session, ui } = buildSession();
+    playTo(session);
+    ui.hud.setTime.mockClear();
+
+    for (let i = 0; i < 10; i += 1) session.advanceSimulation(0.016);
+    expect(ui.hud.setTime.mock.calls.length).toBeLessThanOrEqual(2);
+  });
+
+  it('KS-05-03: the HUD is ticked with simulated dt, so a paused banner does not expire', () => {
+    const { session, ui } = buildSession();
+    playTo(session);
+    session.pause();
+    ui.hud.tick.mockClear();
+
+    session.advanceSimulation(1);
+    expect(ui.hud.tick).toHaveBeenCalledWith(0);
+  });
+
+  it('KS-05-03: renders an empty arena in the menus and the sim’s state inside a round', () => {
+    const { session, renderer } = buildSession();
+    session.renderFrame();
+    expect(renderer.render.mock.calls[0][0]).toEqual({ snakes: [], apples: [] });
+
+    playTo(session);
+    session.renderFrame();
+    const drawn = /** @type {any} */ (renderer.render.mock.calls.at(-1))[0];
+    expect(drawn.snakes).toHaveLength(2);
+  });
+
+  it('KS-05-03: steering is ignored outside a round', () => {
+    const { session, target } = buildSession();
+    expect(() => fireKeydown(target, 'KeyW')).not.toThrow();
     expect(session.getSim()).toBeNull();
   });
 
-  it('the HUD throttle firing before any round exists writes nothing (there is no sim to read)', () => {
-    const { session, ui } = buildSession();
+  it('KS-05-03: WASD steers p1 and the arrow keys steer p2', () => {
+    const { session, target } = buildSession();
+    playTo(session);
+    fireKeydown(target, 'KeyW');
+    fireKeydown(target, 'ArrowUp');
+    expect(session.getSim()?.snakes[0].queue).toEqual([DIRECTIONS.UP]);
+    expect(session.getSim()?.snakes[1].queue).toEqual([DIRECTIONS.UP]);
+  });
+});
 
-    for (let i = 0; i < 5; i += 1) session.loop.step(0.03); // 150 ms idle, well past the 100 ms throttle
+describe('KS-05-03 lifecycle', () => {
+  it('KS-05-03: start() schedules frames, stop() halts them, dispose() unhooks everything', () => {
+    const requestFrame = vi.fn(() => 7);
+    const cancelFrame = vi.fn();
+    const { session, ui, target, blurSource } = buildSession({ requestFrame, cancelFrame });
 
-    expect(ui.hud.setTime).not.toHaveBeenCalled();
-    expect(ui.hud.setLengths).not.toHaveBeenCalled();
+    session.start();
+    expect(requestFrame).toHaveBeenCalledTimes(1);
+    session.stop();
+    expect(cancelFrame).toHaveBeenCalledWith(7);
+
+    expect(blurSource.listenerCount()).toBe(1);
+    session.dispose();
+    expect(blurSource.listenerCount()).toBe(0);
+
+    // The keyboard listener is gone too: this would otherwise reach the menu's focus model.
+    ui.handleMenuAction.mockClear();
+    fireKeydown(target, 'Enter');
+    expect(ui.handleMenuAction).not.toHaveBeenCalled();
   });
 
-  describe('KS-03-05 AC2: the round timer', () => {
-    it('KS-03-05 AC2: the timer reads 1:30 at the start of a round', () => {
-      const { session, ui, target } = buildSession();
+  it('KS-05-03: setSeed fixes the seed the NEXT match uses, leaving one in progress alone', () => {
+    const { session, ui, target } = buildSession({ seed: 11 });
+    playTo(session, { bestOf: 1 });
+    session.setSeed(99);
+    expect(session.getSeeds().matchSeed).toBe(11);
 
-      pressEnter(target);
-
-      expect(session.getPhase()).toBe('playing');
-      expect(ui.hud.setTime).toHaveBeenLastCalledWith('1:30');
-      expect(ui.hideOverlay).toHaveBeenCalled();
-    });
-
-    it('KS-03-05 AC2: the timer reads 0:00 at timeout', () => {
-      // Both snakes travel in a straight line at the default speed with no apples to eat: a 1-second round
-      // gives them nowhere near a wall (6 cells at most, well inside the 24x24 grid) before the round clock
-      // itself runs out — `roundDuration` is the one number this scenario needs to shrink, and `withOverrides`
-      // (settings.js's own sanctioned way to build a test variant) is how a test does that without touching
-      // the shipping `SETTINGS`.
-      // `godMode` (KS-04-01, test-only) because the laser schedule is written in seconds *remaining*: in a
-      // round that is only 1 s long every threshold in DESIGN-DECISIONS §2.4 is already in the past, so the
-      // beams close to the 6x6 minimum on the first tick and kill both snakes where they spawn. This test
-      // is about the timer reaching 0:00, so nothing may kill them first.
-      const settings = withOverrides({ roundDuration: 1, foodCount: 0, godMode: true });
-      const { session, ui, target } = buildSession({ settings });
-
-      pressEnter(target);
-      // 10 frames of 0.1 s is exactly 1 simulated second (dt * simHz = 12 ticks/frame, 120 ticks total),
-      // run by hand rather than waiting on a real clock.
-      for (let i = 0; i < 10; i += 1) {
-        session.loop.step(0.1);
-      }
-
-      expect(session.getSim()?.getState().timeRemaining).toBe(0);
-      expect(ui.hud.setTime).toHaveBeenLastCalledWith('0:00');
-      expect(session.getPhase()).toBe('roundOver');
-    });
-
-    it('KS-03-05 AC2: the timer does not advance while the tab is hidden', () => {
-      const visibility = createFakeVisibility();
-      const { session, target } = buildSession({ visibilitySource: visibility });
-
-      pressEnter(target);
-      for (let i = 0; i < 5; i += 1) session.loop.step(0.1);
-      const before = session.getSim()?.getState().timeRemaining;
-
-      visibility.setHidden(true);
-      session.loop.step(0.1);
-      session.loop.step(0.1);
-
-      expect(session.getSim()?.getState().timeRemaining).toBe(before);
-    });
+    crashPlayerOne(session, target);
+    runFrames(session, SETTINGS.scoreboardSeconds + 0.05, 6);
+    lastShow(ui, STATES.MATCH_OVER).onRematch();
+    expect(session.getSeeds().matchSeed).toBe(99);
   });
 
-  describe('KS-03-05 AC3: round over, then a fresh round', () => {
-    it('KS-03-05 AC3: Enter after ROUND_OVER starts a new round with fresh apples and snakes', () => {
-      // `godMode` (KS-04-01, test-only) because the laser schedule is written in seconds *remaining*: in a
-      // round that is only 1 s long every threshold in DESIGN-DECISIONS §2.4 is already in the past, so the
-      // beams close to the 6x6 minimum on the first tick and kill both snakes where they spawn. This test
-      // is about the timer reaching 0:00, so nothing may kill them first.
-      const settings = withOverrides({ roundDuration: 1, foodCount: 0, godMode: true });
-      const { session, ui, target } = buildSession({ settings });
-
-      pressEnter(target);
-      const round1 = session.getSim();
-      const round1StartState = round1?.getState();
-
-      for (let i = 0; i < 10; i += 1) session.loop.step(0.1);
-      expect(session.getPhase()).toBe('roundOver');
-      // Both snakes travelled the same straight line for the same 1 second with nothing to eat, so a
-      // timeout here is always a draw — the one deterministic result this scenario can produce.
-      expect(ui.showOverlay).toHaveBeenLastCalledWith('DRAW — PRESS ENTER');
-
-      pressEnter(target);
-
-      expect(session.getPhase()).toBe('playing');
-      const round2 = session.getSim();
-      expect(round2).not.toBe(round1);
-
-      const round2State = round2?.getState();
-      expect(round2State?.tick).toBe(0);
-      expect(round2State?.phase).toBe('PLAYING');
-      // Fresh snakes: back to the starting length, not the (possibly grown) length round 1 ended at.
-      expect(round2State?.snakes.map((s) => s.length)).toEqual(
-        round1StartState?.snakes.map((s) => s.length),
-      );
-      // Fresh apples, reproducibly: `buildSession`'s default `seed: 1` is a fixed seed, reused for round 2,
-      // which reseeds the RNG from scratch — so the opening board matches round 1's opening board exactly.
-      // See the two tests below for the seed contract itself (fixed replays, absent draws fresh each round).
-      expect(round2State?.apples).toEqual(round1StartState?.apples);
-    });
-
-    it('KS-03-05 AC3: a fixed ?seed replays the same board every round', () => {
-      // `foodCount` stays at its default here (unlike the test above) because this test's whole point is
-      // comparing the apples, which a `foodCount: 0` override would make trivially and meaninglessly equal.
-      const settings = withOverrides({ roundDuration: 1 });
-      const { session, target } = buildSession({ seed: 1, settings });
-
-      pressEnter(target);
-      const round1Apples = session.getSim()?.getState().apples;
-      for (let i = 0; i < 10; i += 1) session.loop.step(0.1);
-      expect(session.getPhase()).toBe('roundOver');
-
-      pressEnter(target);
-      const round2Apples = session.getSim()?.getState().apples;
-
-      expect(round2Apples).toEqual(round1Apples);
-    });
-
-    it('KS-03-05 AC3: without ?seed, a new round gets a new board', () => {
-      // A fake `randomSeed` in place of `Date.now` — real wall-clock time called twice in the same test could
-      // land in the same millisecond and produce two identical seeds, which would make this test flaky for a
-      // reason that has nothing to do with the behaviour it is proving.
-      let nextSeed = 0;
-      const settings = withOverrides({ roundDuration: 1 });
-      const { session, target } = buildSession({
-        seed: null,
-        settings,
-        randomSeed: () => (nextSeed += 1),
-      });
-
-      pressEnter(target);
-      const round1Apples = session.getSim()?.getState().apples;
-      for (let i = 0; i < 10; i += 1) session.loop.step(0.1);
-      expect(session.getPhase()).toBe('roundOver');
-
-      pressEnter(target);
-      const round2Apples = session.getSim()?.getState().apples;
-
-      expect(round2Apples).not.toEqual(round1Apples);
-    });
-
-    it('Enter mid-round has no effect', () => {
-      const { session, target } = buildSession();
-
-      pressEnter(target);
-      const round1 = session.getSim();
-
-      pressEnter(target);
-
-      expect(session.getSim()).toBe(round1);
-      expect(session.getPhase()).toBe('playing');
-    });
-  });
-
-  describe('the 10 Hz HUD throttle', () => {
-    it('writes the HUD at most once per 100 ms of simulated time', () => {
-      const { session, ui, target } = buildSession();
-
-      pressEnter(target);
-      ui.hud.setTime.mockClear();
-
-      // Five 30 ms frames: 150 ms of simulated time should cross the 100 ms threshold exactly once.
-      for (let i = 0; i < 5; i += 1) session.loop.step(0.03);
-
-      expect(ui.hud.setTime).toHaveBeenCalledTimes(1);
-    });
-  });
-
-  describe("the input mapping: input.js's 1/2 -> RoundSimulation's 'p1'/'p2'", () => {
-    it('KS-03-05: WASD steers p1 and the arrow keys steer p2 in the RoundSimulation', () => {
-      const { session, target } = buildSession();
-      pressEnter(target);
-
-      // P1 spawns heading RIGHT, P2 heading LEFT (DESIGN-DECISIONS §2.3) — UP and DOWN are legal turns for
-      // both, so both queue cleanly.
-      fireKeydown(target, 'KeyW'); // player 1, up
-      fireKeydown(target, 'ArrowDown'); // player 2, down
-
-      // Two 0.1 s frames are 24 ticks at simHz 120 — enough for one grid step (a step is due every 20 ticks
-      // at the base 6 cells/s speed), so the queued turn has actually been committed. A single frame cannot
-      // do this in one call: `loop.step` clamps to `maxFrameSeconds` (0.1 s) just like a real frame would.
-      session.loop.step(0.1);
-      session.loop.step(0.1);
-
-      const state = session.getSim()?.getState();
-      expect(state?.snakes[0].direction).toEqual(DIRECTIONS.UP);
-      expect(state?.snakes[1].direction).toEqual(DIRECTIONS.DOWN);
-    });
-
-    it('ignores direction input before any round has started', () => {
-      const { session, target } = buildSession();
-
-      // No round yet: dispatching a direction key must not throw for want of a sim to steer.
-      expect(() => fireKeydown(target, 'KeyW')).not.toThrow();
-      expect(session.getSim()).toBeNull();
-    });
-  });
-
-  describe('rendering', () => {
-    it('renders an empty snapshot before any round starts, and the sim state once one exists', () => {
-      const { session, renderer, target } = buildSession({
-        requestFrame: () => 0,
-        cancelFrame: () => {},
-      });
-
-      session.loop.step(0.016);
-      expect(renderer.render).toHaveBeenLastCalledWith({ snakes: [], apples: [] }, 0.016);
-
-      pressEnter(target);
-      renderer.render.mockClear();
-      session.loop.step(0.016);
-
-      const [snapshot, dt] = renderer.render.mock.calls[0];
-      expect(snapshot.snakes).toHaveLength(2);
-      expect(dt).toBe(0.016);
-    });
-  });
-
-  describe('KS-03-06: advanceSimulation/renderFrame/setSeed (testHooks.js support)', () => {
-    it('advanceSimulation(dt) advances the sim and runs ROUND_OVER handling, without rendering', () => {
-      // `godMode` for the same reason as the 0:00 timer test above: a 1 s round is entirely inside the
-      // laser window, and this test is about ROUND_OVER handling on a timeout.
-      const settings = withOverrides({ roundDuration: 1, foodCount: 0, godMode: true });
-      const { session, ui, renderer, target } = buildSession({ settings });
-
-      pressEnter(target);
-      renderer.render.mockClear();
-
-      // One big call, same as `RoundSimulation.advance`'s own contract (core/round.js): 1 s is enough to
-      // time the round out and trip the placeholder round flow's ROUND_OVER handling.
-      session.advanceSimulation(1);
-
-      expect(session.getSim()?.getState().timeRemaining).toBe(0);
-      expect(session.getPhase()).toBe('roundOver');
-      expect(ui.showOverlay).toHaveBeenLastCalledWith('DRAW — PRESS ENTER');
-      expect(renderer.render).not.toHaveBeenCalled();
-    });
-
-    it('advanceSimulation(dt) is a no-op-safe call before any round has started', () => {
-      const { session, renderer } = buildSession();
-      expect(() => session.advanceSimulation(1)).not.toThrow();
-      expect(session.getSim()).toBeNull();
-      expect(renderer.render).not.toHaveBeenCalled();
-    });
-
-    it("renderFrame() draws exactly one frame of the sim's current state", () => {
-      const { session, renderer, target } = buildSession();
-
-      pressEnter(target);
-      renderer.render.mockClear();
-      session.renderFrame();
-
-      expect(renderer.render).toHaveBeenCalledTimes(1);
-      const [snapshot] = renderer.render.mock.calls[0];
-      expect(snapshot.snakes).toHaveLength(2);
-    });
-
-    it('renderFrame() before any round renders the empty snapshot', () => {
-      const { session, renderer } = buildSession();
-      session.renderFrame();
-      expect(renderer.render).toHaveBeenLastCalledWith({ snakes: [], apples: [] }, 0);
-    });
-
-    it('setSeed fixes the seed the NEXT round starts with, leaving the round in progress alone', () => {
-      const settings = withOverrides({ roundDuration: 1 });
-      const { session, target } = buildSession({ seed: 1, settings });
-
-      pressEnter(target);
-      const round1Apples = session.getSim()?.getState().apples;
-
-      session.setSeed(2);
-      // The round already in progress must not be affected by a seed set mid-round.
-      expect(session.getSim()?.getState().apples).toEqual(round1Apples);
-
-      for (let i = 0; i < 10; i += 1) session.loop.step(0.1);
-      expect(session.getPhase()).toBe('roundOver');
-      pressEnter(target);
-      const round2Apples = session.getSim()?.getState().apples;
-
-      expect(round2Apples).not.toEqual(round1Apples);
-    });
-
-    it('setSeed(null) restores a fresh board every round', () => {
-      // Starts well away from the fixed seed (1) round 1 plays with, so `randomSeed()`'s first draw for
-      // round 2 cannot coincidentally collide with it and produce a false failure.
-      let nextSeed = 100;
-      const settings = withOverrides({ roundDuration: 1 });
-      const { session, target } = buildSession({
-        seed: 1,
-        settings,
-        randomSeed: () => (nextSeed += 1),
-      });
-
-      pressEnter(target);
-      session.setSeed(null);
-      for (let i = 0; i < 10; i += 1) session.loop.step(0.1);
-      expect(session.getPhase()).toBe('roundOver');
-      const round1Apples = session.getSim()?.getState().apples;
-
-      pressEnter(target);
-      const round2Apples = session.getSim()?.getState().apples;
-
-      expect(round2Apples).not.toEqual(round1Apples);
-    });
-  });
-
-  describe('KS-04-03: LASER_WARNING wiring', () => {
-    // Every test here shrinks `roundDuration` well below the default `laserStartTime` (30 s remaining) so
-    // `LASER_WARNING` — and, for the short round below, several `LASER_STEP`s with it — fires on the very
-    // first `sim.advance()` call, the same `withOverrides({ godMode: true })` pattern KS-04-01 already put
-    // in this file's own 0:00-timer tests (immortal snakes so nothing dies before the assertions run).
-    // `session.js` is not on this ticket's `Files:` list; wiring `LASER_WARNING` into the HUD and the
-    // camera needed a few lines there regardless (declared in the PR description, as the tech-lead notes
-    // said it would).
-
-    it('calls ui.hud.showLaserWarning with SETTINGS.laserWarningDuration and pulses the camera once', () => {
-      const settings = withOverrides({ roundDuration: 10, foodCount: 0, godMode: true });
-      const { session, ui, renderer, target } = buildSession({ settings });
-
-      pressEnter(target);
-      session.loop.step(0.1);
-
-      expect(ui.hud.showLaserWarning).toHaveBeenCalledTimes(1);
-      expect(ui.hud.showLaserWarning).toHaveBeenCalledWith(settings.laserWarningDuration);
-      expect(renderer.camera.pulseLaserWarning).toHaveBeenCalledTimes(1);
-    });
-
-    it('does not throw when the renderer has no camera (an optional field of SessionRenderer)', () => {
-      const settings = withOverrides({ roundDuration: 10, foodCount: 0, godMode: true });
-      const renderer = { render: vi.fn(), resize: vi.fn() };
-      const ui = createFakeUi();
-      const target = new NodeEventTarget();
-      const session = createSession({
-        renderer,
-        ui,
-        seed: 1,
-        settings,
-        inputTarget: target,
-        requestFrame: () => 0,
-        cancelFrame: () => {},
-        visibilitySource: null,
-      });
-
-      pressEnter(target);
-      expect(() => session.loop.step(0.1)).not.toThrow();
-      expect(ui.hud.showLaserWarning).toHaveBeenCalledTimes(1);
-    });
-
-    it('ticks the HUD once per frame with that frame’s own dt', () => {
-      const { session, ui, target } = buildSession();
-
-      pressEnter(target);
-      ui.hud.tick.mockClear();
-      session.loop.step(0.03);
-
-      expect(ui.hud.tick).toHaveBeenCalledWith(0.03);
-    });
-
-    it('KS-04-03 AC2: never resets the warning mid-round — only the next round start may', () => {
-      const settings = withOverrides({ roundDuration: 10, foodCount: 0, godMode: true });
-      const { session, ui, target } = buildSession({ settings });
-
-      pressEnter(target);
-      ui.hud.resetWarning.mockClear(); // drop the call `startRound()` itself makes before anything plays
-
-      // Steps through the whole 10 s round, past every LASER_STEP, to ROUND_OVER.
-      for (let i = 0; i < 100; i += 1) session.loop.step(0.1);
-
-      expect(session.getPhase()).toBe('roundOver');
-      expect(ui.hud.showLaserWarning).toHaveBeenCalledTimes(1);
-      expect(ui.hud.resetWarning).not.toHaveBeenCalled();
-    });
-
-    it('resets the banner/timer state at the start of every round, including the very first', () => {
-      const settings = withOverrides({ roundDuration: 10, foodCount: 0, godMode: true });
-      const { session, ui, target } = buildSession({ settings });
-
-      pressEnter(target);
-      expect(ui.hud.resetWarning).toHaveBeenCalledTimes(1);
-
-      for (let i = 0; i < 100; i += 1) session.loop.step(0.1);
-      expect(session.getPhase()).toBe('roundOver');
-
-      pressEnter(target);
-      expect(ui.hud.resetWarning).toHaveBeenCalledTimes(2);
-    });
-  });
-
-  describe('start/stop/dispose', () => {
-    it('start() begins scheduling frames and dispose() tears the input listener down', () => {
-      const requested = vi.fn();
-      const { session, target } = buildSession({
-        requestFrame: (cb) => {
-          requested(cb);
-          return 1;
-        },
-        cancelFrame: vi.fn(),
-      });
-
-      session.start();
-      expect(requested).toHaveBeenCalledTimes(1);
-
-      session.dispose();
-      // The input listener is gone: a keydown after dispose does not throw and cannot reach a round either.
-      expect(() => pressEnter(target)).not.toThrow();
-      expect(session.getSim()).toBeNull();
-    });
-
-    it('stop() halts the loop without touching input or the sim', () => {
-      const { session, target } = buildSession();
-
-      pressEnter(target);
-      session.stop();
-
-      expect(session.loop.isRunning()).toBe(false);
-      expect(session.getSim()).not.toBeNull();
-    });
+  it('KS-05-03: a session with no blur source at all still works', () => {
+    const { session } = buildSession({ blurSource: null });
+    expect(() => playTo(session)).not.toThrow();
+    expect(session.getState()).toBe(STATES.PLAYING);
+    expect(() => session.dispose()).not.toThrow();
   });
 });

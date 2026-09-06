@@ -31,13 +31,24 @@ class FakeKeyboardEvent extends NodeEvent {
   }
 }
 
-/** @returns {{ getSim: import('vitest').Mock, advanceSimulation: import('vitest').Mock, renderFrame: import('vitest').Mock, setSeed: import('vitest').Mock }} */
+/**
+ * The shape `session.js` gives `createTestHooks` (`TestHooksSession`). It grew in KS-05-03 with the state
+ * machine and the flow controls `__kobi` now exposes (`ARCHITECTURE §11`).
+ */
 function createFakeSession() {
   return {
     getSim: vi.fn(() => null),
+    machine: { getState: vi.fn(() => 'MAIN_MENU') },
+    getState: vi.fn(() => 'MAIN_MENU'),
     advanceSimulation: vi.fn(),
     renderFrame: vi.fn(),
     setSeed: vi.fn(),
+    startMatch: vi.fn(),
+    pause: vi.fn(),
+    resume: vi.fn(),
+    getSeeds: vi.fn(() => ({ matchSeed: 0, roundIndex: 0, roundSeeds: [] })),
+    getMatch: vi.fn(() => null),
+    getMatchSettings: vi.fn(() => ({ bestOf: 3 })),
   };
 }
 
@@ -79,9 +90,66 @@ describe('KS-03-06 createTestHooks', () => {
   });
 
   describe('stateMachine', () => {
-    it('KS-03-06: stateMachine is documented and present as null (Sprint 05 has not landed it yet)', () => {
+    it('KS-05-03: stateMachine is the session’s real machine, not a copy of its state', () => {
+      const { hooks, session } = buildHooks();
+      expect(hooks.stateMachine).toBe(session.machine);
+    });
+
+    it('KS-05-03: getState() reports the current state as a plain string', () => {
+      // A Playwright spec reads this through `page.evaluate`, where the machine object itself would not
+      // survive the structured clone but a string does.
+      const { hooks, session } = buildHooks();
+      session.getState.mockReturnValue('PLAYING');
+      expect(hooks.getState()).toBe('PLAYING');
+    });
+  });
+
+  describe('KS-05-03: the flow controls', () => {
+    it('KS-05-03: startMatch/pause/resume forward straight to the session', () => {
+      const { hooks, session } = buildHooks();
+      hooks.startMatch({ bestOf: 5 });
+      hooks.pause();
+      hooks.resume();
+      expect(session.startMatch).toHaveBeenCalledWith({ bestOf: 5 });
+      expect(session.pause).toHaveBeenCalled();
+      expect(session.resume).toHaveBeenCalled();
+    });
+
+    it('KS-05-03: getSeeds exposes the match seed and its derived round seeds, for replays', () => {
+      const { hooks, session } = buildHooks();
+      session.getSeeds.mockReturnValue({ matchSeed: 7, roundIndex: 1, roundSeeds: [11, 22] });
+      expect(hooks.getSeeds()).toEqual({ matchSeed: 7, roundIndex: 1, roundSeeds: [11, 22] });
+    });
+
+    it('KS-05-03: getMatch is null outside a match', () => {
       const { hooks } = buildHooks();
-      expect(hooks.stateMachine).toBeNull();
+      expect(hooks.getMatch()).toBeNull();
+    });
+
+    it('KS-05-03: getMatch flattens MatchState into something a page.evaluate can carry back', () => {
+      const { hooks, session } = buildHooks();
+      session.getMatch.mockReturnValue({
+        bestOf: 3,
+        target: 2,
+        rewardKeys: 1,
+        wins: { 1: 1, 2: 0 },
+        roundsPlayed: 1,
+        winner: null,
+        isOver: () => false,
+        winsNeeded: (/** @type {number} */ player) => (player === 1 ? 1 : 2),
+      });
+
+      const match = /** @type {any} */ (hooks.getMatch());
+      // Methods, which a structured clone drops silently, are evaluated into plain values here instead.
+      expect(match.isOver).toBe(false);
+      expect(match.winsNeeded).toEqual({ 1: 1, 2: 2 });
+      expect(match.wins).toEqual({ 1: 1, 2: 0 });
+      expect(JSON.parse(JSON.stringify(match))).toEqual(match);
+    });
+
+    it('KS-05-03: getMatchSettings forwards the session’s copy', () => {
+      const { hooks } = buildHooks();
+      expect(hooks.getMatchSettings()).toEqual({ bestOf: 3 });
     });
   });
 
@@ -259,7 +327,7 @@ describe('KS-03-06 createTestHooks', () => {
         getHeadWorldPosition: vi.fn(() => ({ x: 0, y: 0, z: 0 })),
       };
       const ui = {
-        // KS-04-03: `session.js` now also calls `showLaserWarning`/`tick`/`resetWarning` on the real HUD
+        // KS-04-03: `session.js` also calls `showLaserWarning`/`tick`/`resetWarning` on the real HUD
         // interface; this fake needs the same three no-ops or the real session it drives would throw.
         hud: {
           setTime: vi.fn(),
@@ -268,8 +336,9 @@ describe('KS-03-06 createTestHooks', () => {
           tick: vi.fn(),
           resetWarning: vi.fn(),
         },
-        showOverlay: vi.fn(),
-        hideOverlay: vi.fn(),
+        // KS-05-03: and the screen router.
+        show: vi.fn(),
+        handleMenuAction: vi.fn(),
       };
       const session = createSession({
         renderer,
@@ -279,6 +348,7 @@ describe('KS-03-06 createTestHooks', () => {
         requestFrame: () => 0,
         cancelFrame: () => {},
         visibilitySource: null,
+        blurSource: null,
       });
       const hooks = createTestHooks({
         session,
@@ -287,9 +357,10 @@ describe('KS-03-06 createTestHooks', () => {
         KeyboardEventCtor: FakeKeyboardEvent,
       });
 
-      // Enter starts a round (session's input mode is 'both', so a menu action fires alongside any
-      // direction match — Enter has none, so this is CONFIRM only).
-      eventTarget.dispatchEvent(new FakeKeyboardEvent('keydown', { code: 'Enter' }));
+      // KS-05-03: a round is reached through the real flow now — the main menu and the setup screen, in one
+      // call — and then the 3 · 2 · 1 · GO countdown, which `fastForward` drives like any other wall time.
+      hooks.startMatch();
+      hooks.fastForward(4);
 
       // P1 spawns heading RIGHT, P2 heading LEFT (DESIGN-DECISIONS §2.3): UP and DOWN are legal turns for
       // both, so both queue cleanly.

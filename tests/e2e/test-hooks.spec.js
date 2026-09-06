@@ -1,6 +1,7 @@
 // @ts-check
 import { expect, test } from '@playwright/test';
 import { DEFAULT_QUERY } from '../../playwright.config.js';
+import { startMatchInPage } from './helpers.js';
 
 /**
  * KS-03-06: test hooks (`window.__kobi`, `ARCHITECTURE §11`).
@@ -34,7 +35,8 @@ test.describe('KS-03-06 test hooks', () => {
     // Enter starts a round (the placeholder round flow, KS-03-05), so fastForward has a live sim to advance
     // — the same round-flow path (ROUND_OVER handling, HUD write) a real 90 s of play would take, not just
     // an idle no-op.
-    await page.keyboard.press('Enter');
+    // KS-05-03: main menu -> match setup -> countdown -> PLAYING, in one synchronous script.
+    await page.evaluate(startMatchInPage);
 
     const elapsedMs = await page.evaluate(() => {
       const kobi = /** @type {any} */ (globalThis).__kobi;

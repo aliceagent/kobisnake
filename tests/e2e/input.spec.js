@@ -1,6 +1,7 @@
 // @ts-check
 import { expect, test } from '@playwright/test';
 import { DEFAULT_QUERY } from '../../playwright.config.js';
+import { startMatchInPage } from './helpers.js';
 
 /**
  * KS-03-07 scenario (b): a reversal input does nothing.
@@ -15,7 +16,9 @@ import { DEFAULT_QUERY } from '../../playwright.config.js';
 test.describe('KS-03-07 input', () => {
   test('KS-03-07 scenario (b): the reversal key does nothing', async ({ page }) => {
     await page.goto(DEFAULT_QUERY);
-    await page.keyboard.press('Enter');
+    // KS-05-03: a round is reached through the real flow now — main menu, match setup, countdown — rather
+    // than by pressing Enter on the placeholder overlay Sprint 03 had.
+    await page.evaluate(startMatchInPage);
 
     // P1 spawns heading RIGHT (`DESIGN-DECISIONS §2.3`). LEFT is its exact reverse, which `queueDirection`
     // (`DESIGN-DECISIONS §2.2`) must drop silently rather than queue.

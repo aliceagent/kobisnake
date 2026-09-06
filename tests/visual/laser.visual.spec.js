@@ -56,25 +56,25 @@ import { DEFAULT_QUERY } from '../../playwright.config.js';
  */
 
 /**
- * Starts a round, freezes the frame loop, places both snakes inside the final safe square and catches the
- * simulation up to `timeRemaining` seconds left — see the module doc comment for why each step is safe and
- * deterministic. Duplicated from nothing: `page.evaluate` callbacks are serialised by Playwright and cannot
+ * Starts a round, places both snakes inside the final safe square, catches the simulation up to
+ * `timeRemaining` seconds left and *then* freezes it — see the module doc comment for why each step is safe
+ * and deterministic. Duplicated from nothing: `page.evaluate` callbacks are serialised by Playwright and cannot
  * close over a helper from this module (`tests/e2e/test-hooks.spec.js`'s own note on the same constraint).
  *
  * @param {number} timeRemaining - seconds left to catch the round up to
  * @returns {{phase: string, inset: number}} the laser state actually drawn, read back after the catch-up
  */
 function startFrozenRoundAtLaserState(timeRemaining) {
-  const win = /** @type {any} */ (globalThis);
   const doc = /** @type {any} */ (globalThis).document;
-  const kobi = win.__kobi;
+  const kobi = /** @type {any} */ (globalThis).__kobi;
 
-  win.dispatchEvent(
-    new win.KeyboardEvent('keydown', { code: 'Enter', bubbles: true, cancelable: true }),
-  );
-  Object.defineProperty(doc, 'hidden', { configurable: true, get: () => true });
-  doc.dispatchEvent(new win.Event('visibilitychange'));
-  kobi.fastForward(0); // one frame at tick 0, loop now stopped (`ARCHITECTURE §5`: a hidden tab stops it).
+  // KS-05-03: the round is reached through the real flow — main menu, match setup, and the four countdown
+  // beats of `DESIGN-DECISIONS §2.4` — which leaves it at tick 0 exactly, because nothing else can run in
+  // the middle of one synchronous script. The freeze that used to happen here now happens at the *end*, as
+  // a real pause: `__kobi.pause()` sets `loop.timeScale` to 0, and a paused round cannot be fast-forwarded,
+  // so the placement and catch-up below have to come first.
+  kobi.startMatch();
+  kobi.fastForward(3.21);
 
   const sim = kobi.sim;
 
@@ -104,9 +104,18 @@ function startFrozenRoundAtLaserState(timeRemaining) {
   sim.tick = Math.round((sim.settings.roundDuration - timeRemaining) * sim.settings.simHz) - 12;
   kobi.fastForward(0.1); // one ordinary advance: fires every due LASER_STEP, sweeps/refills food, writes the HUD.
 
+  // Now freeze, so the frame Playwright eventually captures is this one. `toHaveScreenshot` does its own
+  // wall-clock stability wait, and the live loop would otherwise carry the round on for the whole of it.
+  kobi.pause();
+  kobi.fastForward(0);
+
   // Hide the whole HUD, not just the KS-04-03 warning banner it carries — see the module doc comment for why
-  // these four frames pin the laser/dead-zone view alone rather than also being a HUD baseline.
+  // these four frames pin the laser/dead-zone view alone rather than also being a HUD baseline. The PAUSE
+  // panel goes with it for the same reason: these are baselines of the arena, and the pause screen has its
+  // own in `tests/visual/screens.visual.spec.js`.
   doc.querySelector('.hud').style.display = 'none';
+  const pausePanel = doc.querySelector('[data-screen="PAUSE"]');
+  if (pausePanel !== null) pausePanel.hidden = true;
 
   return kobi.getSnapshot().lasers;
 }
