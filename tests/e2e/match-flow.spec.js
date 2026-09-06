@@ -2,7 +2,7 @@
 import { expect, test } from '@playwright/test';
 import { SETTINGS } from '../../src/core/settings.js';
 import { DEFAULT_QUERY } from '../../playwright.config.js';
-import { COUNTDOWN_SECONDS, startMatchInPage } from './helpers.js';
+import { COUNTDOWN_SECONDS, crashPlayerOneInPage, nextRoundInPage, startMatchInPage } from './helpers.js';
 
 /**
  * KS-05-03: the match flow, driven end to end in a real browser — the spec the ticket's `QA:` line names.
@@ -13,40 +13,17 @@ import { COUNTDOWN_SECONDS, startMatchInPage } from './helpers.js';
  * keyboard — plays a best-of match the same way. So the assertions here are deliberately about outcomes and
  * about the DOM, not about arithmetic.
  *
- * KS-05-05 extends this file with the rest of the flow suite (Bo1/Bo5 completion, rematch keeping its
- * settings, back navigation from every screen). It is a starting point, not a finished suite.
+ * KS-05-05 extends this file with the rest of the flow suite: Bo1 and Bo5 completion (both scripted — three
+ * round wins for Bo5, not 90-second timeouts), and rematch keeping its settings. `crashPlayerOneInPage` and
+ * `nextRoundInPage`, KS-05-03's own scripted moments, now live in `./helpers.js` instead of this file (moved,
+ * not rewritten, once `tests/visual/screens.visual.spec.js` needed the identical script too — tech-lead note
+ * B). The four original KS-05-03 tests below are otherwise untouched.
  *
  * Every scripted moment stays inside one `page.evaluate()`, for the reason `first-playable.spec.js`'s module
  * comment sets out at length: the real frame loop is running the whole time, and a frame landing between two
  * halves of a scripted step would advance the round by an uncontrolled few milliseconds. A synchronous
  * callback cannot be interrupted by `requestAnimationFrame`.
  */
-
-/**
- * Steers player 1 into the top wall and runs past the crash and the slow-mo beat that follows it, leaving
- * the game on the scoreboard.
- *
- * P1 spawns at (5, 12) heading RIGHT (`DESIGN-DECISIONS §2.3`); UP is a legal turn and, left uncorrected,
- * kills it twelve grid steps later — exactly 2.0 simulated seconds at 6 cells/s. P2 gets no input and does
- * not reach the opposite wall until ≈ 3.167 s, so P1 dies alone and P2 takes the round. Three seconds covers
- * the crash and the 0.6 s crash slow-mo beat (`§2.5`) with room to spare.
- *
- * Serialised into the page by `page.evaluate`, so it cannot reference anything outside itself.
- */
-function crashPlayerOneInPage() {
-  const kobi = /** @type {any} */ (globalThis).__kobi;
-  kobi.pressKey(1, 'UP');
-  kobi.fastForward(3);
-  return { state: kobi.getState(), match: kobi.getMatch() };
-}
-
-/** Leaves the scoreboard and plays the next round's countdown out, landing back in PLAYING. */
-function nextRoundInPage() {
-  const kobi = /** @type {any} */ (globalThis).__kobi;
-  kobi.fastForward(3); // scoreboardSeconds is 2.5 (`DESIGN-DECISIONS §2.6`)
-  kobi.fastForward(3.21); // 3 · 2 · 1 · GO
-  return kobi.getState();
-}
 
 test.describe('KS-05-03 match flow', () => {
   test('KS-05-03 AC1: a Bo3 with two scripted crashes reaches MATCH_OVER with a winner and one key', async ({
@@ -182,5 +159,138 @@ test.describe('KS-05-03 match flow', () => {
     }, COUNTDOWN_SECONDS);
 
     expect(second.roundSeeds).toEqual(first.roundSeeds);
+  });
+
+  test('KS-05-05 AC: a Bo1 match ends after a single scripted crash, with zero keys awarded', async ({
+    page,
+  }) => {
+    await page.goto(DEFAULT_QUERY);
+
+    const started = await page.evaluate((countdown) => {
+      const kobi = /** @type {any} */ (globalThis).__kobi;
+      kobi.startMatch({ bestOf: 1 });
+      kobi.fastForward(countdown);
+      return { state: kobi.getState(), bestOf: kobi.getMatch().bestOf };
+    }, COUNTDOWN_SECONDS);
+    expect(started.state).toBe('PLAYING');
+    expect(started.bestOf).toBe(1);
+
+    // Bo1's target is one win (`createMatch`: `Math.ceil(1 / 2)`), so P2's single scripted win already
+    // decides the match — there is no second round to play.
+    const round = await page.evaluate(crashPlayerOneInPage);
+    expect(round.state).toBe('ROUND_OVER');
+    expect(round.match.wins).toEqual({ 1: 0, 2: 1 });
+    expect(round.match.isOver).toBe(true);
+
+    const over = await page.evaluate(() => {
+      const kobi = /** @type {any} */ (globalThis).__kobi;
+      kobi.fastForward(3); // scoreboardSeconds is 2.5 (`DESIGN-DECISIONS §2.6`)
+      return { state: kobi.getState(), match: kobi.getMatch() };
+    });
+
+    expect(over.state).toBe('MATCH_OVER');
+    expect(over.match.winner).toBe(2);
+    // Bo1 rewards no keys (`DESIGN-DECISIONS §2.6`: "Bo1 0 keys"), read from `SETTINGS.rewards`.
+    expect(over.match.rewardKeys).toBe(SETTINGS.rewards[1]);
+    await expect(page.locator('[data-screen="MATCH_OVER"]')).toBeVisible();
+  });
+
+  test('KS-05-05 AC: a Bo5 match ends after three scripted round wins for the same player', async ({
+    page,
+  }) => {
+    await page.goto(DEFAULT_QUERY);
+
+    // Bo5's target is three wins (`Math.ceil(5 / 2)`). Scripted here with the same crash three rounds
+    // running, rather than played out to a 90 s timeout each round — the ticket's own instruction ("Bo5
+    // needs three round wins — script them, do not play 90-second rounds").
+    const started = await page.evaluate((countdown) => {
+      const kobi = /** @type {any} */ (globalThis).__kobi;
+      kobi.startMatch({ bestOf: 5 });
+      kobi.fastForward(countdown);
+      return { state: kobi.getState(), bestOf: kobi.getMatch().bestOf };
+    }, COUNTDOWN_SECONDS);
+    expect(started.state).toBe('PLAYING');
+    expect(started.bestOf).toBe(5);
+
+    let round = await page.evaluate(crashPlayerOneInPage);
+    expect(round.match.wins).toEqual({ 1: 0, 2: 1 });
+    expect(round.match.isOver).toBe(false);
+    expect(await page.evaluate(nextRoundInPage)).toBe('PLAYING');
+
+    round = await page.evaluate(crashPlayerOneInPage);
+    expect(round.match.wins).toEqual({ 1: 0, 2: 2 });
+    expect(round.match.isOver).toBe(false);
+    expect(await page.evaluate(nextRoundInPage)).toBe('PLAYING');
+
+    round = await page.evaluate(crashPlayerOneInPage);
+    expect(round.match.wins).toEqual({ 1: 0, 2: 3 });
+    expect(round.match.isOver).toBe(true);
+
+    const over = await page.evaluate(() => {
+      const kobi = /** @type {any} */ (globalThis).__kobi;
+      kobi.fastForward(3);
+      return { state: kobi.getState(), match: kobi.getMatch() };
+    });
+
+    expect(over.state).toBe('MATCH_OVER');
+    expect(over.match.winner).toBe(2);
+    // Bo5 rewards two keys (`DESIGN-DECISIONS §2.6`: "Bo5 2 keys").
+    expect(over.match.rewardKeys).toBe(SETTINGS.rewards[5]);
+    await expect(page.locator('[data-screen="MATCH_OVER"]')).toBeVisible();
+  });
+
+  test('KS-05-05 AC: REMATCH keeps the same bestOf and colours, with the score reset to zero', async ({
+    page,
+  }) => {
+    await page.goto(DEFAULT_QUERY);
+
+    // Bo1 (not the setup screen's Bo3 default) and both players' colours swapped from the setup screen's own
+    // defaults (red/blue) — exactly the shape `matchSetup.js`'s `changeMatchLength`/`pickPlayerColor` would
+    // leave `matchSettings` in after real key presses, applied here as `startMatch`'s own override argument
+    // the same way the setup-screen flow itself does (`session.js`'s `showMatchSetup` → `onChange`).
+    const started = await page.evaluate((countdown) => {
+      const kobi = /** @type {any} */ (globalThis).__kobi;
+      kobi.startMatch({ bestOf: 1, colors: { 1: 'blue', 2: 'red' } });
+      kobi.fastForward(countdown);
+      return { state: kobi.getState(), settings: kobi.getMatchSettings() };
+    }, COUNTDOWN_SECONDS);
+    expect(started.state).toBe('PLAYING');
+    expect(started.settings.bestOf).toBe(1);
+    expect(started.settings.colors).toEqual({ 1: 'blue', 2: 'red' });
+
+    // Bo1, so this one scripted crash already decides the match.
+    const round = await page.evaluate(crashPlayerOneInPage);
+    expect(round.match.isOver).toBe(true);
+
+    const over = await page.evaluate(() => {
+      const kobi = /** @type {any} */ (globalThis).__kobi;
+      kobi.fastForward(3); // scoreboardSeconds
+      return kobi.getState();
+    });
+    expect(over).toBe('MATCH_OVER');
+
+    // REMATCH is pressed as a real `Enter` keydown on `window` — the same event `input.js` listens for and
+    // the same one `matchOver.js`'s default-focused REMATCH row responds to (`ARCHITECTURE §8`) — rather than
+    // dispatching the state machine's `REMATCH` event directly, so this proves the real UI wiring
+    // (`matchOver.js`'s `onRematch` → `session.js`'s `machine.dispatch(GAME_EVENTS.REMATCH)`), not just the
+    // machine's own transition table. It happens inside the same `page.evaluate()` call as the countdown
+    // fast-forward that follows it (module doc comment: no real frame may land between the two, or the
+    // countdown's own real-time clock could run ahead of this script before `fastForward` ever gets to it).
+    const rematch = await page.evaluate((countdown) => {
+      const kobi = /** @type {any} */ (globalThis).__kobi;
+      const win = /** @type {any} */ (globalThis).window;
+      win.dispatchEvent(new win.KeyboardEvent('keydown', { code: 'Enter', bubbles: true, cancelable: true }));
+      kobi.fastForward(countdown);
+      return { state: kobi.getState(), settings: kobi.getMatchSettings(), match: kobi.getMatch() };
+    }, COUNTDOWN_SECONDS);
+
+    expect(rematch.state).toBe('PLAYING');
+    // Same settings ("REMATCH (same settings, swap nothing)", `DESIGN-DECISIONS §2.6`) …
+    expect(rematch.settings.bestOf).toBe(1);
+    expect(rematch.settings.colors).toEqual({ 1: 'blue', 2: 'red' });
+    // … and a fresh match: the score is back to zero, not carried over from the last one.
+    expect(rematch.match.wins).toEqual({ 1: 0, 2: 0 });
+    expect(rematch.match.isOver).toBe(false);
+    expect(rematch.match.roundsPlayed).toBe(0);
   });
 });
