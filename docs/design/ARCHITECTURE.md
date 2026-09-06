@@ -102,7 +102,11 @@ propose it in the PR description and Opus approves before merge.
   It returns an array of events (`FOOD_EATEN`, `POWERUP_SPAWNED`, `POWERUP_COLLECTED`, `EFFECT_STARTED`,
   `EFFECT_ENDED`, `LASER_WARNING`, `LASER_STEP`, `SNAKE_DIED`, `ROUND_OVER`, ...). `FOOD_SPAWNED` fires for the
   opening apples as well as respawns. Every event carries an integer `tick` and a derived `t` in seconds;
-  `ROUND_OVER` carries `result`, `reason` (`DEATH | TIMEOUT`), `winnerId` and both `lengths`. Render, audio and UI react to
+  `ROUND_OVER` carries `result`, `reason` (`DEATH | TIMEOUT`), `winnerId` and both `lengths`. Because `emit`
+  flattens the payload onto `{ type, tick, t, ...payload }`, no payload may use the key `type`: power-up and
+  effect events carry the power-up kind as **`powerUpType`** (`POWERUP_SPAWNED { powerUpType, cell }`,
+  `POWERUP_DESPAWNED`, `POWERUP_COLLECTED { playerId, powerUpType }`, `EFFECT_STARTED/ENDED { playerId,
+  powerUpType }`, `POWERUP_REMOVED { cell }`). Render, audio and UI react to
   events; they never poll internal fields except through read-only getters (`getState()` returns a plain
   serialisable snapshot).
 - Determinism: constructor takes `{ settings, seed, players, powerUpsEnabled }`. Same seed + same input log ⇒

@@ -16,7 +16,7 @@ file is the authority on numbers and edge cases.
 |---|---|---|---|
 | 1 | Exact food appearance | **Toy-brick apple**: red 2×2 rounded brick body, green leaf brick, single stud on top. | Every supplied concept image already shows it. Instantly readable from the gameplay camera. |
 | 2 | Growth amount per food | **+1 segment per apple.** | Classic, readable, keeps long-snake pressure gradual. Tunable `growthPerFood`. |
-| 3 / 21 | Slow power-up behaviour | **SLOW slows every snake except the collector** to 0.6× speed for 4 s. In practice/single-player (no opponent) it instead slows the laser step interval by 2× for 4 s. | Benefits the collector, obvious to both players, symmetric with Speed Boost (one helps you, one hinders them). |
+| 3 / 21 | Slow power-up behaviour | **SLOW slows every snake except the collector** to 0.6× speed for 4 s. In practice/single-player (no opponent) it instead slows the laser step interval by 2× for 4 s. Unreachable until Sprint 19 (practice has no clock, so nothing spawns there); built and unit-tested anyway. | Benefits the collector, obvious to both players, symmetric with Speed Boost (one helps you, one hinders them). |
 | 4 | Speed boost multiplier | **1.5× movement speed for 5 s.** | Noticeably faster, still controllable at the base speed below. |
 | 5 | Laser shrink speed | **One grid cell inward per side every 2.5 s**, first step 5 s after the warning starts. | Reaches the minimum arena with ~2.5 s to spare in a 90 s round. Readable, stepwise, glides visually. |
 | 6 / 23 | Minimum final arena | **6 × 6 cells.** Lasers stop there. | Two length-15 snakes still fit; near-zero arenas produce unfair "nowhere to go" deaths. |
@@ -145,6 +145,9 @@ brightness pulse that travels head → tail over 0.3 s, new segment appears at t
 Collected: ring expands to 2× and fades, 16 particles in the power-up colour. Snake effect: Speed = yellow
 emissive pulses along the body + short motion streak behind the head; Slow (applied to the victim) = pale-blue
 tint and a small snowflake above the head, both for the effect duration.
+**The SLOW collector also gets a confirmation**: a 0.4 s ice-blue ring pulse on its own head and the pickup
+sound, so a player who grabs SLOW knows they collected something even though the effect lands on the
+opponent (Sprint 10 VFX, Sprint 12 audio).
 
 **Crash & laser death (image 12).** Collision: the dead snake's segments detach into rigid bricks that tumble
 outward (simple ballistic + spin, 0.8 s, then fade); screen shake 0.3 s amplitude 0.15 units; 0.25× slow-mo for

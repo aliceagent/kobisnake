@@ -36,7 +36,13 @@ Owner: Fable (facilitator), humans · Size: L · Depends on: KS-07-01
 Files: `docs/qa/playtests/2026-xx-xx-gate1-session-N.md`
 Spec: Three sessions of ≥ 30 minutes with two humans on one keyboard, using `PLAYTEST-SCRIPT.md` sections 2–8.
 Session 1 default values. Session 2 the tuning variants Fable prepares from session 1 (at least: laser start
-25/30/35 s, step interval 2/2.5/3 s, SLOW target modes). Session 3 the proposed final values. Every "no"/"unfair"
+25/30/35 s, step interval 2/2.5/3 s, SLOW target modes). Add **Speed Boost 1.5×/5 s vs 1.35×/4 s** to the variants.
+
+**Sharpest question from the bots (Sprint 06):** a non-adapting bot that collects Speed Boost wins under a
+quarter of its rounds and is about eight times more likely to die in the second after the boost starts. Humans
+may adapt where the bot cannot; P4 ("5 s feels good; no uncontrollable deaths attributed to boost") decides it.
+Also watch P5 readability: SLOW acts only on the opponent, so the collector may not notice they collected
+anything until the tag appears over the other snake (confirmation cue designed in `DESIGN-DECISIONS §3`). Session 3 the proposed final values. Every "no"/"unfair"
 becomes a replay file and an issue.
 Acceptance criteria:
 - [ ] AC1 Three filled-in scripts committed under `docs/qa/playtests/`.
