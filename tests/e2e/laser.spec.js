@@ -41,7 +41,14 @@ test.describe('KS-04-02 laser rendering', () => {
       // KS-05-03: starts the round through the real flow — main menu, match setup, and the four countdown
       // beats of `DESIGN-DECISIONS §2.4` — synchronously, so it leaves the round at tick 0 exactly. See the
       // module doc comment on why every scripted moment in this suite stays inside one `evaluate`.
-      kobi.startMatch();
+      // `powerUpsEnabled: false`, for the reason `tests/unit/core/lasers.test.js`'s golden timeline gives for
+      // the same flag: the assertion below is a *difference* between two total draw-call counts, so anything
+      // that appears on the board between the two samples is counted as if it were a laser. A pedestal
+      // standing at the WARNING moment adds two draw calls and pushes the delta over AC3's budget of six —
+      // which is exactly what happened once KS-07-00 (#102) moved the rng stream and, with it, where the
+      // pedestals spawn. Power-ups rendering during the laser phase is `tests/e2e/powerups.spec.js`'s
+      // subject; this spec measures the beams.
+      kobi.startMatch({ powerUpsEnabled: false });
       // KS-06-00: `fastForward` advances in frame-sized chunks now (#84), so the countdown is played out
       // by stepping until it hands the round over, rather than by one fixed 3.21 s call — which would spill
       // its last hundredth of a second into the round and start it at tick 1 instead of tick 0. The bound is

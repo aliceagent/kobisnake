@@ -34,6 +34,16 @@ import { expect, test } from '@playwright/test';
 
 const QUERY = '?test=1&seed=97&reducedFx=1';
 
+/**
+ * The SLOW baseline below needs a round whose **first** power-up cycle is a `SLOW`, so that it can be caught
+ * standing and untouched. Which type the first cycle draws depends on the rng stream, and KS-07-00 (#102)
+ * moved that stream by changing how apple cells are chosen: seed 97's first cycle is now a `SPEED`, and the
+ * assertion in that test — written to "fail loudly here instead of quietly recording the wrong pedestal
+ * type" — did exactly that. Seed 4's first cycle is a `SLOW` (22 of the first 40 seeds are), so this
+ * baseline moves to its own seed rather than dragging the one above along with it.
+ */
+const SLOW_QUERY = '?test=1&seed=4&reducedFx=1';
+
 test.describe('KS-06-02 visual', () => {
   test('KS-06-02: power-up pedestal and HUD tag baseline', async ({ page }) => {
     await page.goto(QUERY);
@@ -51,7 +61,7 @@ test.describe('KS-06-02 visual', () => {
       /** Steers `player` at `target`, replanning from the live snapshot every call (see the module doc comment). */
       function walkToward(player, target) {
         const snake = kobi.getSnapshot().snakes[player - 1];
-        if (!snake.alive) return;
+        if (!snake.alive) return false;
         const head = snake.segments[0];
         const dir = snake.direction;
         const dx = target.x - head.x;
@@ -59,7 +69,7 @@ test.describe('KS-06-02 visual', () => {
         let want;
         if (Math.abs(dx) >= Math.abs(dy) && dx !== 0) want = dx > 0 ? 'RIGHT' : 'LEFT';
         else if (dy !== 0) want = dy > 0 ? 'UP' : 'DOWN';
-        else return;
+        else return false;
         const wv = DIRS[want];
         if (wv.dx === -dir.dx && wv.dy === -dir.dy) {
           want =
@@ -75,7 +85,13 @@ test.describe('KS-06-02 visual', () => {
                   ? 'LEFT'
                   : null;
         }
-        if (want) kobi.pressKey(player, want);
+        // Returns false when it cannot steer — head already on the target, or the target directly behind
+        // with nothing perpendicular to turn into. The caller falls back to `boxWander` in that case;
+        // without it the driver presses nothing, the snake holds its direction, and it walks off the board
+        // (KS-07-00, the same fix as in `tests/e2e/powerups.spec.js`).
+        if (!want) return false;
+        kobi.pressKey(player, want);
+        return true;
       }
 
       /** Keeps `player` inside `box` (and the grid), turning toward its centre before it would leave either. */
@@ -135,14 +151,18 @@ test.describe('KS-06-02 visual', () => {
         if (!firstCollected) {
           const pickup = snapshot.powerUps.pickups[0];
           if (pickup) {
-            if (firstCell === null) firstCell = pickup.cell;
+            // Re-read the target every iteration: a cycle P1 fails to reach is replaced 15 s later, and a
+            // driver pinned to the first cell seen would chase an empty square for the rest of the round.
+            firstCell = pickup.cell;
             const head = snapshot.snakes[0].segments[0];
             const dist = Math.abs(head.x - firstCell.x) + Math.abs(head.y - firstCell.y);
             const travelTicks = (dist / kobi.sim.settings.snakeSpeed) * simHz;
             let despawnTick = FIRST_SPAWN_AT * simHz;
             while (despawnTick <= kobi.sim.tick) despawnTick += CYCLE * simHz;
-            if (despawnTick - kobi.sim.tick <= travelTicks * 1.25 + 20) walkToward(1, firstCell);
-            else boxWander(1, P1_BOX, firstCell);
+            // Half a second of slack: `dist` is a lower bound on the real path, and 20 ticks of margin
+            // arrived one tick *after* the despawn once #102 moved where the pedestals spawn.
+            const chase = despawnTick - kobi.sim.tick <= travelTicks * 1.25 + 60;
+            if (!chase || !walkToward(1, firstCell)) boxWander(1, P1_BOX, firstCell);
           } else {
             boxWander(1, P1_BOX);
           }
@@ -203,7 +223,7 @@ test.describe('KS-06-02 visual', () => {
   test('KS-06-02: SLOW pedestal baseline, for comparison against the SPEED pedestal above', async ({
     page,
   }) => {
-    await page.goto(QUERY);
+    await page.goto(SLOW_QUERY);
 
     const result = await page.evaluate(() => {
       const kobi = /** @type {any} */ (globalThis).__kobi;
@@ -246,7 +266,7 @@ test.describe('KS-06-02 visual', () => {
         kobi.pressKey(player, candidates[0]);
       }
 
-      kobi.setSeed(97);
+      kobi.setSeed(4);
       kobi.startMatch();
       for (let i = 0; i < 60 && kobi.getState() === 'COUNTDOWN'; i += 1) kobi.advance(0.1);
       const GRID = kobi.sim.settings.grid;
@@ -279,8 +299,9 @@ test.describe('KS-06-02 visual', () => {
       };
     });
 
-    // Seed 97's first cycle is always SLOW (see the module doc comment) — asserted rather than assumed, so a
+    // Seed 4's first cycle is always SLOW (see `SLOW_QUERY`'s comment) — asserted rather than assumed, so a
     // seed or spawn-order change fails loudly here instead of quietly recording the wrong pedestal type.
+    // That is what caught #102 moving the rng stream, and it is why the seed, not the assertion, moved.
     expect(result.pickupCount).toBe(1);
     expect(result.pickupType).toBe('SLOW');
     expect(result.anyEffect).toBe(false);

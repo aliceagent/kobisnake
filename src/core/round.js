@@ -212,7 +212,9 @@ export class RoundSimulation {
    */
   get laserTimeRemaining() {
     if (this.mode === 'practice') return null;
-    return this.settings.roundDuration - (this.tick - this.laserTicksWithheld) / this.settings.simHz;
+    return (
+      this.settings.roundDuration - (this.tick - this.laserTicksWithheld) / this.settings.simHz
+    );
   }
 
   /**
@@ -446,7 +448,8 @@ export class RoundSimulation {
    *
    * @returns {{grid: import('./grid.js').GridSize, occupied: Set<string>, heads: Cell[],
    *   deadZone: (cell: Cell) => boolean, rng: import('./rng.js').Rng, minDistance: number,
-   *   region: import('./lasers.js').SafeRegion}}
+   *   region: import('./lasers.js').SafeRegion, minFoodDistance: number,
+   *   noSharedRowOrColumn: boolean}}
    */
   foodPlacement() {
     const occupied = this.occupiedCells();
@@ -459,6 +462,11 @@ export class RoundSimulation {
       rng: this.rng,
       minDistance: this.settings.foodMinDistanceFromHead,
       region: this.lasers.safeRegion(),
+      // `§2.3`'s "apples never line up" rules (#102). Read from `this.settings` rather than left to
+      // `food.js`'s module-level defaults so a `withOverrides` variant — a tuning session, a test on a 6x6
+      // board — actually changes them.
+      minFoodDistance: this.settings.foodMinDistanceFromFood,
+      noSharedRowOrColumn: this.settings.foodNoSharedRowOrColumn,
     };
   }
 
@@ -638,7 +646,10 @@ export class RoundSimulation {
     }
     const expiredSoloPlayerId = this.powerUps.tickSoloSlow();
     if (expiredSoloPlayerId !== null) {
-      this.emit(EVENTS.EFFECT_ENDED, { playerId: expiredSoloPlayerId, powerUpType: POWERUP_TYPES.SLOW });
+      this.emit(EVENTS.EFFECT_ENDED, {
+        playerId: expiredSoloPlayerId,
+        powerUpType: POWERUP_TYPES.SLOW,
+      });
     }
   }
 

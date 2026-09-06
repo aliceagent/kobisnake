@@ -8,7 +8,8 @@ import {
 } from '../../../src/core/food.js';
 import { cellKey } from '../../../src/core/grid.js';
 import { createRng } from '../../../src/core/rng.js';
-import { SETTINGS } from '../../../src/core/settings.js';
+import { SETTINGS, withOverrides } from '../../../src/core/settings.js';
+import { RoundSimulation } from '../../../src/core/round.js';
 
 const GRID_6X6 = { width: 6, height: 6 };
 
@@ -391,5 +392,248 @@ describe('KS-04-01 AC4 the "when nothing fits" fallback (DESIGN-DECISIONS §2.3,
     expect(state.clear(0)).toEqual(held);
     expect(state.apples[0]).toBeNull();
     expect(state.clear(0)).toBeNull();
+  });
+});
+
+describe('KS-07-00 AC1/AC2 "apples never line up" (DESIGN-DECISIONS §2.3, issue #102)', () => {
+  const FULL_GRID = SETTINGS.grid;
+  // The two starting heads, DESIGN-DECISIONS §2.3. The opening board is placed against these.
+  const SPAWN_HEADS = [
+    { x: 5, y: 12 },
+    { x: 18, y: 11 },
+  ];
+
+  /**
+   * Every way `§2.3` says two apples may not sit relative to each other, as a list of readable complaints.
+   * Returns `[]` for a board that obeys the rule, which makes a failure message name the offending pair
+   * instead of just "expected true to be false".
+   *
+   * @param {{x: number, y: number}[]} apples
+   * @returns {string[]}
+   */
+  function ruleViolations(apples) {
+    const complaints = [];
+    for (let i = 0; i < apples.length; i += 1) {
+      for (let j = i + 1; j < apples.length; j += 1) {
+        const a = apples[i];
+        const b = apples[j];
+        if (a.x === b.x) complaints.push(`(${a.x},${a.y}) and (${b.x},${b.y}) share column ${a.x}`);
+        if (a.y === b.y) complaints.push(`(${a.x},${a.y}) and (${b.x},${b.y}) share row ${a.y}`);
+        const distance = Math.max(Math.abs(a.x - b.x), Math.abs(a.y - b.y));
+        if (distance < SETTINGS.foodMinDistanceFromFood) {
+          complaints.push(`(${a.x},${a.y}) and (${b.x},${b.y}) are only ${distance} apart`);
+        }
+      }
+    }
+    return complaints;
+  }
+
+  it('KS-07-00 AC1: the opening board never lines apples up, over 500 seeds', () => {
+    // The rule "applies to the opening board too" (§2.3), and the opening board is filled one slot at a
+    // time, so each apple has to be placed against the ones already down rather than against an empty board.
+    for (let seed = 0; seed < 500; seed += 1) {
+      const state = new FoodState({ foodCount: SETTINGS.foodCount });
+      state.fill({
+        grid: FULL_GRID,
+        occupied: new Set(),
+        heads: SPAWN_HEADS,
+        rng: createRng(seed),
+      });
+      expect(state.apples).toHaveLength(SETTINGS.foodCount);
+      expect(state.present()).toHaveLength(SETTINGS.foodCount);
+      expect(ruleViolations(state.getApples())).toEqual([]);
+    }
+  });
+
+  it('KS-07-00 AC1: 10000 seeded respawns never violate the rule on a board with room', () => {
+    // A 24x24 board with three other apples on it always has a legal cell, so this asserts the rule
+    // unconditionally; the ladder's behaviour when there is *no* legal cell is the next three tests.
+    const state = new FoodState({ foodCount: SETTINGS.foodCount });
+    state.fill({ grid: FULL_GRID, occupied: new Set(), heads: SPAWN_HEADS, rng: createRng(1) });
+
+    for (let seed = 0; seed < 10000; seed += 1) {
+      const index = seed % SETTINGS.foodCount;
+      const cell = state.respawn(index, {
+        grid: FULL_GRID,
+        occupied: new Set(),
+        heads: SPAWN_HEADS,
+        rng: createRng(seed),
+      });
+      expect(cell).not.toBeNull();
+      expect(ruleViolations(state.getApples())).toEqual([]);
+    }
+  });
+
+  it('KS-07-00 AC1: the ladder drops the row/column rule before it shortens the apple distance', () => {
+    // Two free cells, each legal on exactly one rung: (0,3) shares a column with the apple at (0,0) but is
+    // the full 3 cells away, and (2,2) shares neither row nor column but is only 2 away. §2.3's order is
+    // "drop the row/column rule, then apple distance 2, 1, 0", so (0,3) must win.
+    const apple = { x: 0, y: 0 };
+    const occupied = new Set();
+    for (let x = 0; x < 6; x += 1) {
+      for (let y = 0; y < 6; y += 1) {
+        if (!(x === 0 && y === 3) && !(x === 2 && y === 2)) occupied.add(cellKey({ x, y }));
+      }
+    }
+    const cell = placeFoodWithFallback({
+      grid: GRID_6X6,
+      occupied,
+      rng: firstPickRng(),
+      minDistance: 0,
+      apples: [apple],
+    });
+    expect(cell).toEqual({ x: 0, y: 3 });
+  });
+
+  it('KS-07-00 AC1: the ladder shortens the apple distance before it shortens the head distance', () => {
+    // (1,1) is 1 cell from the apple at (0,0) and far from the head; (5,4) is far from the apple but 1 cell
+    // from the head at (5,5). §2.3 puts the whole apple ladder ahead of the head-distance ladder, so the
+    // apple rung wins and (1,1) is chosen.
+    const occupied = new Set();
+    for (let x = 0; x < 6; x += 1) {
+      for (let y = 0; y < 6; y += 1) {
+        if (!(x === 1 && y === 1) && !(x === 5 && y === 4)) occupied.add(cellKey({ x, y }));
+      }
+    }
+    const cell = placeFoodWithFallback({
+      grid: GRID_6X6,
+      occupied,
+      heads: [{ x: 5, y: 5 }],
+      rng: firstPickRng(),
+      minDistance: SETTINGS.foodMinDistanceFromHead,
+      apples: [{ x: 0, y: 0 }],
+    });
+    expect(cell).toEqual({ x: 1, y: 1 });
+  });
+
+  it('KS-07-00 AC1: the 6x6 endgame of #39 still never throws with the apple rules on', () => {
+    // Issue #39's case, now with three apples crowding the same square: four apples cannot all avoid each
+    // other's rows and columns in a 6x6, so the ladder has to relax — and must still hand back a cell
+    // rather than throw or return null while one is free.
+    const region = { minX: 9, minY: 9, maxX: 14, maxY: 14 };
+    const apples = [
+      { x: 9, y: 9 },
+      { x: 10, y: 10 },
+      { x: 11, y: 11 },
+    ];
+    for (let seed = 0; seed < 200; seed += 1) {
+      const cell = placeFoodWithFallback({
+        grid: FULL_GRID,
+        occupied: new Set(apples.map(cellKey)),
+        heads: [{ x: 12, y: 12 }],
+        rng: createRng(seed),
+        region,
+        apples,
+      });
+      expect(cell).not.toBeNull();
+      expect(cell.x).toBeGreaterThanOrEqual(9);
+      expect(cell.x).toBeLessThanOrEqual(14);
+      expect(cell.y).toBeGreaterThanOrEqual(9);
+      expect(cell.y).toBeLessThanOrEqual(14);
+    }
+
+    // And when the square is genuinely full it still returns null instead of throwing (§2.3, "never throws
+    // inside a round").
+    const full = new Set();
+    for (let x = 9; x <= 14; x += 1) {
+      for (let y = 9; y <= 14; y += 1) full.add(cellKey({ x, y }));
+    }
+    expect(() =>
+      placeFoodWithFallback({
+        grid: FULL_GRID,
+        occupied: full,
+        rng: firstPickRng(),
+        region,
+        apples,
+      }),
+    ).not.toThrow();
+  });
+
+  it('KS-07-00 AC2: a placement that fails every rung draws no random number', () => {
+    let draws = 0;
+    const countingRng = {
+      next: () => 0,
+      int: () => 0,
+      pick: (/** @type {any[]} */ array) => {
+        draws += 1;
+        return array[0];
+      },
+      seed: 0,
+    };
+    const apples = [{ x: 0, y: 0 }];
+
+    // Nowhere to go: every rung of the longer ladder scans, none picks.
+    expect(
+      placeFoodWithFallback({
+        grid: GRID_6X6,
+        occupied: firstOccupiedCells(GRID_6X6, 36),
+        rng: countingRng,
+        apples,
+      }),
+    ).toBeNull();
+    expect(draws).toBe(0);
+
+    // And still exactly one draw when a placement succeeds, whichever rung succeeded — which is what keeps
+    // the rng stream, and so every golden log's *timing*, independent of how crowded the board is.
+    placeFoodWithFallback({ grid: GRID_6X6, occupied: new Set(), rng: countingRng, apples });
+    expect(draws).toBe(1);
+
+    const occupiedButForOneLinedUpCell = new Set();
+    for (let x = 0; x < 6; x += 1) {
+      for (let y = 0; y < 6; y += 1) {
+        if (!(x === 0 && y === 4)) occupiedButForOneLinedUpCell.add(cellKey({ x, y }));
+      }
+    }
+    expect(
+      placeFoodWithFallback({
+        grid: GRID_6X6,
+        occupied: occupiedButForOneLinedUpCell,
+        rng: countingRng,
+        apples,
+      }),
+    ).toEqual({ x: 0, y: 4 });
+    expect(draws).toBe(2);
+  });
+
+  it('KS-07-00 AC1: a real round opens on a board that obeys the rule, and reads it from its settings', () => {
+    // `RoundSimulation` is what wires §4's two new values into placement, and it is the only place where
+    // getting that wiring wrong would leave every test above green while the actual game ignored the rule.
+    // The second half is the same round with the rule overridden off: it must then be *possible* to line
+    // apples up, or `round.js` is reading `food.js`'s module defaults rather than its own settings.
+    const players = [
+      { id: 'p1', color: 'red' },
+      { id: 'p2', color: 'blue' },
+    ];
+    for (let seed = 0; seed < 200; seed += 1) {
+      const sim = new RoundSimulation({ settings: SETTINGS, seed, players });
+      expect(ruleViolations(sim.food.getApples())).toEqual([]);
+    }
+
+    const relaxed = withOverrides({ foodNoSharedRowOrColumn: false, foodMinDistanceFromFood: 0 });
+    let sawALinedUpBoard = false;
+    for (let seed = 0; seed < 200 && !sawALinedUpBoard; seed += 1) {
+      const sim = new RoundSimulation({ settings: relaxed, seed, players });
+      sawALinedUpBoard = ruleViolations(sim.food.getApples()).length > 0;
+    }
+    expect(sawALinedUpBoard).toBe(true);
+  });
+
+  it('KS-07-00 AC2: power-up placement is unchanged — no apples passed, no apple rules applied', () => {
+    // `powerups.js` calls `placeFoodWithFallback` without `apples`, and §2.3's ruling is about apples
+    // relative to each other. A power-up must not *stand on* an apple, which is `occupied`'s job in
+    // `round.js`, but it may share a row with one.
+    let draws = 0;
+    const countingRng = {
+      next: () => 0,
+      int: () => 0,
+      pick: (/** @type {any[]} */ array) => {
+        draws += 1;
+        return array[0];
+      },
+      seed: 0,
+    };
+    const cell = placeFoodWithFallback({ grid: GRID_6X6, occupied: new Set(), rng: countingRng });
+    expect(cell).toEqual({ x: 0, y: 0 });
+    expect(draws).toBe(1);
   });
 });
