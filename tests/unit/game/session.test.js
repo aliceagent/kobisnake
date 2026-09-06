@@ -568,6 +568,58 @@ describe('KS-05-03 AC3: pause', () => {
     expect(session.getSim()?.tick).toBeGreaterThan(frozenTick);
   });
 
+  it('KS-06-00 AC1: Esc on the pause screen resumes, through the same READY? beat (#82)', () => {
+    const settings = withOverrides({ snakeSpeed: 0, godMode: true });
+    const { session, ui, target } = buildSession({ settings });
+    playTo(session);
+    runFrames(session, 5, 50);
+
+    const frozenTick = /** @type {any} */ (session.getSim()).tick;
+    fireKeydown(target, 'Escape');
+    expect(session.getState()).toBe(STATES.PAUSE);
+
+    // The second Esc reaches the pause *screen* rather than being swallowed by the session: PAUSE is not one
+    // of the three states `handleMenuAction` intercepts, so it falls through to the active screen's focus
+    // model, whose `onBack` is the prop below (`src/ui/screens/pause.js`).
+    fireKeydown(target, 'Escape');
+    expect(ui.handleMenuAction).toHaveBeenLastCalledWith('BACK');
+
+    // The real screen calls it; this test drives it directly because `ui` here is a fake. That the fake's
+    // Esc arrives at all is what the assertion above proves; `tests/unit/ui/pause.test.js` proves the real
+    // screen turns it into `onBack`.
+    lastShow(ui, STATES.PAUSE).onBack();
+
+    expect(session.getState()).toBe(STATES.PLAYING);
+    expect(lastShow(ui, STATES.COUNTDOWN).label).toBe('READY?');
+
+    // Exactly the RESUME item's behaviour: a second of wall time with the round still frozen (`§2.8`).
+    runFrames(session, 0.9, 9);
+    expect(session.getSim()?.tick).toBe(frozenTick);
+    expect(session.loop.timeScale).toBe(0);
+
+    runFrames(session, 0.2, 2);
+    expect(session.loop.timeScale).toBe(1);
+    expect(ui.show).toHaveBeenLastCalledWith(STATES.PLAYING);
+  });
+
+  it('KS-06-00 AC1: Esc during the crash slow-mo beat resumes back into the same beat', () => {
+    const { session, ui } = buildSession({});
+    playTo(session);
+    // P1 into the top wall: twelve grid steps at 6 cells/s, so the crash lands two seconds in.
+    session.getSim()?.applyInput('p1', DIRECTIONS.UP);
+    runFrames(session, 2.1, 42);
+    expect(session.loop.timeScale).toBe(0.25);
+
+    session.pause();
+    expect(session.loop.timeScale).toBe(0);
+    lastShow(ui, STATES.PAUSE).onBack();
+    runFrames(session, 1.1, 11);
+
+    // Back into the quarter-speed beat it interrupted, not to full speed — the RESUME item's own behaviour,
+    // which is the whole reason Esc is routed through the same handler.
+    expect(session.loop.timeScale).toBe(0.25);
+  });
+
   it('KS-05-03 AC3: steering is ignored through the READY? beat', () => {
     const settings = withOverrides({ snakeSpeed: 0, godMode: true });
     const { session, ui, target } = buildSession({ settings });

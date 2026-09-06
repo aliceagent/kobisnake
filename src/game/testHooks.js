@@ -28,6 +28,8 @@ import { DIRECTIONS } from '../core/grid.js';
  * @property {(dt: number) => void} advanceSimulation - runs the update path once for that many *wall*
  *   seconds, with no render.
  * @property {() => void} renderFrame - draws exactly one frame of whatever the sim currently looks like.
+ * @property {() => number} getTimeScale - the loop's current `timeScale`, so a spec can observe the crash
+ *   slow-mo beat from the inside (KS-06-00 AC3).
  * @property {(seed: number | null) => void} setSeed - fixes the seed the *next* match is built from.
  * @property {(overrides?: object) => void} startMatch - main menu to countdown in one call.
  * @property {() => void} pause
@@ -81,12 +83,25 @@ import { DIRECTIONS } from '../core/grid.js';
  * @property {() => object | null} getMatch - the live best-of tally, as a plain object a spec can read.
  * @property {() => object} getMatchSettings
  * @property {(seconds: number) => void} fastForward - advances `seconds` of wall time through the session's
- *   own update path with no render in between, then draws exactly one frame.
+ *   own update path in frame-sized chunks with no render in between, then draws exactly one frame.
+ * @property {() => number} getTimeScale - the loop's `timeScale` right now: 1 in ordinary play, 0.25 inside
+ *   the crash slow-mo beat, 0 while paused.
  * @property {() => object | null} getSnapshot - `session.getSim()?.getState() ?? null`.
  * @property {(player: 1 | 2, dir: Direction | DirectionName) => void} pressKey
  * @property {(player: number) => {x: number, y: number, z: number}} getHeadWorldPosition
  * @property {() => number} getDrawCalls - see {@link TestHooksRenderer.getDrawCalls}.
  */
+
+/**
+ * The chunk {@link createTestHooks}'s `fastForward` advances in — `loop.js`'s own `maxFrameSeconds`, which is
+ * the longest frame a real browser can ever hand the session (`ARCHITECTURE §5`). Mirrored here rather than
+ * imported because `loop.js` does not export it, the same way `PLAYER_KEY_CODES` below mirrors `input.js`'s
+ * key tables; `tests/unit/game/testHooks.test.js` asserts the two agree.
+ */
+const FAST_FORWARD_CHUNK_SECONDS = 0.1;
+
+/** Below this many seconds left there is nothing worth advancing; see {@link createTestHooks}'s `fastForward`. */
+const FAST_FORWARD_EPSILON = 1e-9;
 
 /** The four direction names `pressKey` accepts as a string, in the order `core/grid.js`'s `DIRECTIONS` lists them. */
 const DIRECTION_NAMES = /** @type {readonly DirectionName[]} */ (['UP', 'DOWN', 'LEFT', 'RIGHT']);
@@ -173,10 +188,31 @@ export function createTestHooks({ session, renderer, eventTarget, KeyboardEventC
    * pause it advances nothing, and through the crash slow-mo beat it advances the round at a quarter speed —
    * in every case what a real run of the same duration would have done.
    *
+   * **Chunked, since KS-06-00** (issue #84, the design lead's ruling: option 2). Until then this ran the
+   * update path *once* for the whole duration, which the simulation is fine with — `RoundSimulation.advance`
+   * accumulates in tick units, so one big call and many small ones agree exactly — but the session's
+   * *wall-time* beats are not: the crash slow-mo, the READY? beat and the individual countdown steps are
+   * `remaining -= unscaledDt` counters, and a single call longer than a beat consumed the whole beat without
+   * any frame ever observing the game inside it. A real browser cannot do that, because `loop.js` clamps
+   * every frame to `maxFrameSeconds`. So this now advances in chunks of exactly that size and still renders
+   * once at the end: compressed real time rather than one enormous frame. The cost is ~900 update calls for a
+   * 90 s fast-forward, comfortably inside KS-03-06 AC2's 500 ms budget.
+   *
+   * `seconds` of 0 (or less) advances nothing and still renders, which is what
+   * `tests/e2e/helpers.js` uses to draw a still frame of a paused round.
+   *
    * @param {number} seconds
    */
   function fastForward(seconds) {
-    session.advanceSimulation(seconds);
+    let remaining = seconds;
+    // Guarded against a float residue rather than `> 0`: subtracting 0.1 from a float nine hundred times
+    // does not land on exactly zero, and a final chunk of 1e-14 seconds is a frame no browser would ever
+    // produce. The epsilon is far below one simulation tick (1/120 s), so no real time is ever dropped.
+    while (remaining > FAST_FORWARD_EPSILON) {
+      const chunk = Math.min(remaining, FAST_FORWARD_CHUNK_SECONDS);
+      session.advanceSimulation(chunk);
+      remaining -= chunk;
+    }
     session.renderFrame();
   }
 
@@ -225,6 +261,9 @@ export function createTestHooks({ session, renderer, eventTarget, KeyboardEventC
       return session.getMatchSettings();
     },
     fastForward,
+    getTimeScale() {
+      return session.getTimeScale();
+    },
     getSnapshot() {
       return session.getSim()?.getState() ?? null;
     },

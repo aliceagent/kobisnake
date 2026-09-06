@@ -67,7 +67,7 @@ describe('KS-05-01 MatchState', () => {
     expect(match.isOver()).toBe(false);
   });
 
-  it('KS-05-01 AC2: a practice round\'s null result is recorded like a draw, never ending the match', () => {
+  it("KS-05-01 AC2: a practice round's null result is recorded like a draw, never ending the match", () => {
     const match = createMatch({ bestOf: 3, players: PLAYERS });
     match.recordRound(null);
     match.recordRound(null);
@@ -124,10 +124,12 @@ describe('KS-05-01 MatchState', () => {
 
   it('KS-05-01: createMatch requires exactly 2 players', () => {
     expect(() => createMatch({ bestOf: 3, players: [PLAYERS[0]] })).toThrow(RangeError);
-    expect(() => createMatch({ bestOf: 3, players: [...PLAYERS, { id: 'p3' }] })).toThrow(RangeError);
+    expect(() => createMatch({ bestOf: 3, players: [...PLAYERS, { id: 'p3' }] })).toThrow(
+      RangeError,
+    );
   });
 
-  it('KS-05-01: players are copied, not the caller\'s own array or objects', () => {
+  it("KS-05-01: players are copied, not the caller's own array or objects", () => {
     const original = [
       { id: 'p1', color: 'red' },
       { id: 'p2', color: 'blue' },

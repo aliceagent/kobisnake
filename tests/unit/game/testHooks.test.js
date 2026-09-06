@@ -49,6 +49,7 @@ function createFakeSession() {
     getSeeds: vi.fn(() => ({ matchSeed: 0, roundIndex: 0, roundSeeds: [] })),
     getMatch: vi.fn(() => null),
     getMatchSettings: vi.fn(() => ({ bestOf: 3 })),
+    getTimeScale: vi.fn(() => 1),
   };
 }
 
@@ -185,17 +186,75 @@ describe('KS-03-06 createTestHooks', () => {
   });
 
   describe('KS-03-06 AC2: fastForward drives the session, not the renderer, in between', () => {
-    it('KS-03-06: fastForward(seconds) calls session.advanceSimulation(seconds) then session.renderFrame() once, in order', () => {
-      const { hooks, session } = buildHooks();
+    /**
+     * The seconds every `advanceSimulation` call was given, in order, and where the single render fell.
+     *
+     * @param {ReturnType<typeof buildHooks>} built
+     */
+    function recordCalls({ session }) {
+      const chunks = /** @type {number[]} */ ([]);
       const order = /** @type {string[]} */ ([]);
-      session.advanceSimulation.mockImplementation(() => order.push('advance'));
+      session.advanceSimulation.mockImplementation((/** @type {number} */ seconds) => {
+        chunks.push(seconds);
+        order.push('advance');
+      });
       session.renderFrame.mockImplementation(() => order.push('render'));
+      return { chunks, order };
+    }
 
-      hooks.fastForward(90);
+    it('KS-03-06: fastForward(seconds) drives session.advanceSimulation then session.renderFrame() once, in order', () => {
+      const built = buildHooks();
+      const { chunks, order } = recordCalls(built);
 
-      expect(session.advanceSimulation).toHaveBeenCalledWith(90);
-      expect(session.renderFrame).toHaveBeenCalledTimes(1);
+      built.hooks.fastForward(90);
+
+      expect(chunks.reduce((sum, chunk) => sum + chunk, 0)).toBeCloseTo(90, 9);
+      expect(built.session.renderFrame).toHaveBeenCalledTimes(1);
+      expect(new Set(order.slice(0, -1))).toEqual(new Set(['advance']));
+      expect(order[order.length - 1]).toBe('render');
+    });
+
+    it('KS-06-00: fastForward advances in frame-sized chunks, never one enormous frame (#84)', () => {
+      const built = buildHooks();
+      const { chunks } = recordCalls(built);
+
+      built.hooks.fastForward(90);
+
+      // 0.1 s is `loop.js`'s own `maxFrameSeconds`: the longest frame a real browser can ever produce
+      // (`ARCHITECTURE §5`). No chunk may exceed it, or this tool is testing a path the browser never takes.
+      expect(Math.max(...chunks)).toBeLessThanOrEqual(0.1 + 1e-9);
+      expect(chunks.length).toBe(900);
+    });
+
+    it('KS-06-00: a fast-forward shorter than one chunk is still a single advance', () => {
+      const built = buildHooks();
+      const { chunks, order } = recordCalls(built);
+
+      built.hooks.fastForward(0.05);
+
+      expect(chunks).toEqual([0.05]);
       expect(order).toEqual(['advance', 'render']);
+    });
+
+    it('KS-06-00: fastForward(0) advances nothing and still renders one frame', () => {
+      const built = buildHooks();
+      const { chunks, order } = recordCalls(built);
+
+      // `tests/e2e/helpers.js` uses exactly this to photograph a paused round.
+      built.hooks.fastForward(0);
+
+      expect(chunks).toEqual([]);
+      expect(order).toEqual(['render']);
+    });
+  });
+
+  describe('KS-06-00 AC3: getTimeScale', () => {
+    it('KS-06-00: getTimeScale reads the session’s live loop scale, so a spec can see the slow-mo beat', () => {
+      const { hooks, session } = buildHooks();
+      session.getTimeScale.mockReturnValueOnce(0.25).mockReturnValueOnce(1);
+
+      expect(hooks.getTimeScale()).toBe(0.25);
+      expect(hooks.getTimeScale()).toBe(1);
     });
   });
 

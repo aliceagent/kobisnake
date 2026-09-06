@@ -52,6 +52,19 @@ import { createPauseScreen } from './screens/pause.js';
  */
 
 /**
+ * The states that show the HUD (`ARCHITECTURE §8`, the design lead's ruling on the Sprint 05 QA report):
+ * COUNTDOWN, PLAYING, LASER_WARNING and PAUSE. Every other state — the menus, the scoreboard, MATCH_OVER —
+ * hides it. Written as a `Set` of states rather than as a flag each screen sets, because "is the HUD up" is a
+ * property of the state the game is in, and one list in one place cannot disagree with itself.
+ *
+ * PAUSE is on the list because the pause screen is drawn over a frozen round: the timer under it is the
+ * round's own, still reading the moment it stopped, which is what a player who paused wants to see.
+ *
+ * @type {ReadonlySet<GameState>}
+ */
+const HUD_STATES = new Set([STATES.COUNTDOWN, STATES.PLAYING, STATES.LASER_WARNING, STATES.PAUSE]);
+
+/**
  * @typedef {object} Ui
  * @property {import('./hud.js').Hud} hud
  * @property {(state: GameState, props?: object) => void} show
@@ -76,6 +89,9 @@ export function createUi(root) {
   root.appendChild(overlay);
 
   const hud = createHud(root);
+  // The game boots into MAIN_MENU, which is not a HUD state, and the first `show()` only happens once a
+  // session exists. Hiding it here means no frame is ever painted with a timer over the menu.
+  hud.setVisible(false);
 
   /** @type {Partial<Record<GameState, Screen>>} */
   const screens = {
@@ -100,6 +116,7 @@ export function createUi(root) {
     hud,
     show(state, props = {}) {
       hideAll();
+      hud.setVisible(HUD_STATES.has(state));
       const screen = screens[state];
       if (screen) {
         screen.render(props);

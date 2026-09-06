@@ -2,7 +2,7 @@
 import { expect, test } from '@playwright/test';
 import { SETTINGS } from '../../src/core/settings.js';
 import { DEFAULT_QUERY } from '../../playwright.config.js';
-import { COUNTDOWN_SECONDS, crashPlayerOneInPage, nextRoundInPage, startMatchInPage } from './helpers.js';
+import { crashPlayerOneInPage, nextRoundInPage, startMatchInPage } from './helpers.js';
 
 /**
  * KS-05-03: the match flow, driven end to end in a real browser — the spec the ticket's `QA:` line names.
@@ -32,12 +32,16 @@ test.describe('KS-05-03 match flow', () => {
     await page.goto(DEFAULT_QUERY);
 
     // Best of 3 rather than the default, chosen the way the setup screen would choose it.
-    const started = await page.evaluate((countdown) => {
+    const started = await page.evaluate(() => {
       const kobi = /** @type {any} */ (globalThis).__kobi;
       kobi.startMatch({ bestOf: 3 });
-      kobi.fastForward(countdown);
+      // KS-06-00: `fastForward` advances in frame-sized chunks now (#84), so the countdown is played out
+      // by stepping until it hands the round over, rather than by one fixed 3.21 s call — which would spill
+      // its last hundredth of a second into the round and start it at tick 1 instead of tick 0. The bound is
+      // nearly twice the countdown's own 3.2 s, so it can only be reached if the countdown is truly stuck.
+      for (let i = 0; i < 60 && kobi.getState() === 'COUNTDOWN'; i += 1) kobi.fastForward(0.1);
       return { state: kobi.getState(), bestOf: kobi.getMatch().bestOf };
-    }, COUNTDOWN_SECONDS);
+    });
     expect(started.state).toBe('PLAYING');
     expect(started.bestOf).toBe(3);
 
@@ -127,17 +131,25 @@ test.describe('KS-05-03 match flow', () => {
   }) => {
     await page.goto(DEFAULT_QUERY);
 
-    const first = await page.evaluate((countdown) => {
+    const first = await page.evaluate(() => {
       const kobi = /** @type {any} */ (globalThis).__kobi;
       kobi.setSeed(20260906);
       kobi.startMatch({ bestOf: 3 });
-      kobi.fastForward(countdown);
+      // KS-06-00: `fastForward` advances in frame-sized chunks now (#84), so the countdown is played out
+      // by stepping until it hands the round over, rather than by one fixed 3.21 s call — which would spill
+      // its last hundredth of a second into the round and start it at tick 1 instead of tick 0. The bound is
+      // nearly twice the countdown's own 3.2 s, so it can only be reached if the countdown is truly stuck.
+      for (let i = 0; i < 60 && kobi.getState() === 'COUNTDOWN'; i += 1) kobi.fastForward(0.1);
       kobi.pressKey(1, 'UP');
       kobi.fastForward(3);
       kobi.fastForward(3);
-      kobi.fastForward(countdown);
+      // KS-06-00: `fastForward` advances in frame-sized chunks now (#84), so the countdown is played out
+      // by stepping until it hands the round over, rather than by one fixed 3.21 s call — which would spill
+      // its last hundredth of a second into the round and start it at tick 1 instead of tick 0. The bound is
+      // nearly twice the countdown's own 3.2 s, so it can only be reached if the countdown is truly stuck.
+      for (let i = 0; i < 60 && kobi.getState() === 'COUNTDOWN'; i += 1) kobi.fastForward(0.1);
       return kobi.getSeeds();
-    }, COUNTDOWN_SECONDS);
+    });
 
     expect(first.matchSeed).toBe(20260906);
     expect(first.roundSeeds).toHaveLength(2);
@@ -146,17 +158,25 @@ test.describe('KS-05-03 match flow', () => {
 
     // Reproducible: the same match seed, played again from a fresh page, derives the same round seeds.
     await page.goto(DEFAULT_QUERY);
-    const second = await page.evaluate((countdown) => {
+    const second = await page.evaluate(() => {
       const kobi = /** @type {any} */ (globalThis).__kobi;
       kobi.setSeed(20260906);
       kobi.startMatch({ bestOf: 3 });
-      kobi.fastForward(countdown);
+      // KS-06-00: `fastForward` advances in frame-sized chunks now (#84), so the countdown is played out
+      // by stepping until it hands the round over, rather than by one fixed 3.21 s call — which would spill
+      // its last hundredth of a second into the round and start it at tick 1 instead of tick 0. The bound is
+      // nearly twice the countdown's own 3.2 s, so it can only be reached if the countdown is truly stuck.
+      for (let i = 0; i < 60 && kobi.getState() === 'COUNTDOWN'; i += 1) kobi.fastForward(0.1);
       kobi.pressKey(1, 'UP');
       kobi.fastForward(3);
       kobi.fastForward(3);
-      kobi.fastForward(countdown);
+      // KS-06-00: `fastForward` advances in frame-sized chunks now (#84), so the countdown is played out
+      // by stepping until it hands the round over, rather than by one fixed 3.21 s call — which would spill
+      // its last hundredth of a second into the round and start it at tick 1 instead of tick 0. The bound is
+      // nearly twice the countdown's own 3.2 s, so it can only be reached if the countdown is truly stuck.
+      for (let i = 0; i < 60 && kobi.getState() === 'COUNTDOWN'; i += 1) kobi.fastForward(0.1);
       return kobi.getSeeds();
-    }, COUNTDOWN_SECONDS);
+    });
 
     expect(second.roundSeeds).toEqual(first.roundSeeds);
   });
@@ -166,12 +186,16 @@ test.describe('KS-05-03 match flow', () => {
   }) => {
     await page.goto(DEFAULT_QUERY);
 
-    const started = await page.evaluate((countdown) => {
+    const started = await page.evaluate(() => {
       const kobi = /** @type {any} */ (globalThis).__kobi;
       kobi.startMatch({ bestOf: 1 });
-      kobi.fastForward(countdown);
+      // KS-06-00: `fastForward` advances in frame-sized chunks now (#84), so the countdown is played out
+      // by stepping until it hands the round over, rather than by one fixed 3.21 s call — which would spill
+      // its last hundredth of a second into the round and start it at tick 1 instead of tick 0. The bound is
+      // nearly twice the countdown's own 3.2 s, so it can only be reached if the countdown is truly stuck.
+      for (let i = 0; i < 60 && kobi.getState() === 'COUNTDOWN'; i += 1) kobi.fastForward(0.1);
       return { state: kobi.getState(), bestOf: kobi.getMatch().bestOf };
-    }, COUNTDOWN_SECONDS);
+    });
     expect(started.state).toBe('PLAYING');
     expect(started.bestOf).toBe(1);
 
@@ -203,12 +227,16 @@ test.describe('KS-05-03 match flow', () => {
     // Bo5's target is three wins (`Math.ceil(5 / 2)`). Scripted here with the same crash three rounds
     // running, rather than played out to a 90 s timeout each round — the ticket's own instruction ("Bo5
     // needs three round wins — script them, do not play 90-second rounds").
-    const started = await page.evaluate((countdown) => {
+    const started = await page.evaluate(() => {
       const kobi = /** @type {any} */ (globalThis).__kobi;
       kobi.startMatch({ bestOf: 5 });
-      kobi.fastForward(countdown);
+      // KS-06-00: `fastForward` advances in frame-sized chunks now (#84), so the countdown is played out
+      // by stepping until it hands the round over, rather than by one fixed 3.21 s call — which would spill
+      // its last hundredth of a second into the round and start it at tick 1 instead of tick 0. The bound is
+      // nearly twice the countdown's own 3.2 s, so it can only be reached if the countdown is truly stuck.
+      for (let i = 0; i < 60 && kobi.getState() === 'COUNTDOWN'; i += 1) kobi.fastForward(0.1);
       return { state: kobi.getState(), bestOf: kobi.getMatch().bestOf };
-    }, COUNTDOWN_SECONDS);
+    });
     expect(started.state).toBe('PLAYING');
     expect(started.bestOf).toBe(5);
 
@@ -248,12 +276,16 @@ test.describe('KS-05-03 match flow', () => {
     // defaults (red/blue) — exactly the shape `matchSetup.js`'s `changeMatchLength`/`pickPlayerColor` would
     // leave `matchSettings` in after real key presses, applied here as `startMatch`'s own override argument
     // the same way the setup-screen flow itself does (`session.js`'s `showMatchSetup` → `onChange`).
-    const started = await page.evaluate((countdown) => {
+    const started = await page.evaluate(() => {
       const kobi = /** @type {any} */ (globalThis).__kobi;
       kobi.startMatch({ bestOf: 1, colors: { 1: 'blue', 2: 'red' } });
-      kobi.fastForward(countdown);
+      // KS-06-00: `fastForward` advances in frame-sized chunks now (#84), so the countdown is played out
+      // by stepping until it hands the round over, rather than by one fixed 3.21 s call — which would spill
+      // its last hundredth of a second into the round and start it at tick 1 instead of tick 0. The bound is
+      // nearly twice the countdown's own 3.2 s, so it can only be reached if the countdown is truly stuck.
+      for (let i = 0; i < 60 && kobi.getState() === 'COUNTDOWN'; i += 1) kobi.fastForward(0.1);
       return { state: kobi.getState(), settings: kobi.getMatchSettings() };
-    }, COUNTDOWN_SECONDS);
+    });
     expect(started.state).toBe('PLAYING');
     expect(started.settings.bestOf).toBe(1);
     expect(started.settings.colors).toEqual({ 1: 'blue', 2: 'red' });
@@ -276,13 +308,19 @@ test.describe('KS-05-03 match flow', () => {
     // machine's own transition table. It happens inside the same `page.evaluate()` call as the countdown
     // fast-forward that follows it (module doc comment: no real frame may land between the two, or the
     // countdown's own real-time clock could run ahead of this script before `fastForward` ever gets to it).
-    const rematch = await page.evaluate((countdown) => {
+    const rematch = await page.evaluate(() => {
       const kobi = /** @type {any} */ (globalThis).__kobi;
       const win = /** @type {any} */ (globalThis).window;
-      win.dispatchEvent(new win.KeyboardEvent('keydown', { code: 'Enter', bubbles: true, cancelable: true }));
-      kobi.fastForward(countdown);
+      win.dispatchEvent(
+        new win.KeyboardEvent('keydown', { code: 'Enter', bubbles: true, cancelable: true }),
+      );
+      // KS-06-00: `fastForward` advances in frame-sized chunks now (#84), so the countdown is played out
+      // by stepping until it hands the round over, rather than by one fixed 3.21 s call — which would spill
+      // its last hundredth of a second into the round and start it at tick 1 instead of tick 0. The bound is
+      // nearly twice the countdown's own 3.2 s, so it can only be reached if the countdown is truly stuck.
+      for (let i = 0; i < 60 && kobi.getState() === 'COUNTDOWN'; i += 1) kobi.fastForward(0.1);
       return { state: kobi.getState(), settings: kobi.getMatchSettings(), match: kobi.getMatch() };
-    }, COUNTDOWN_SECONDS);
+    });
 
     expect(rematch.state).toBe('PLAYING');
     // Same settings ("REMATCH (same settings, swap nothing)", `DESIGN-DECISIONS §2.6`) …

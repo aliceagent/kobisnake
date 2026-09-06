@@ -71,7 +71,11 @@ test.describe('KS-04-03 laser warning banner', () => {
       // rather than calling `startMatchInPage`: `page.evaluate` ships this function's *source*, so it cannot
       // reach a helper in the spec's own module scope.)
       kobi.startMatch();
-      kobi.fastForward(3.21);
+      // KS-06-00: `fastForward` advances in frame-sized chunks now (#84), so the countdown is played out
+      // by stepping until it hands the round over, rather than by one fixed 3.21 s call — which would spill
+      // its last hundredth of a second into the round and start it at tick 1 instead of tick 0. The bound is
+      // nearly twice the countdown's own 3.2 s, so it can only be reached if the countdown is truly stuck.
+      for (let i = 0; i < 60 && kobi.getState() === 'COUNTDOWN'; i += 1) kobi.fastForward(0.1);
 
       const settings = kobi.sim.settings;
       const stepChecks = 3; // check every N grid steps rather than every single one, for speed

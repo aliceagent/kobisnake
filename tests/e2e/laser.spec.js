@@ -42,7 +42,11 @@ test.describe('KS-04-02 laser rendering', () => {
       // beats of `DESIGN-DECISIONS §2.4` — synchronously, so it leaves the round at tick 0 exactly. See the
       // module doc comment on why every scripted moment in this suite stays inside one `evaluate`.
       kobi.startMatch();
-      kobi.fastForward(3.21);
+      // KS-06-00: `fastForward` advances in frame-sized chunks now (#84), so the countdown is played out
+      // by stepping until it hands the round over, rather than by one fixed 3.21 s call — which would spill
+      // its last hundredth of a second into the round and start it at tick 1 instead of tick 0. The bound is
+      // nearly twice the countdown's own 3.2 s, so it can only be reached if the countdown is truly stuck.
+      for (let i = 0; i < 60 && kobi.getState() === 'COUNTDOWN'; i += 1) kobi.fastForward(0.1);
       kobi.fastForward(0); // one render at tick 0, so `getDrawCalls` reflects something real before any input.
 
       const parkedDrawCalls = kobi.getDrawCalls();
