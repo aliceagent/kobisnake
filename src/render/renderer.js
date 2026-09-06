@@ -145,7 +145,10 @@ export function createGameplayScene({
           view.pupils.count = 0;
           return;
         }
-        view.update(snakeState);
+        // KS-06-02 declared deviation: `view.update` used to take only the snapshot; now also passed this
+        // frame's `dt`, which the snake's own effect tint needs for its SPEED pulse (`snakeView.js`'s own
+        // doc comment) — the same widening the pickups call two lines below already had authorisation for.
+        view.update(snakeState, dt);
       });
       // KS-06-02 declared deviation: this line used to hand pickups only `{ apples }`, so the power-up
       // pedestals could never see the snapshot at all. Widened to also pass `powerUps` and this frame's `dt`

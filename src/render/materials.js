@@ -209,3 +209,22 @@ export function createPowerUpMaterials(settings = SETTINGS) {
     slowRingColor: cssColor(COLORS.powerUpSlowRing),
   };
 }
+
+/**
+ * The two effect tints `snakeView.js` applies to a whole snake's body material while an effect is active on
+ * it (`DESIGN-DECISIONS §3` "Power-up sheet": "Speed = yellow emissive pulses..."; "Slow (applied to the
+ * victim) = pale-blue tint..." — this ticket's own grey-box version is the tint alone, no motion streak or
+ * snowflake-above-head, which are Sprint 10's job). Neither colour is invented for this: SPEED reuses the
+ * player-yellow catalogue colour outright, the same one the power-up sheet's bolt icon already uses, and
+ * SLOW reuses the pale-blue power-up ring colour already declared above — the same "pale blue" the SLOW
+ * pedestal's own ring commits to, not a second shade of it.
+ *
+ * @param {import('../core/settings.js').Settings} [settings]
+ * @returns {{ SPEED: string, SLOW: string }}
+ */
+export function createEffectTintColors(settings = SETTINGS) {
+  return {
+    SPEED: snakeColorHex('yellow', settings),
+    SLOW: cssColor(COLORS.powerUpSlowRing),
+  };
+}

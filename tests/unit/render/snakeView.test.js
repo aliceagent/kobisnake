@@ -389,6 +389,102 @@ describe('SnakeView', () => {
     });
   });
 
+  /**
+   * KS-06-02: the whole-snake body tint while an effect is active — SPEED an emissive yellow pulse, SLOW a
+   * flat pale-blue tint (`DESIGN-DECISIONS §3` "Power-up sheet"; the ticket's own "grey-box versions" of it).
+   * `bodyMaterial` is shared by every segment instance, so asserting on it is asserting on the whole snake at
+   * once — the same thing the module doc comment gives as the reason this view can do the tint in one write.
+   */
+  describe('KS-06-02 effect tint', () => {
+    it('has no tint at all with no active effects', () => {
+      const view = createSnakeView();
+      view.update(snakeSnapshot(straightSnake(4)));
+
+      expect(view.bodyMaterial.emissiveIntensity).toBe(0);
+      expect(view.bodyMaterial.emissive.getHex()).toBe(0x000000);
+    });
+
+    it('tints yellow while SPEED is active, in the same yellow the catalogue names', () => {
+      const view = createSnakeView({ reducedFx: true });
+      view.update({
+        ...snakeSnapshot(straightSnake(4)),
+        effects: [{ type: 'SPEED', remaining: 5, multiplier: 1.5 }],
+      });
+
+      expect(`#${view.bodyMaterial.emissive.getHexString()}`.toUpperCase()).toBe(SETTINGS.colors.yellow);
+      expect(view.bodyMaterial.emissiveIntensity).toBeGreaterThan(0);
+    });
+
+    it('tints pale blue while SLOW is active (a flat tint, never yellow)', () => {
+      const view = createSnakeView({ reducedFx: true });
+      view.update({
+        ...snakeSnapshot(straightSnake(4)),
+        effects: [{ type: 'SLOW', remaining: 4, multiplier: 0.6 }],
+      });
+
+      expect(view.bodyMaterial.emissive.getHexString()).not.toBe(
+        SETTINGS.colors.yellow.slice(1).toLowerCase(),
+      );
+      expect(view.bodyMaterial.emissiveIntensity).toBeGreaterThan(0);
+    });
+
+    it('clears the tint the frame an effect ends, without being told anything but the new snapshot', () => {
+      const view = createSnakeView({ reducedFx: true });
+      view.update({
+        ...snakeSnapshot(straightSnake(4)),
+        effects: [{ type: 'SLOW', remaining: 4, multiplier: 0.6 }],
+      });
+      expect(view.bodyMaterial.emissiveIntensity).toBeGreaterThan(0);
+
+      view.update({ ...snakeSnapshot(straightSnake(4)), effects: [] });
+      expect(view.bodyMaterial.emissiveIntensity).toBe(0);
+    });
+
+    it('prefers SPEED over SLOW when a snake somehow holds both at once', () => {
+      const view = createSnakeView({ reducedFx: true });
+      view.update({
+        ...snakeSnapshot(straightSnake(4)),
+        effects: [
+          { type: 'SLOW', remaining: 4, multiplier: 0.6 },
+          { type: 'SPEED', remaining: 5, multiplier: 1.5 },
+        ],
+      });
+
+      expect(`#${view.bodyMaterial.emissive.getHexString()}`.toUpperCase()).toBe(SETTINGS.colors.yellow);
+    });
+
+    it('treats a snapshot with no effects field as unaffected, not a throw', () => {
+      const view = createSnakeView();
+      expect(() => view.update(snakeSnapshot(straightSnake(4)))).not.toThrow();
+      expect(view.bodyMaterial.emissiveIntensity).toBe(0);
+    });
+
+    it('KS-06-02: the SPEED pulse animates over time, and freezes at its peak under reducedFx', () => {
+      const speedSnapshot = {
+        ...snakeSnapshot(straightSnake(4)),
+        effects: [{ type: 'SPEED', remaining: 5, multiplier: 1.5 }],
+      };
+
+      const animated = createSnakeView({ reducedFx: false });
+      animated.update(speedSnapshot, 0);
+      const start = animated.bodyMaterial.emissiveIntensity;
+      // A quarter of the 0.6 s pulse period: nowhere near the start, the peak or a trough it could land on
+      // by coincidence.
+      animated.update(speedSnapshot, 0.15);
+      expect(animated.bodyMaterial.emissiveIntensity).not.toBeCloseTo(start, 3);
+
+      const frozen = createSnakeView({ reducedFx: true });
+      frozen.update(speedSnapshot, 0);
+      const frozenIntensity = frozen.bodyMaterial.emissiveIntensity;
+      frozen.update(speedSnapshot, 5);
+      frozen.update(speedSnapshot, 5);
+      expect(frozen.bodyMaterial.emissiveIntensity).toBe(frozenIntensity);
+      // Frozen at its peak (module doc comment), not an arbitrary or zero phase — a design screenshot of a
+      // boosted snake should actually show the tint.
+      expect(frozenIntensity).toBeCloseTo(2, 5);
+    });
+  });
+
   it('dispose() releases the geometry and materials it owns', () => {
     const view = createSnakeView();
     const disposed = [];

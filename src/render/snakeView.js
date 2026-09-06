@@ -2,7 +2,7 @@
 import * as THREE from 'three';
 import { RoundedBoxGeometry } from 'three/examples/jsm/geometries/RoundedBoxGeometry.js';
 import { SETTINGS } from '../core/settings.js';
-import { createEyeMaterials, createSnakeMaterial } from './materials.js';
+import { createEffectTintColors, createEyeMaterials, createSnakeMaterial } from './materials.js';
 import { setWorldFromGrid, yawFromGridDirection } from './arenaView.js';
 
 /**
@@ -30,6 +30,19 @@ import { setWorldFromGrid, yawFromGridDirection } from './arenaView.js';
  * Draw calls: three per snake, whatever the snake's length (AC2). The body and the head share one
  * `InstancedMesh` — the head is instance 0, and an instance matrix carries scale, so "the head is bigger" costs
  * nothing — and the eye whites and the pupils are one instanced pair each.
+ *
+ * **Effect tint (KS-06-02, authorised deviation).** The one `bodyMaterial` is shared by every segment's
+ * instance, so tinting it tints the whole snake in one write rather than per-segment — which is what "snake
+ * tint while affected" (the ticket's own words) asks for anyway. `updateEffectTint` reads the snapshot's own
+ * `effects` (the same field the HUD tag already reads, `core/snake.js`'s own contract) and sets the shared
+ * material's `emissive`/`emissiveIntensity` from it: SPEED pulses (a sine wave in time, frozen at its peak
+ * under `?reducedFx=1` the same way `pickupView.js` freezes the pedestal's bob/spin — a screenshot of a
+ * moving pulse is a screenshot of whatever phase it happened to land on, never twice the same), SLOW is a
+ * flat, unanimated tint (the ticket asks for a "tint", not a pulse, on the victim). A snake can hold one
+ * `SPEED` entry and one `SLOW` entry at once (`core/snake.js`'s own doc comment on `effects`); SPEED wins
+ * when both are present — a grey-box choice, since nothing in the ticket or `DESIGN-DECISIONS` rules on the
+ * combination and the real Sprint 09/10 art (a body glow vs. a body tint) never has to choose one shared
+ * material's colour the way this placeholder does.
  */
 
 /** @typedef {import('../core/settings.js').Settings} Settings */
@@ -45,6 +58,9 @@ import { setWorldFromGrid, yawFromGridDirection } from './arenaView.js';
  * @property {{x: number, y: number}[]} segments
  * @property {{x: number, y: number}[]} previousSegments
  * @property {number} stepProgress
+ * @property {{type: string, remaining: number, multiplier: number}[]} [effects] - KS-06-02: which of `SPEED`/
+ *   `SLOW` (if any) is active on this snake right now, for the body tint. Optional only so a hand-built
+ *   snapshot in an older test keeps working; `RoundSimulation.getState()` always includes it.
  */
 
 /** Body segment: 0.9 units square, 0.7 tall (ticket spec). */
@@ -82,6 +98,33 @@ const EYE_WIDTH_SEGMENTS = 12;
 const EYE_HEIGHT_SEGMENTS = 8;
 
 /**
+ * The SPEED tint's pulse period, in seconds — a grey-box number (`DESIGN-DECISIONS §3` says "pulses", not how
+ * fast), chosen faster than the power-up pedestal's own 1.2 s bob so a boosted snake visibly reads as more
+ * urgent than an idle pedestal.
+ */
+const SPEED_PULSE_PERIOD_SECONDS = 0.6;
+/** Peak emissive intensity of the SPEED pulse; the trough is 0, so the pulse fades to the snake's own colour
+ * rather than to black. */
+const SPEED_PULSE_PEAK_INTENSITY = 2;
+/** The SLOW tint's flat (unanimated) emissive intensity — a tint, not a pulse (the ticket's own wording). */
+const SLOW_TINT_INTENSITY = 0.55;
+
+/**
+ * True when the page asked for reduced effects (`ARCHITECTURE §11`). Mirrors `camera.js`'s own
+ * `reducedFxFromLocation` and `pickupView.js`'s copy of it rather than importing either — the function is
+ * module-private in `camera.js`, and duplicating four lines a third time is cheaper than widening that
+ * module's exports for a call site neither of those two tickets touched.
+ *
+ * @returns {boolean}
+ */
+function reducedFxFromLocation() {
+  const search = /** @type {{search?: string} | undefined} */ (
+    /** @type {any} */ (globalThis).location
+  )?.search;
+  return typeof search === 'string' && new URLSearchParams(search).get('reducedFx') === '1';
+}
+
+/**
  * Signed shortest angle from `from` to `to`, in radians — i.e. the turn that gets you there the short way
  * round rather than the long way.
  *
@@ -102,14 +145,22 @@ export class SnakeView {
    * @param {string} [options.colorName] - a key of `SETTINGS.colors`; defaults to red
    * @param {Settings} [options.settings]
    * @param {GridSize} [options.grid]
+   * @param {boolean} [options.reducedFx] - freezes the SPEED tint's pulse at its peak; defaults to reading
+   *   `?reducedFx=1` from the URL, same as `camera.js` and `pickupView.js`
    */
-  constructor({ colorName = 'red', settings = SETTINGS, grid } = {}) {
+  constructor({ colorName = 'red', settings = SETTINGS, grid, reducedFx } = {}) {
     /** @type {Settings} */
     this.settings = settings;
     /** @type {GridSize} */
     this.grid = grid ?? settings.grid;
     /** @type {string} */
     this.colorName = colorName;
+    /** @type {boolean} */
+    this.reducedFx = reducedFx ?? reducedFxFromLocation();
+    /** Seconds of tint-pulse time accumulated so far; frozen at 0 under `reducedFx`. @type {number} */
+    this.elapsed = 0;
+    /** @type {{ SPEED: string, SLOW: string }} */
+    this.effectTintColors = createEffectTintColors(settings);
 
     // A snake can never be longer than the board has cells, so this is the true upper bound and the buffer
     // is allocated once. Only `count` changes as the snake grows.
@@ -177,9 +228,11 @@ export class SnakeView {
    * Redraw from a snapshot of one snake.
    *
    * @param {SnakeSnapshot} snake - one entry of `RoundSimulation.getState().snakes`
+   * @param {number} [dt] - seconds since the previous frame, for the SPEED tint's pulse
    * @returns {this}
    */
-  update(snake) {
+  update(snake, dt = 0) {
+    if (!this.reducedFx) this.elapsed += dt;
     const { segments, previousSegments, stepProgress } = snake;
     const length = segments.length;
     const { matrix, position, quaternion, scale, up } = this.scratch;
@@ -228,7 +281,34 @@ export class SnakeView {
     this.segments.instanceMatrix.needsUpdate = true;
 
     this.updateEyes();
+    this.updateEffectTint(snake.effects ?? []);
     return this;
+  }
+
+  /**
+   * Tints the whole snake's shared body material from its active effects (module doc comment on why one
+   * material write does the whole snake). SPEED wins when a snake somehow holds both at once; SLOW is a flat
+   * tint, SPEED a pulse frozen at its peak under `reducedFx`.
+   *
+   * @param {{type: string, remaining: number, multiplier: number}[]} effects
+   */
+  updateEffectTint(effects) {
+    const hasSpeed = effects.some((effect) => effect.type === 'SPEED');
+    const hasSlow = !hasSpeed && effects.some((effect) => effect.type === 'SLOW');
+
+    if (hasSpeed) {
+      const phase = this.reducedFx
+        ? 1
+        : (Math.sin((2 * Math.PI * this.elapsed) / SPEED_PULSE_PERIOD_SECONDS) + 1) / 2;
+      this.bodyMaterial.emissive.set(this.effectTintColors.SPEED);
+      this.bodyMaterial.emissiveIntensity = SPEED_PULSE_PEAK_INTENSITY * phase;
+    } else if (hasSlow) {
+      this.bodyMaterial.emissive.set(this.effectTintColors.SLOW);
+      this.bodyMaterial.emissiveIntensity = SLOW_TINT_INTENSITY;
+    } else {
+      this.bodyMaterial.emissive.set(0x000000);
+      this.bodyMaterial.emissiveIntensity = 0;
+    }
   }
 
   /**
@@ -341,6 +421,7 @@ export class SnakeView {
  * @param {string} [options.colorName]
  * @param {Settings} [options.settings]
  * @param {GridSize} [options.grid]
+ * @param {boolean} [options.reducedFx]
  * @returns {SnakeView}
  */
 export function createSnakeView(options = {}) {
