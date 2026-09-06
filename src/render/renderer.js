@@ -3,6 +3,7 @@ import * as THREE from 'three';
 import { SETTINGS } from '../core/settings.js';
 import { createArenaView } from './arenaView.js';
 import { createGameplayCamera } from './camera.js';
+import { createLaserView } from './laserView.js';
 import { COLORS } from './materials.js';
 import { createPickupView } from './pickupView.js';
 import { createSnakeView } from './snakeView.js';
@@ -84,6 +85,7 @@ export function resizeRendererToWindow(renderer, camera) {
  *   arena: ReturnType<typeof createArenaView>,
  *   snakes: import('./snakeView.js').SnakeView[],
  *   pickups: import('./pickupView.js').PickupView,
+ *   lasers: import('./laserView.js').LaserView,
  *   update: (snapshot: object, dt?: number) => void,
  *   dispose: () => void,
  * }}
@@ -110,12 +112,19 @@ export function createGameplayScene({
   const pickups = createPickupView({ settings });
   scene.add(pickups.group);
 
+  // KS-04-02: laser beams, emitters and warning arrows. Deviation from KS-04-02's own `Files:` list
+  // (`src/render/laserView.js`, `src/render/arenaView.js`) — wiring the new view into the scene composition
+  // touches `renderer.js` too, declared in the PR description.
+  const lasers = createLaserView({ settings, reducedFx });
+  scene.add(lasers.group);
+
   return {
     scene,
     camera,
     arena,
     snakes,
     pickups,
+    lasers,
     /**
      * Push a simulation snapshot into every view.
      *
@@ -123,7 +132,7 @@ export function createGameplayScene({
      * @param {number} [dt] - seconds since the previous frame, for the camera's shake and zoom decay
      */
     update(snapshot, dt = 0) {
-      const state = /** @type {{snakes?: any[], apples?: any[]}} */ (snapshot);
+      const state = /** @type {{snakes?: any[], apples?: any[], lasers?: any}} */ (snapshot);
       const snakeStates = state.snakes ?? [];
       snakes.forEach((view, index) => {
         const snakeState = snakeStates[index];
@@ -137,11 +146,16 @@ export function createGameplayScene({
         view.update(snakeState);
       });
       pickups.update(/** @type {{apples: any[]}} */ ({ apples: state.apples ?? [] }));
+      lasers.update(state, dt);
+      // The floor darkens in step with the beams' own glide, not with the sim's integer inset directly —
+      // `lasers.visualInset` is the eased value both are reading, which is what keeps the two in sync.
+      arena.setDeadZoneInset(lasers.visualInset);
       camera.update(dt);
     },
     dispose() {
       snakes.forEach((view) => view.dispose());
       pickups.dispose();
+      lasers.dispose();
       arena.dispose();
       scene.clear();
     },

@@ -33,6 +33,8 @@ import { DIRECTIONS } from '../core/grid.js';
  *
  * @typedef {object} TestHooksRenderer
  * @property {(player: number) => {x: number, y: number, z: number}} getHeadWorldPosition
+ * @property {() => number} getDrawCalls - KS-04-02: lets an e2e spec measure the laser phase's draw-call
+ *   cost (AC3) against three's own counter, the same one `ARCHITECTURE §12`'s budget is measured from.
  */
 
 /**
@@ -62,6 +64,7 @@ import { DIRECTIONS } from '../core/grid.js';
  * @property {() => object | null} getSnapshot - `session.getSim()?.getState() ?? null`.
  * @property {(player: 1 | 2, dir: Direction | DirectionName) => void} pressKey
  * @property {(player: number) => {x: number, y: number, z: number}} getHeadWorldPosition
+ * @property {() => number} getDrawCalls - see {@link TestHooksRenderer.getDrawCalls}.
  */
 
 /** The four direction names `pressKey` accepts as a string, in the order `core/grid.js`'s `DIRECTIONS` lists them. */
@@ -173,6 +176,9 @@ export function createTestHooks({ session, renderer, eventTarget, KeyboardEventC
     getHeadWorldPosition(player) {
       const { x, y, z } = renderer.getHeadWorldPosition(player);
       return { x, y, z };
+    },
+    getDrawCalls() {
+      return renderer.getDrawCalls();
     },
   };
 }

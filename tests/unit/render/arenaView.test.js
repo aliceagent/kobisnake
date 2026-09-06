@@ -184,6 +184,44 @@ describe('createArenaView', () => {
     expect(scale.x).toBe(8);
   });
 
+  it('KS-04-02 AC1: setDeadZoneInset darkens exactly width² − safe² tiles', () => {
+    const arena = createArenaView();
+    const grid = SETTINGS.grid;
+    const color = new THREE.Color();
+
+    for (const inset of [0, 1, 7, 9]) {
+      arena.setDeadZoneInset(inset);
+      let darkened = 0;
+      let i = 0;
+      for (let y = 0; y < grid.height; y += 1) {
+        for (let x = 0; x < grid.width; x += 1) {
+          arena.floor.getColorAt(i, color);
+          const base = (x + y) % 2 === 0 ? COLORS.floorGreen : COLORS.floorGreenAlt;
+          if (color.getHex() !== base) darkened += 1;
+          i += 1;
+        }
+      }
+      const safeSide = grid.width - 2 * inset;
+      expect(darkened).toBe(grid.width * grid.height - safeSide * safeSide);
+    }
+  });
+
+  it('KS-04-02: darkens a dead-zone tile to its base colour × 0.35, and restores it', () => {
+    const arena = createArenaView();
+    const color = new THREE.Color();
+
+    arena.setDeadZoneInset(3);
+    arena.floor.getColorAt(0, color); // cell (0, 0): inside the dead zone at inset 3
+    const base = new THREE.Color(COLORS.floorGreen);
+    expect(color.r).toBeCloseTo(base.r * 0.35, 5);
+    expect(color.g).toBeCloseTo(base.g * 0.35, 5);
+    expect(color.b).toBeCloseTo(base.b * 0.35, 5);
+
+    arena.setDeadZoneInset(0); // the beams glide back out; nothing stays darkened at inset 0
+    arena.floor.getColorAt(0, color);
+    expect(color.getHex()).toBe(COLORS.floorGreen);
+  });
+
   it('dispose() releases its geometry and materials', () => {
     const arena = createArenaView();
     const disposed = [];
