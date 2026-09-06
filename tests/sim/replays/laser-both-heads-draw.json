@@ -1,0 +1,118 @@
+{
+  "seed": 4,
+  "settingsOverrides": {
+    "roundDuration": 2,
+    "laserStartTime": 2,
+    "laserWarningDuration": 1.1666666666666667,
+    "laserStepInterval": 10
+  },
+  "inputs": [
+    {
+      "t": 0,
+      "player": "p1",
+      "dir": "UP"
+    },
+    {
+      "t": 0.2,
+      "player": "p1",
+      "dir": "LEFT"
+    },
+    {
+      "t": 0,
+      "player": "p2",
+      "dir": "UP"
+    },
+    {
+      "t": 0.2,
+      "player": "p2",
+      "dir": "RIGHT"
+    }
+  ],
+  "expectedEvents": [
+    {
+      "type": "FOOD_SPAWNED",
+      "tick": 0,
+      "t": 0,
+      "index": 0,
+      "cell": {
+        "x": 22,
+        "y": 5
+      }
+    },
+    {
+      "type": "FOOD_SPAWNED",
+      "tick": 0,
+      "t": 0,
+      "index": 1,
+      "cell": {
+        "x": 8,
+        "y": 3
+      }
+    },
+    {
+      "type": "FOOD_SPAWNED",
+      "tick": 0,
+      "t": 0,
+      "index": 2,
+      "cell": {
+        "x": 5,
+        "y": 7
+      }
+    },
+    {
+      "type": "FOOD_SPAWNED",
+      "tick": 0,
+      "t": 0,
+      "index": 3,
+      "cell": {
+        "x": 1,
+        "y": 21
+      }
+    },
+    {
+      "type": "LASER_WARNING",
+      "tick": 1,
+      "t": 0.008333333333333333
+    },
+    {
+      "type": "LASER_STEP",
+      "tick": 140,
+      "t": 1.1666666666666667,
+      "inset": 1
+    },
+    {
+      "type": "SNAKE_DIED",
+      "tick": 140,
+      "t": 1.1666666666666667,
+      "snakeId": "p1",
+      "cause": "LASER",
+      "cell": {
+        "x": 0,
+        "y": 13
+      }
+    },
+    {
+      "type": "SNAKE_DIED",
+      "tick": 140,
+      "t": 1.1666666666666667,
+      "snakeId": "p2",
+      "cause": "LASER",
+      "cell": {
+        "x": 23,
+        "y": 12
+      }
+    },
+    {
+      "type": "ROUND_OVER",
+      "tick": 140,
+      "t": 1.1666666666666667,
+      "result": "DRAW",
+      "reason": "DEATH",
+      "winnerId": null,
+      "lengths": [
+        4,
+        4
+      ]
+    }
+  ]
+}

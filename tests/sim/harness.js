@@ -25,6 +25,12 @@ import { SETTINGS } from '../../src/core/settings.js';
  *    size. This assumes every snake moves at `settings.snakeSpeed` — true for the whole of Sprint 02, since
  *    `speedMultiplier` is fixed at 1 until Sprint 06's power-ups can change it — and is called out here so
  *    whoever wires bots into a power-up-enabled round revisits it.
+ *
+ * **KS-04-04** (`docs/sprints/sprint-04-closing-laser-arena.md`) added `lasers` and `timeRemaining` to
+ * {@link BotView} so a bot can reason about the closing arena — the laser-aware `survivorBot` needs both;
+ * `greedyBot` and `randomBot` (Sprint 02) simply do not destructure them, so nothing about their behaviour
+ * changes. This file is outside `tests/sim/laserStats.test.js`'s own `Files:` list; see that ticket's PR
+ * description for why extending the harness here, rather than duplicating it, was the smaller change.
  */
 
 /** @typedef {import('../../src/core/grid.js').Direction} Direction */
@@ -47,6 +53,13 @@ import { SETTINGS } from '../../src/core/settings.js';
  * @property {number} decisionIndex - 0, 1, 2, … — how many times this bot has been asked to decide this round,
  *   which is also "how many of its own grid steps have elapsed" (point 2 above); `randomBot` uses this to turn
  *   only every N steps without keeping any state of its own
+ * @property {import('../../src/core/lasers.js').Lasers} lasers - **added for KS-04-04.** The live round's
+ *   laser system (`src/core/lasers.js`): `isDeadly`, `inDeadZone`, `safeRegion`, `phase` and `inset` all read
+ *   straight off the simulation, the same object `round.js` itself queries. Additive — `greedyBot` and
+ *   `randomBot` (Sprint 02) ignore it, only the laser-aware `survivorBot` reads it.
+ * @property {number | null} timeRemaining - **added for KS-04-04.** `sim.timeRemaining` at the moment of this
+ *   decision (`null` in practice mode, which has no round clock — `DESIGN-DECISIONS §5`). Lets a bot reason
+ *   about how soon a change to the laser schedule actually is, rather than only what it is right now.
  */
 
 /**
@@ -239,6 +252,8 @@ function driveWithBots(sim, bots, settings, events) {
         grid: settings.grid,
         rng: rngs[i],
         decisionIndex: decisionIndex[i],
+        lasers: sim.lasers,
+        timeRemaining: sim.timeRemaining,
       });
       decisionIndex[i] += 1;
       if (direction) sim.applyInput(self.id, direction);
