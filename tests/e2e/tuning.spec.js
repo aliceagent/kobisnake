@@ -13,6 +13,13 @@ import { crashPlayerOneInPage, nextRoundInPage, startMatchInPage } from './helpe
  * changing the SLOW-mode `<select>`) rather than by calling a session method directly, since the point of
  * this suite is proving the overlay itself is wired up — `tests/unit/game/session.test.js` and
  * `tests/unit/game/tuning.test.js` already prove the logic underneath it in Node.
+ *
+ * **PR #115 review finding.** A human measured the shipped panel at 1280×720 in `PLAYING` and found it sat
+ * on top of P2's own HUD length pill — `document.elementFromPoint` at the pill's centre resolved to the
+ * overlay, not the pill. The "must not cover a HUD pill" test below is that same measurement, kept as a
+ * permanent assertion; the fix is `setRoundActive()` (`screens/tuning.js`) folding the panel down whenever
+ * `ui.js`'s `HUD_STATES` puts a round's HUD up, which is why the copy-replay test below now unfolds it by
+ * clicking the header first — clicking mid-round is still allowed, only the *default* changed.
  */
 
 const TUNING_QUERY = '?test=1&tuning=1&seed=1&reducedFx=1';
@@ -114,6 +121,43 @@ test.describe('KS-07-01 tuning overlay', () => {
     expect(targetMode).toBe('collector');
   });
 
+  test('PR #115 review: the overlay must not cover either HUD pill while a round is running', async ({
+    page,
+  }) => {
+    await page.goto(TUNING_QUERY);
+    await page.evaluate(startMatchInPage);
+
+    const state = await page.evaluate(() => /** @type {any} */ (globalThis).__kobi.getState());
+    expect(state).toBe('PLAYING');
+
+    // The reviewer's own measurement, kept as a permanent check: `elementFromPoint` at the centre of each
+    // `.hud-player` pill must never resolve to the tuning overlay. It does not resolve to the pill itself
+    // either, in this app, by design — `#ui` (the pill's own ancestor) is `pointer-events: none` so clicks
+    // pass through to the canvas underneath (`styles.css`'s own comment on that rule), and a browser's hit
+    // test skips any element that cannot receive pointer events. The tuning overlay is the one thing on this
+    // page that opts back into `pointer-events: auto`, which is exactly how it was able to steal the hit
+    // test out from under the pill in the first place — the bug this test guards against.
+    const results = await page.evaluate(() => {
+      const global = /** @type {any} */ (globalThis);
+      const pills = /** @type {HTMLElement[]} */ (
+        Array.from(global.document.querySelectorAll('.hud-player'))
+      );
+      return pills.map((pill) => {
+        const rect = pill.getBoundingClientRect();
+        const hit = global.document.elementFromPoint(
+          rect.left + rect.width / 2,
+          rect.top + rect.height / 2,
+        );
+        return hit !== null && hit.closest('[data-tuning-overlay]') !== null;
+      });
+    });
+
+    expect(results).toHaveLength(2); // one pill per player
+    for (const hitsOverlay of results) {
+      expect(hitsOverlay).toBe(false);
+    }
+  });
+
   test('AC2/tech-lead note 6: copy replay always fills the fallback textarea with valid replay JSON', async ({
     page,
   }) => {
@@ -121,6 +165,10 @@ test.describe('KS-07-01 tuning overlay', () => {
     await page.evaluate(startMatchInPage);
     await page.evaluate(() => /** @type {any} */ (globalThis).__kobi.pressKey(1, 'UP'));
     await page.evaluate(() => /** @type {any} */ (globalThis).__kobi.fastForward(0.5));
+
+    // The round going live just folded the panel (PR #115 review) — clicking the header is still allowed
+    // mid-round, it just is not the default any more. Unfold it to reach the copy button underneath.
+    await page.locator('[data-tuning-fold-toggle]').click();
 
     await page.locator('[data-tuning-copy-replay]').click();
 

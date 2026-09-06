@@ -59,10 +59,16 @@ if (isDevOrTest) {
 // @ts-expect-error import.meta.env is Vite's own addition; not present in this project's jsconfig types.
 const isTuningEnabled = import.meta.env.DEV || window.location.search.includes('tuning=1');
 if (isTuningEnabled) {
-  createTuningScreen(uiRoot, {
+  const tuningScreen = createTuningScreen(uiRoot, {
     onChange: (overrides) => session.setSettingsOverrides(overrides),
     getReplay: () => session.getReplay(),
-  }).show();
+  });
+  // PR #115 review: without this, the panel sat on top of the arena's right flank and P2's own HUD pill for
+  // the whole round. `ui.js`'s `show()` now folds it on every state that puts the round's HUD up — see that
+  // file's `setTuningScreen`/`HUD_STATES` — so this registration has to happen before `session.start()`
+  // below fires the first `ui.show()`.
+  ui.setTuningScreen(tuningScreen);
+  tuningScreen.show();
 }
 
 session.start();

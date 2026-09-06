@@ -321,11 +321,33 @@ body {
   display: none;
 }
 
+/* PR #115 review finding: at 1280x720 in PLAYING the expanded panel above sat on the arena's right flank
+   *and* directly on P2's own HUD length pill (which lives in that same flank, top corner — `.hud-row`'s
+   `justify-content: space-between` puts it there). `setRoundActive()` in `screens/tuning.js` adds this class
+   the instant a round goes live, moving the panel down to the *bottom* of that flank instead of narrowing it
+   — the flank is only ~315px, this panel's expanded width is 344px, so no full-height right-side panel could
+   ever clear the pill sitting at that flank's own top corner; moving out of its way is the only fix that
+   does not also have to touch the pill's own layout. */
+.tuning-overlay--collapsed {
+  top: auto;
+  bottom: 0.5rem;
+  width: auto;
+  max-height: none;
+  padding: 0.4rem 0.75rem;
+}
+
+.tuning-overlay--collapsed .tuning-overlay-body,
+.tuning-overlay--collapsed .tuning-overlay-footer {
+  display: none;
+}
+
 .tuning-overlay-header {
   font-size: 0.9rem;
   font-weight: 800;
   letter-spacing: 0.08em;
   text-transform: uppercase;
+  cursor: pointer;
+  user-select: none;
 }
 
 .tuning-overlay-body {

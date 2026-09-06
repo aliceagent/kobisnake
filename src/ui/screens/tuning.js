@@ -25,6 +25,22 @@ import {
  *
  * DOM access goes through `root.ownerDocument`, matching every other `./screens/*.js` module, so this stays
  * constructible in a plain Node test with a hand-built fake root.
+ *
+ * **Fold/collapse (tech-lead PR review on #115).** A human measured the shipped panel at 1280×720 in
+ * `PLAYING`: it covered the arena's right flank *and* sat directly on top of P2's own HUD length pill —
+ * `document.elementFromPoint` at the pill's centre resolved to `tuning-overlay`, not the pill, so P2 could
+ * not see their own length and a death in that column would be unreadable in session 2's own playtest data.
+ * `setRoundActive(active)` (called by `ui.js`'s `show()`, one call per `GameState` — see that file's
+ * `HUD_STATES`) folds the panel down to its header the instant a round goes live, matching how a human
+ * actually uses this: open it between rounds to change a value, fold it away to play. It only *forces* the
+ * fold on the transition into a round — leaving one never forces it back open, so whatever a human set up
+ * between rounds is still visible once the round ends — and it does not lock the header: clicking it still
+ * toggles the fold at any time, mid-round included, because a human (or a test) that deliberately wants the
+ * panel back has made that call themselves, which is a different thing from the panel defaulting to covering
+ * the game underneath it. Collapsed, the panel is a small header-only strip pinned to the *bottom*-right
+ * (`.tuning-overlay--collapsed` in `styles.css`) rather than the top-right the expanded panel uses, because
+ * the flank alongside the arena is exactly wide enough for the panel but not wide enough to dodge the P2 pill
+ * sitting in that same flank's top corner — moving down clears the pill without needing to also narrow it.
  */
 
 /** @typedef {import('../../game/tuning.js').SlowTargetMode} SlowTargetMode */
@@ -52,6 +68,9 @@ import {
  * @typedef {object} TuningScreen
  * @property {() => void} show
  * @property {() => void} hide
+ * @property {(active: boolean) => void} setRoundActive - `active` is `ui.js`'s own `HUD_STATES.has(state)`,
+ *   i.e. "is a round visibly under way right now" (COUNTDOWN/PLAYING/LASER_WARNING/PAUSE). Folds the panel on
+ *   the transition into one of those states; see the module doc comment above.
  * @property {() => void} destroy
  */
 
@@ -130,10 +149,29 @@ export function createTuningScreen(root, { onChange, getReplay, clipboard }) {
   // engineer, the same discipline `ui.js`'s `data-screen` uses.
   container.dataset.tuningOverlay = 'true';
 
+  let collapsed = false;
+
   const header = doc.createElement('div');
   header.className = 'tuning-overlay-header';
-  header.textContent = 'TUNING';
+  header.dataset.tuningFoldToggle = 'true';
   container.appendChild(header);
+
+  /** Reflects `collapsed` onto the container's class and the header's own text/affordance. */
+  function renderCollapsed() {
+    container.classList.toggle('tuning-overlay--collapsed', collapsed);
+    header.textContent = collapsed ? '▸ TUNING' : '▾ TUNING';
+  }
+
+  // A click is the fold toggle, not a key: this panel already owns `<input type="range">`, `<select>` and a
+  // `<textarea>` (the replay JSON), so a dedicated hotkey would have to dodge every one of them or risk
+  // hijacking normal typing/typeahead inside those controls, and `input.js` (the one place this app's other
+  // keyboard handling lives, ARCHITECTURE §8) has no notion of this dev-only overlay at all. A click has
+  // neither problem and is exactly what a header visually invites.
+  header.addEventListener('click', () => {
+    collapsed = !collapsed;
+    renderCollapsed();
+  });
+  renderCollapsed();
 
   const body = doc.createElement('div');
   body.className = 'tuning-overlay-body';
@@ -301,6 +339,14 @@ export function createTuningScreen(root, { onChange, getReplay, clipboard }) {
     },
     hide() {
       container.hidden = true;
+    },
+    setRoundActive(active) {
+      // Only the *entering* edge forces a fold (see the module doc comment) — leaving a round never forces
+      // it back open, and this never fights a fold the human has already made for themselves.
+      if (active && !collapsed) {
+        collapsed = true;
+        renderCollapsed();
+      }
     },
     destroy() {
       container.remove();
