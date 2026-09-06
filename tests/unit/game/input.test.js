@@ -104,6 +104,25 @@ describe('KS-03-02 keyboard input', () => {
     expect(event.defaultPrevented).toBe(true);
   });
 
+  it('KS-03-02 AC3: a held arrow key stays prevented on every auto-repeat', () => {
+    // Regression for a review finding: preventDefault must not sit behind the repeat guard, or a browser's
+    // auto-repeat keydowns (exactly the case that would otherwise scroll the page) would go unprevented
+    // after the first. Also asserts the AC2 side of the same code path so a later change cannot silence a
+    // held key by re-firing onDirection on every repeat instead.
+    const target = new NodeEventTarget();
+    const onDirection = vi.fn();
+    createInput({ onDirection, target });
+
+    const first = fireKeydown(target, 'ArrowDown', { repeat: false });
+    const secondRepeat = fireKeydown(target, 'ArrowDown', { repeat: true });
+    const thirdRepeat = fireKeydown(target, 'ArrowDown', { repeat: true });
+
+    expect(first.defaultPrevented).toBe(true);
+    expect(secondRepeat.defaultPrevented).toBe(true);
+    expect(thirdRepeat.defaultPrevented).toBe(true);
+    expect(onDirection).toHaveBeenCalledTimes(1);
+  });
+
   it('KS-03-02: WASD keydown is NOT prevented (ordinary letter keys must stay usable)', () => {
     const target = new NodeEventTarget();
     createInput({ target });
@@ -112,6 +131,22 @@ describe('KS-03-02 keyboard input', () => {
       const event = fireKeydown(target, code);
       expect(event.defaultPrevented).toBe(false);
     }
+  });
+
+  it('KS-03-02: an inherited-property-shaped code (e.g. "constructor") is not mistaken for a mapped key', () => {
+    // Regression for a review nit: the key lookup tables must not be plain object literals, or a `code` of
+    // 'constructor'/'toString' would resolve to an inherited Object.prototype value instead of `undefined`.
+    const target = new NodeEventTarget();
+    const onDirection = vi.fn();
+    const onMenu = vi.fn();
+    createInput({ onDirection, onMenu, mode: 'both', target });
+
+    for (const code of ['constructor', 'toString', 'hasOwnProperty', '__proto__']) {
+      fireKeydown(target, code);
+    }
+
+    expect(onDirection).not.toHaveBeenCalled();
+    expect(onMenu).not.toHaveBeenCalled();
   });
 
   it('KS-03-02: an unmapped key fires neither onDirection nor onMenu and is not prevented', () => {

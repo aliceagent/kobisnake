@@ -41,41 +41,43 @@ import { DIRECTIONS } from '../core/grid.js';
  */
 
 /**
- * WASD → player 1's four directions.
- * @type {Readonly<Record<string, Direction>>}
+ * WASD → player 1's four directions. A `Map`, not a plain object, so an unusual `code` (e.g. a future
+ * `'constructor'` or `'toString'`) can never resolve to an inherited `Object.prototype` value instead of
+ * `undefined`.
+ * @type {ReadonlyMap<string, Direction>}
  */
-const PLAYER_ONE_KEYS = Object.freeze({
-  KeyW: DIRECTIONS.UP,
-  KeyS: DIRECTIONS.DOWN,
-  KeyA: DIRECTIONS.LEFT,
-  KeyD: DIRECTIONS.RIGHT,
-});
+const PLAYER_ONE_KEYS = new Map([
+  ['KeyW', DIRECTIONS.UP],
+  ['KeyS', DIRECTIONS.DOWN],
+  ['KeyA', DIRECTIONS.LEFT],
+  ['KeyD', DIRECTIONS.RIGHT],
+]);
 
 /**
  * Arrow keys → player 2's four directions (also player 1's, when solo steering is on).
- * @type {Readonly<Record<string, Direction>>}
+ * @type {ReadonlyMap<string, Direction>}
  */
-const PLAYER_TWO_KEYS = Object.freeze({
-  ArrowUp: DIRECTIONS.UP,
-  ArrowDown: DIRECTIONS.DOWN,
-  ArrowLeft: DIRECTIONS.LEFT,
-  ArrowRight: DIRECTIONS.RIGHT,
-});
+const PLAYER_TWO_KEYS = new Map([
+  ['ArrowUp', DIRECTIONS.UP],
+  ['ArrowDown', DIRECTIONS.DOWN],
+  ['ArrowLeft', DIRECTIONS.LEFT],
+  ['ArrowRight', DIRECTIONS.RIGHT],
+]);
 
 /**
  * Every directional key code maps to the same `MenuAction` name regardless of which player it steers.
- * @type {Readonly<Record<string, MenuAction>>}
+ * @type {ReadonlyMap<string, MenuAction>}
  */
-const DIRECTION_MENU_ACTIONS = Object.freeze({
-  KeyW: 'UP',
-  KeyS: 'DOWN',
-  KeyA: 'LEFT',
-  KeyD: 'RIGHT',
-  ArrowUp: 'UP',
-  ArrowDown: 'DOWN',
-  ArrowLeft: 'LEFT',
-  ArrowRight: 'RIGHT',
-});
+const DIRECTION_MENU_ACTIONS = new Map([
+  ['KeyW', 'UP'],
+  ['KeyS', 'DOWN'],
+  ['KeyA', 'LEFT'],
+  ['KeyD', 'RIGHT'],
+  ['ArrowUp', 'UP'],
+  ['ArrowDown', 'DOWN'],
+  ['ArrowLeft', 'LEFT'],
+  ['ArrowRight', 'RIGHT'],
+]);
 
 /** Key codes that must never scroll or otherwise act on the page (the ticket's spec, verbatim). */
 const PREVENT_DEFAULT_CODES = new Set(['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'Space']);
@@ -113,20 +115,24 @@ export function createInput(options = {}) {
       );
     const { code, repeat } = keyboardEvent;
 
-    // Key repeat (holding a key down) must not resend the same input every frame the browser re-fires
-    // keydown (AC2) — a single physical press is a single logical input.
-    if (repeat) return;
-
+    // "The page must never scroll" (the browser's concern) and "a held key is one logical input" (the
+    // game's concern) are independent rules, so this must run before the repeat guard below: auto-repeat
+    // keydowns are exactly when a browser would otherwise scroll on a held arrow key, so preventDefault has
+    // to fire on every one of them, not just the first (AC3).
     if (PREVENT_DEFAULT_CODES.has(code)) {
       keyboardEvent.preventDefault();
     }
 
+    // Key repeat (holding a key down) must not resend the same input every frame the browser re-fires
+    // keydown (AC2) — a single physical press is a single logical input.
+    if (repeat) return;
+
     if (mode !== 'menu') {
-      const dir = PLAYER_ONE_KEYS[code];
+      const dir = PLAYER_ONE_KEYS.get(code);
       if (dir !== undefined) {
         onDirection(1, dir);
       } else {
-        const p2Dir = PLAYER_TWO_KEYS[code];
+        const p2Dir = PLAYER_TWO_KEYS.get(code);
         if (p2Dir !== undefined) {
           onDirection(soloSteering ? 1 : 2, p2Dir);
         }
@@ -134,7 +140,7 @@ export function createInput(options = {}) {
     }
 
     if (mode !== 'game') {
-      const menuDir = DIRECTION_MENU_ACTIONS[code];
+      const menuDir = DIRECTION_MENU_ACTIONS.get(code);
       if (menuDir !== undefined) {
         onMenu(menuDir);
       } else if (code === 'Enter') {
