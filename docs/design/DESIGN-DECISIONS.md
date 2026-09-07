@@ -121,6 +121,11 @@ head entering or being inside the dead zone when the laser steps onto it dies.
 - Colour catalogue (hex, plastic base colour):
   Red `#E3261B`, Blue `#1F6FE5`, Green `#2FB44B`, Yellow `#F6C21B`, Orange `#F27A1A`, Purple `#8A3FD1`,
   Teal `#12B5B0`, Gold `#E8B028` with metallic sheen (roughness 0.25, metalness 0.6).
+- **Proposed, not yet ruled on (KI-02-03, issue #135, tracked on #121) — awaiting Fable's sign-off:** a colour
+  added to this catalogue must clear the `MIN_LUMINANCE_SEPARATION` contrast rule (`tests/unit/render/materials.test.js`,
+  the "KI-02-03 all eight player colours checked against each other" suite) against every other colour above
+  before it ships; nine of the current 28 pairs already fail that rule today and are reported on #121 rather
+  than repainted.
 
 ### 2.8 Pause and focus
 - `Esc` **or `Space`** during PLAYING opens PAUSE (Resume / Restart match / Quit to menu). **`Esc` or `Space` on the pause screen resumes** (Esc
