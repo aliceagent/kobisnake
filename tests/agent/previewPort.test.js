@@ -27,16 +27,21 @@ import {
  * is exactly that — Playwright's `reuseExistingServer` reuses whatever answers on **its own** `baseURL`, so a
  * dead dial from B's port is the mechanism by which B starts its own server instead of adopting A's.
  *
- * These tests never bind the *real* checkout's port. `npm run test:unit` is routinely run while a real
- * Playwright suite holds this checkout's preview server, and binding that port would fight it — the same
- * mistake `suiteLock.test.js` records having been caught making with the real lock file. The two paths below
- * are fictional worktrees under a real-looking root, which is all the derivation needs, since it is a pure
- * function of the string.
+ * These tests never bind the *real* checkout's port, and the paths below are deliberately ones that **cannot
+ * be a checkout**. `npm run test:unit` is routinely run while a real Playwright suite holds this checkout's
+ * preview server, so binding that server's port here would fail with `EADDRINUSE` and, worse, would be a test
+ * of the rule breaking the rule — the same mistake `suiteLock.test.js` records having been caught making with
+ * the real lock file. A first draft of this file used `/home/user/wt/ki-19-00`, which *is* this worktree, and
+ * would have done exactly that. The derivation is a pure function of the string, so a path that never exists
+ * proves everything a real one would.
  */
 
-/** Two checkouts that do not exist, so nothing here can collide with a live suite's real preview server. */
-const WORKTREE_A = '/home/user/wt/ki-19-00';
-const WORKTREE_B = '/home/user/wt/ki-19-01';
+/**
+ * Two paths that are not, and cannot become, checkouts on this machine — so nothing here can collide with a
+ * live suite's preview server however this repository's worktrees happen to be laid out.
+ */
+const WORKTREE_A = '/nonexistent/kobi-preview-port-test/worktree-a';
+const WORKTREE_B = '/nonexistent/kobi-preview-port-test/worktree-b';
 
 /** @type {import('node:http').Server | null} */
 let server = null;
@@ -116,7 +121,8 @@ describe('KI-19-00 per-checkout preview port', () => {
       previewPortForCheckout(WORKTREE_A),
     );
 
-    // Distinct, across the shape of worktree names this repository actually uses (`iNN/ki-NN-TT-slug`).
+    // Distinct, across the shape of worktree names this repository actually uses. These are only ever passed
+    // to the pure derivation, never bound — the binding test above is the one that must stay off real paths.
     const roots = [
       '/home/user/kobisnake',
       '/home/user/wt/ki-19-00',
