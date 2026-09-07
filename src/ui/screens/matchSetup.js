@@ -16,6 +16,16 @@ import { createFocusModel } from '../focus.js';
  * function of `(matchSettings, player, ownedColors, direction)` precisely so it can be unit-tested without a
  * DOM (`tests/unit/ui/matchSetup.test.js` — not on this ticket's `Files:` list, called out in the PR
  * description per CLAUDE.md, the same way `tests/unit/ui/hud.test.js` was for KS-04-03).
+ *
+ * **KI-10-02 controls card** (`DESIGN-DECISIONS §3` "Controls card on match setup"): two presentational rows
+ * naming each player's keys, colour-matched to the snake they describe. {@link controlsCardLabel} builds the
+ * approved-copy string from the *live* `matchSettings.colors` — never a literal colour word — because this
+ * card sits on the very screen where a player can change that colour (§2.7's swap rule, right above); a
+ * hardcoded "RED" would go stale the moment either player picks a different colour, on the screen where they
+ * picked it. The key list (`W A S D` / `ARROW KEYS`) is a literal here, not read live: `src/game/input.js`'s
+ * `PLAYER_ONE_KEYS`/`PLAYER_TWO_KEYS` maps are module-private (not exported) and `input.js` is not on this
+ * ticket's `Files:` list to change, so there is nothing live to read yet — Improvement 07 (a real binding
+ * table) has not landed. See the PR description.
  */
 
 /** @typedef {import('../focus.js').MenuAction} MenuAction */
@@ -144,6 +154,21 @@ function musicLabel(track) {
 }
 
 /**
+ * The controls-card copy for one player (`DESIGN-DECISIONS §3`, approved verbatim at the shipping defaults:
+ * `controlsCardLabel(1, 'red')` === `'PLAYER 1 · RED — W A S D'`, `controlsCardLabel(2, 'blue')` ===
+ * `'PLAYER 2 · BLUE — ARROW KEYS'`). `colorName` is always the *live* colour word — see the module doc
+ * comment for why a literal would go stale on this particular screen.
+ *
+ * @param {1 | 2} player
+ * @param {string} colorName
+ * @returns {string}
+ */
+export function controlsCardLabel(player, colorName) {
+  const keys = player === 1 ? 'W A S D' : 'ARROW KEYS';
+  return `PLAYER ${player} · ${colorName.toUpperCase()} — ${keys}`;
+}
+
+/**
  * Build the match setup screen inside `root`.
  *
  * @param {HTMLElement} root
@@ -165,6 +190,16 @@ export function createMatchSetupScreen(root) {
   title.className = 'menu-title';
   title.textContent = 'MATCH SETUP';
   panel.appendChild(title);
+
+  // KI-10-02: the controls card. Purely presentational — no `FocusableItem`, so it adds no row to `rows`/
+  // `focus` below and cannot change focus order (the ticket's own constraint). Sits right under the title so
+  // "which one am I?" is answered the instant this screen opens, before either colour row is even reached.
+  const controlsCard = doc.createElement('div');
+  controlsCard.className = 'controls-card';
+  const controlsP1Row = doc.createElement('div');
+  const controlsP2Row = doc.createElement('div');
+  controlsCard.append(controlsP1Row, controlsP2Row);
+  panel.appendChild(controlsCard);
 
   /** @type {MatchSetupProps} */
   let props = {
@@ -250,6 +285,20 @@ export function createMatchSetupScreen(root) {
     });
   });
 
+  /**
+   * Refreshes one controls-card row: its text (AC2 — real DOM text, never colour-only) and the CSS class that
+   * drives its colour match (AC1). Hex values live only in `styles.css` (`CLAUDE.md` never list) — this only
+   * ever sets a class name built from the colour's own catalogue key (`red`, `blue`, …), never a hex literal.
+   *
+   * @param {HTMLElement} el
+   * @param {1 | 2} player
+   * @param {string} colorName
+   */
+  function renderControlsRow(el, player, colorName) {
+    el.textContent = controlsCardLabel(player, colorName);
+    el.className = `controls-card-row controls-card-row--${colorName}`;
+  }
+
   function renderValues() {
     const { matchSettings } = props;
     matchLength.value.textContent = `BEST OF ${matchSettings.bestOf}`;
@@ -257,6 +306,8 @@ export function createMatchSetupScreen(root) {
     music.value.textContent = musicLabel(matchSettings.musicTrack);
     p1Color.value.textContent = capitalize(matchSettings.colors[1]).toUpperCase();
     p2Color.value.textContent = capitalize(matchSettings.colors[2]).toUpperCase();
+    renderControlsRow(controlsP1Row, 1, matchSettings.colors[1]);
+    renderControlsRow(controlsP2Row, 2, matchSettings.colors[2]);
   }
 
   renderValues();
