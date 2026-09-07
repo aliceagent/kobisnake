@@ -37,6 +37,17 @@ const ui = createUi(uiRoot);
 // @ts-expect-error import.meta.env is Vite's own addition; not present in this project's jsconfig types.
 const isDevOrTest = import.meta.env.DEV || window.location.search.includes('test=1');
 
+// KI-15-02 test-only seam (declared in the PR description, outside this ticket's `Files:` list): `?ownedColors=`
+// widens the match-setup colour pool past the shipping `red,blue` (`DEFAULT_OWNED_COLORS`, `session.js`), so
+// an e2e spec can reach a pair KI-15-01's colour-vision check fails without a shop unlock existing yet
+// (Sprint 14). Gated behind the same dev/test flag as `__kobi` itself — a real production load can never use
+// it to skip the shop economy. Comma-separated catalogue keys, e.g. `?ownedColors=red,blue,green`.
+const ownedColorsParam = new URLSearchParams(window.location.search).get('ownedColors');
+const ownedColors =
+  isDevOrTest && ownedColorsParam !== null
+    ? ownedColorsParam.split(',').filter((name) => name.length > 0)
+    : undefined;
+
 // KS-07-06 (declared outside its own `Files:` list; see `session.js`'s "KS-07-06 deviation" note): the same
 // dev/test flag that gates `strict` and `__kobi` itself also gates the input-latency tracker, so a normal
 // production load builds no tracker at all — `session.js`'s handful of extra call sites all short-circuit on
@@ -47,6 +58,7 @@ const session = createSession({
   seed,
   strict: isDevOrTest,
   enableInputStats: isDevOrTest,
+  ...(ownedColors !== undefined ? { ownedColors } : {}),
 });
 
 // `window.__kobi` (KS-03-06, `ARCHITECTURE §11`): present only in dev or when the page is explicitly asked

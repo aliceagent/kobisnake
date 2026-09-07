@@ -291,6 +291,27 @@ const DEFAULT_OWNED_COLORS = ['red', 'blue'];
 const EMPTY_SNAPSHOT = { snakes: [], apples: [] };
 
 /**
+ * The one apple KI-15-02/#157 puts on the match-setup screen's live arena: "a picture, not a round: nothing
+ * moves" (`DESIGN-DECISIONS §3`). Fixed rather than drawn from `food.js`'s placement rules, because there is
+ * no round underneath MATCH_SETUP to place it with — {@link drawFrame} reaches for this precisely when `sim`
+ * is `null`, the same moment {@link EMPTY_SNAPSHOT} used to be the only option.
+ *
+ * `(3, 20)`, chosen and not merely picked:
+ *  - inside the 24×24 grid (`§2.1`), nowhere near either wall;
+ *  - Chebyshev distance 8 from P1's spawn `(5, 12)` and 15 from P2's `(18, 11)` (`§2.3`) — nowhere close to
+ *    either snake's starting body, the same "≥ 2 cells from a head" instinct real apple placement uses, with
+ *    room to spare because nothing here is actually moving;
+ *  - the arena's rear-left quadrant, well outside `.menu-panel`'s centred, `min-width: 22rem` footprint
+ *    (`styles.css`) — a player looking at the colour rows still sees the apple beside the arena, not lost
+ *    under the dark overlay.
+ * @type {{x: number, y: number}}
+ */
+export const MATCH_SETUP_APPLE_CELL = { x: 3, y: 20 };
+
+/** The snapshot {@link drawFrame} draws for MATCH_SETUP alone — never MAIN_MENU, which stays {@link EMPTY_SNAPSHOT}. */
+const MATCH_SETUP_SNAPSHOT = { snakes: [], apples: [MATCH_SETUP_APPLE_CELL] };
+
+/**
  * Reverse of `core/grid.js`'s `DIRECTIONS`: `{dx, dy}` -> its name. Built once from the live table (rather
  * than a hand-written mirror, the way `testHooks.js`'s own reverse map is) since this file already imports
  * `DIRECTIONS` for nothing else. Used only by `handleDirection` (KS-07-01): the replay format
@@ -930,9 +951,25 @@ export function createSession({
     ui.hud.setPowerUpTags?.(powerUpTagsFor(state.snakes, renderer));
   }
 
+  /**
+   * What {@link drawFrame} last handed the renderer. KI-15-02: a test-only readback (`__kobi.getRenderedSnapshot`,
+   * `testHooks.js`) — the exact object a spec needs to assert the match-setup apple's fixed cell without
+   * depending on `renderer.info.render.calls` or another implementation detail of *how* three.js drew it.
+   * @type {object}
+   */
+  let lastRenderedState = EMPTY_SNAPSHOT;
+
   /** Draws one frame of whatever the sim currently looks like, without advancing anything. */
   function drawFrame() {
-    const state = sim === null ? EMPTY_SNAPSHOT : sim.getState();
+    // KI-15-02/#157: MATCH_SETUP alone gets the one-apple preview snapshot; every other sim-less state
+    // (MAIN_MENU foremost — see this constant's own doc comment) keeps the plain empty arena it always had.
+    const state =
+      sim !== null
+        ? sim.getState()
+        : machine.getState() === STATES.MATCH_SETUP
+          ? MATCH_SETUP_SNAPSHOT
+          : EMPTY_SNAPSHOT;
+    lastRenderedState = state;
     // KS-07-06: `observeState` must see the state *before* it is drawn (it is looking for a direction that
     // changed on `sim.advance()` earlier this same frame) and `markRendered` immediately after — bracketing
     // the one `renderer.render()` call below is what makes "committed" and "first rendered frame" two
@@ -1204,6 +1241,14 @@ export function createSession({
     /** Draws one frame of the sim's current state, without advancing it. */
     renderFrame() {
       drawFrame();
+    },
+    /**
+     * KI-15-02: the exact object the last {@link drawFrame} call handed the renderer — `EMPTY_SNAPSHOT`,
+     * `MATCH_SETUP_SNAPSHOT`, or a live round's own state. Test-only readback for `__kobi.getRenderedSnapshot`
+     * (`testHooks.js`, declared in this ticket's PR description as outside its own `Files:` list).
+     */
+    getRenderedSnapshot() {
+      return lastRenderedState;
     },
     /**
      * Fixes the seed the **next match** is built from; a match already in progress keeps its own.

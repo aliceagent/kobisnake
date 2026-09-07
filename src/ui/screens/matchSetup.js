@@ -1,6 +1,8 @@
 // @ts-check
 import { SETTINGS } from '../../core/settings.js';
 import { STATES } from '../../game/gameStateMachine.js';
+import { snakeColorHex } from '../../render/materials.js';
+import { MIN_COLOUR_DIFFERENCE, worstCaseColourDifference } from '../../render/colourVision.js';
 import { createFocusModel } from '../focus.js';
 
 /**
@@ -26,6 +28,18 @@ import { createFocusModel } from '../focus.js';
  * `PLAYER_ONE_KEYS`/`PLAYER_TWO_KEYS` maps are module-private (not exported) and `input.js` is not on this
  * ticket's `Files:` list to change, so there is nothing live to read yet — Improvement 07 (a real binding
  * table) has not landed. See the PR description.
+ *
+ * **KI-15-02 colour-safe pairing note.** {@link checkColourSafety} below is the same pure-function pattern as
+ * {@link pickPlayerColor}: given `(matchSettings, ownedColors)` it answers whether the two chosen colours
+ * clear KI-15-01's `worstCaseColourDifference`/`MIN_COLOUR_DIFFERENCE` check (`colourVision.js`,
+ * `DESIGN-DECISIONS §2.7`) and, when they do not, which owned colour is the best passing alternative for
+ * player 2. It never blocks START MATCH — it only decides whether the note below the colour rows is shown.
+ * **Its two sentences are not approved copy.** `DESIGN-DECISIONS §3` has no entry for this note; the wording
+ * below is proposed on issue #184 (this ticket's own kick-off comment there) and awaiting the design lead's
+ * ruling, the same way #150 and #182's copy was ruled on before it shipped. `COLOUR_NOTE_COPY` is the one
+ * place either sentence is written, precisely so the ruling is a one-line change here, and every assertion
+ * elsewhere (`tests/e2e`, `tests/unit/ui/matchSetup.test.js`) binds to structure — whether the note element is
+ * present and visible, and which colour name it recommends — never to the sentence itself.
  */
 
 /** @typedef {import('../focus.js').MenuAction} MenuAction */
@@ -142,6 +156,67 @@ export function pickPlayerColor(matchSettings, player, ownedColors, direction) {
   };
 }
 
+/**
+ * KI-15-02: the colour-pairing note's two sentences. **Provisional, not approved copy** — see this module's
+ * own doc comment above for why. Proposed on issue #184 (this ticket's kick-off comment there); ruled on by
+ * the design lead the same way #150 and #182's strings were. `DESIGN-DECISIONS §3` gets an entry the moment
+ * #184 is answered, and this is the one place that answer needs to land.
+ *
+ * @type {{ note: string, suggestion: (colorName: string) => string }}
+ */
+const COLOUR_NOTE_COPY = {
+  note: 'These two colours look alike to some players.',
+  suggestion: (colorName) => `Try ${colorName.toUpperCase()} for player 2.`,
+};
+
+/**
+ * @typedef {object} ColourSafetyResult
+ * @property {boolean} failing - whether the two chosen colours fail KI-15-01's check.
+ * @property {string | null} recommendedColor - the nearest owned alternative for player 2, or `null` when
+ *   `failing` is `false`, or when it is `true` but nothing owned clears the check either.
+ */
+
+/**
+ * KI-15-02: whether `matchSettings.colors[1]`/`[2]` pass KI-15-01's colour-vision check
+ * (`worstCaseColourDifference(...) >= MIN_COLOUR_DIFFERENCE`, `colourVision.js`, `DESIGN-DECISIONS §2.7`)
+ * and, when they do not, the nearest passing alternative for player 2.
+ *
+ * "Nearest passing alternative" (the ticket's own spec): among `ownedColors`, excluding player 1's colour,
+ * the one with the *highest* `worstCaseColourDifference` against player 1's colour that still clears
+ * `MIN_COLOUR_DIFFERENCE` — the best-separated owned colour that actually passes, not merely the first one
+ * tried. `recommendedColor` is `null` when none clears it: **no fallback is invented** — the ticket is
+ * explicit that this case says nothing about an alternative.
+ *
+ * Pure and exported for the same reason {@link pickPlayerColor} is: unit-testable without a DOM
+ * (`tests/unit/ui/matchSetup.test.js`), and the one source of truth both `renderColourNote` below and every
+ * e2e/unit assertion read.
+ *
+ * @param {MatchSettings} matchSettings
+ * @param {readonly string[]} ownedColors
+ * @param {import('../../core/settings.js').Settings} [settings] - defaults to the shipping `SETTINGS`
+ * @returns {ColourSafetyResult}
+ */
+export function checkColourSafety(matchSettings, ownedColors, settings = SETTINGS) {
+  const colorOne = matchSettings.colors[1];
+  const colorTwo = matchSettings.colors[2];
+  const hexOne = snakeColorHex(colorOne, settings);
+  const failing =
+    worstCaseColourDifference(hexOne, snakeColorHex(colorTwo, settings)) < MIN_COLOUR_DIFFERENCE;
+  if (!failing) return { failing: false, recommendedColor: null };
+
+  let recommendedColor = /** @type {string | null} */ (null);
+  let bestDifference = -Infinity;
+  for (const candidate of ownedColors) {
+    if (candidate === colorOne) continue;
+    const difference = worstCaseColourDifference(hexOne, snakeColorHex(candidate, settings));
+    if (difference >= MIN_COLOUR_DIFFERENCE && difference > bestDifference) {
+      bestDifference = difference;
+      recommendedColor = candidate;
+    }
+  }
+  return { failing: true, recommendedColor };
+}
+
 /** @param {string} name @returns {string} */
 function capitalize(name) {
   return name.length === 0 ? name : name.charAt(0).toUpperCase() + name.slice(1);
@@ -238,6 +313,19 @@ export function createMatchSetupScreen(root) {
   const p1Color = buildRow('PLAYER 1 COLOUR');
   const p2Color = buildRow('PLAYER 2 COLOUR');
 
+  // KI-15-02: the colour-safety note. Presentational only, like the KI-10-02 controls card above — no
+  // `FocusableItem`, so it adds no row to `rows`/`focus` below and can never take focus or block START MATCH
+  // ("never blocks starting; informs", the ticket's own spec). Sits directly under the colour rows it is
+  // about and above START MATCH. `hidden` (not a CSS class) drives visibility, matching every other screen's
+  // own `container.hidden` pattern; `data-colour-note` and `data-recommended-color` are the stable hooks an
+  // e2e/visual spec reads instead of the note's own (provisional, unruled) sentence — see
+  // `checkColourSafety`'s doc comment above.
+  const colourNote = doc.createElement('div');
+  colourNote.className = 'colour-safety-note';
+  colourNote.dataset.colourNote = 'true';
+  colourNote.hidden = true;
+  panel.appendChild(colourNote);
+
   const startRow = doc.createElement('div');
   startRow.className = 'menu-item menu-item--action';
   startRow.textContent = 'START MATCH';
@@ -299,6 +387,30 @@ export function createMatchSetupScreen(root) {
     el.className = `controls-card-row controls-card-row--${colorName}`;
   }
 
+  /**
+   * KI-15-02 AC1: shows or hides {@link colourNote} from {@link checkColourSafety}'s verdict on the *current*
+   * `matchSettings`/`ownedColors`. `hidden` is the only thing that ever changes for a passing pair — nothing
+   * else on the screen reacts, and START MATCH stays enabled either way (never blocks starting; informs).
+   */
+  function renderColourNote() {
+    const { matchSettings, ownedColors } = props;
+    const { failing, recommendedColor } = checkColourSafety(matchSettings, ownedColors);
+    colourNote.hidden = !failing;
+    if (!failing) {
+      colourNote.textContent = '';
+      delete colourNote.dataset.recommendedColor;
+      return;
+    }
+    if (recommendedColor === null) {
+      // No owned colour clears the check either — say the note, invent no alternative (ticket spec).
+      colourNote.textContent = COLOUR_NOTE_COPY.note;
+      delete colourNote.dataset.recommendedColor;
+    } else {
+      colourNote.textContent = `${COLOUR_NOTE_COPY.note} ${COLOUR_NOTE_COPY.suggestion(recommendedColor)}`;
+      colourNote.dataset.recommendedColor = recommendedColor;
+    }
+  }
+
   function renderValues() {
     const { matchSettings } = props;
     matchLength.value.textContent = `BEST OF ${matchSettings.bestOf}`;
@@ -308,6 +420,7 @@ export function createMatchSetupScreen(root) {
     p2Color.value.textContent = capitalize(matchSettings.colors[2]).toUpperCase();
     renderControlsRow(controlsP1Row, 1, matchSettings.colors[1]);
     renderControlsRow(controlsP2Row, 2, matchSettings.colors[2]);
+    renderColourNote();
   }
 
   renderValues();

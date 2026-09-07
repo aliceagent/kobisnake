@@ -327,6 +327,27 @@ body {
   background: rgba(0, 0, 0, 0.4);
 }
 
+/* KI-15-02: the colour-safety note below the two colour rows (`DESIGN-DECISIONS §2.7`/`colourVision.js`).
+   Informs, never blocks — no focus ring, no button, just a quieter row than `.menu-item` that a player reads
+   or ignores. Its `#f6c21b` accent is the catalogue's existing yellow (already used above by
+   `.controls-card-row--yellow`), reused rather than a new hex chosen for this one row. The copy itself
+   (`matchSetup.js`'s `COLOUR_NOTE_COPY`) is provisional pending #184; this is only the note's presentation
+   and is correct whatever that ruling turns out to be. */
+.colour-safety-note {
+  padding: 0.6rem 1rem;
+  border-radius: 0.6rem;
+  border-left: 0.35rem solid #f6c21b;
+  background: rgba(246, 194, 27, 0.12);
+  font-size: 0.85rem;
+  font-weight: 600;
+  line-height: 1.4;
+  text-align: left;
+}
+
+.colour-safety-note[hidden] {
+  display: none;
+}
+
 /* KI-10-02: the match-setup controls card (`DESIGN-DECISIONS §3` "Controls card on match setup"). Two rows,
    each naming a player's keys and coloured to match the snake it describes via a left border — the same
    colour-cue pattern `.hud-player--p1`/`--p2` already use above, except keyed by the colour's own catalogue

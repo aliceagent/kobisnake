@@ -2,9 +2,15 @@
 import { describe, expect, it } from 'vitest';
 import { SETTINGS } from '../../../src/core/settings.js';
 import {
+  MIN_COLOUR_DIFFERENCE,
+  worstCaseColourDifference,
+} from '../../../src/render/colourVision.js';
+import { snakeColorHex } from '../../../src/render/materials.js';
+import {
   MUSIC_TRACKS,
   changeMatchLength,
   changeMusicTrack,
+  checkColourSafety,
   controlsCardLabel,
   pickPlayerColor,
   togglePowerUps,
@@ -133,8 +139,66 @@ describe('controlsCardLabel — KI-10-02', () => {
     expect(controlsCardLabel(2, 'blue')).toContain('PLAYER 2');
   });
 
-  it('KI-10-02 AC1: names each player\'s own keys', () => {
+  it("KI-10-02 AC1: names each player's own keys", () => {
     expect(controlsCardLabel(1, 'red')).toContain('W A S D');
     expect(controlsCardLabel(2, 'blue')).toContain('ARROW KEYS');
+  });
+});
+
+/**
+ * KI-15-02 · `checkColourSafety` (issue #192, from KI-15-01/#191, tracked on #184). Pure-function proof that
+ * the check and the "nearest passing alternative" computation are correct, independent of any DOM — the same
+ * split `pickPlayerColor`'s own tests above already establish for this file. Every assertion here binds to
+ * `failing`/`recommendedColor`, never to `COLOUR_NOTE_COPY`'s sentence, which is provisional pending #184
+ * (`matchSetup.js`'s own doc comment on that constant).
+ */
+describe('checkColourSafety — KI-15-02 AC1', () => {
+  it('KI-15-02 AC1: a passing pair (the shipping default, red/blue) reports no note', () => {
+    const matchSettings = { ...BASE_SETTINGS, colors: { 1: 'red', 2: 'blue' } };
+    const result = checkColourSafety(matchSettings, ['red', 'blue']);
+    expect(result).toEqual({ failing: false, recommendedColor: null });
+  });
+
+  it("KI-15-02 AC1: a failing pair (red/green, KI-15-01's own recorded waiver at 9.88) reports the note", () => {
+    const matchSettings = { ...BASE_SETTINGS, colors: { 1: 'red', 2: 'green' } };
+    // The same instrument the note is built on, asserted directly so this test cannot silently drift from
+    // what `checkColourSafety` actually measures.
+    expect(
+      worstCaseColourDifference(snakeColorHex('red', SETTINGS), snakeColorHex('green', SETTINGS)),
+    ).toBeLessThan(MIN_COLOUR_DIFFERENCE);
+
+    const result = checkColourSafety(matchSettings, ['red', 'blue', 'green']);
+    expect(result.failing).toBe(true);
+  });
+
+  it('KI-15-02: the recommended colour is the best-separated owned alternative that actually passes, not merely the first one tried', () => {
+    // Owned pool deliberately includes a colour worse than the eventual answer (`green`, which itself fails
+    // against red) so "first owned colour other than mine" would get this wrong.
+    const matchSettings = { ...BASE_SETTINGS, colors: { 1: 'red', 2: 'green' } };
+    const result = checkColourSafety(matchSettings, ['red', 'blue', 'green']);
+    expect(result.failing).toBe(true);
+    expect(result.recommendedColor).toBe('blue');
+  });
+
+  it('KI-15-02: recommends nothing — not a fallback — when no owned colour clears the check', () => {
+    // Only `red` and `green` owned, and `red`/`green` is itself the failing pair: there is no alternative to
+    // recommend, and the ticket is explicit that this case invents none.
+    const matchSettings = { ...BASE_SETTINGS, colors: { 1: 'red', 2: 'green' } };
+    const result = checkColourSafety(matchSettings, ['red', 'green']);
+    expect(result).toEqual({ failing: true, recommendedColor: null });
+  });
+
+  it("KI-15-02: only the *landing* colour matters — player 1's own colour is never recommended to player 2", () => {
+    const matchSettings = { ...BASE_SETTINGS, colors: { 1: 'red', 2: 'green' } };
+    const result = checkColourSafety(matchSettings, ['red', 'blue', 'green', 'orange']);
+    expect(result.recommendedColor).not.toBe('red');
+  });
+
+  it('KI-15-02: prove the check can go red — a pair just under the threshold is rejected by construction', () => {
+    // `gold`/`yellow`, the worst pair unwaived at 4.29 (`colourVision.test.js`), run through this file's own
+    // wrapper rather than the rule test's — proves `checkColourSafety` itself, not only `colourVision.js`,
+    // can report `failing: true`.
+    const matchSettings = { ...BASE_SETTINGS, colors: { 1: 'gold', 2: 'yellow' } };
+    expect(checkColourSafety(matchSettings, ['gold', 'yellow']).failing).toBe(true);
   });
 });
