@@ -1,5 +1,6 @@
 // @ts-check
 import { DIRECTIONS } from '../core/grid.js';
+import { STATES } from './gameStateMachine.js';
 
 /**
  * `window.__kobi` (KS-03-06, `ARCHITECTURE §11`): a small, deterministic remote control for Playwright,
@@ -91,7 +92,19 @@ import { DIRECTIONS } from '../core/grid.js';
  *   steps to a state boundary in a loop and only wants a frame at the end (KS-06-06).
  * @property {() => number} getTimeScale - the loop's `timeScale` right now: 1 in ordinary play, 0.25 inside
  *   the crash slow-mo beat, 0 while paused.
- * @property {() => object | null} getSnapshot - `session.getSim()?.getState() ?? null`.
+ * @property {() => object | null} getSnapshot - `session.getSim()?.getState() ?? null`, **except in
+ *   `MATCH_OVER`, where it is `null` even though `session.getSim()` itself is not** (KI-03-06,
+ *   `ARCHITECTURE §11`). `session.js` only clears its `sim` in `showMainMenu()`, so the round that just
+ *   finished survives, unchanged, all the way through the match-over screen — `getSnapshot()` is the one
+ *   caller for which that matters: a spec stepping "while the clock is still short of T" reads a
+ *   `timeRemaining` that stopped moving the instant the round ended, so the loop never terminates on its own
+ *   (`docs/qa/reports/2026-09-07-agent-qa-pass.md` finding F5). Every other state with no live round
+ *   (`MAIN_MENU`, `MATCH_SETUP`) already answers `null` here because `sim` genuinely is `null` there;
+ *   `MATCH_OVER` was the one gap, so this checks `getState()` rather than adding any new state to track.
+ *   `__kobi.sim` below is deliberately left alone — it stays the live getter it always was, still serving the
+ *   finished round's numbers, because `tests/e2e/pause.spec.js` and `tests/e2e/tuning.spec.js` read
+ *   `__kobi.sim.tick` / `__kobi.sim.settings` and a spec that genuinely wants the finished round's figures
+ *   while MATCH_OVER is up still needs a supported way to ask for them.
  * @property {(player: 1 | 2, dir: Direction | DirectionName) => void} pressKey
  * @property {(player: number) => {x: number, y: number, z: number}} getHeadWorldPosition
  * @property {() => number} getDrawCalls - see {@link TestHooksRenderer.getDrawCalls}.
@@ -298,7 +311,15 @@ export function createTestHooks({ session, renderer, eventTarget, KeyboardEventC
     getTimeScale() {
       return session.getTimeScale();
     },
+    /**
+     * KI-03-06 (`ARCHITECTURE §11`): `null` once the state machine is in `MATCH_OVER`, even though
+     * `session.getSim()` still answers with the finished round — see this method's own doc comment on the
+     * `KobiTestHooks` typedef above for the reasoning and finding F5 it fixes. Checked here rather than in
+     * `session.js`: `session.getSim()` is the session's live round accessor, and other callers (this file's
+     * own `sim` getter included) depend on it still returning that round.
+     */
     getSnapshot() {
+      if (session.getState() === STATES.MATCH_OVER) return null;
       return session.getSim()?.getState() ?? null;
     },
     pressKey,

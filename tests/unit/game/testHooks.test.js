@@ -199,6 +199,21 @@ describe('KS-03-06 createTestHooks', () => {
 
       expect(hooks.getSnapshot()).toBeNull();
     });
+
+    it('KI-03-06 AC1: getSnapshot returns null once the match is over, even though the round survives', () => {
+      const { hooks, session } = buildHooks();
+      const state = { tick: 900, timeRemaining: 0 };
+      // The finished round is still there — `session.js` only clears `sim` in `showMainMenu()` — so a naive
+      // `session.getSim()?.getState() ?? null` would keep answering with it here. `getState()` is what tells
+      // the two apart.
+      session.getSim.mockReturnValue({ getState: () => state });
+      session.getState.mockReturnValue('MATCH_OVER');
+
+      expect(hooks.getSnapshot()).toBeNull();
+      // The ruling this ticket makes is `getSnapshot()` only: `__kobi.sim` keeps serving the finished round.
+      expect(hooks.sim).toEqual({ getState: expect.any(Function) });
+      expect(hooks.sim?.getState()).toBe(state);
+    });
   });
 
   describe('KS-03-06 AC2: fastForward drives the session, not the renderer, in between', () => {

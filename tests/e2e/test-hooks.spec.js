@@ -1,7 +1,7 @@
 // @ts-check
 import { expect, test } from '@playwright/test';
 import { DEFAULT_QUERY } from '../../playwright.config.js';
-import { startMatchInPage } from './helpers.js';
+import { crashPlayerOneInPage, startMatchInPage } from './helpers.js';
 
 /**
  * KS-03-06: test hooks (`window.__kobi`, `ARCHITECTURE §11`).
@@ -108,5 +108,42 @@ test.describe('KS-03-06 test hooks', () => {
     });
 
     expect(labels).toEqual(['3', '2', '1', 'GO']);
+  });
+
+  test('KI-03-06 AC1: getSnapshot() returns null once the match is over', async ({ page }) => {
+    await page.goto(DEFAULT_QUERY);
+
+    // Best of 1 (`tests/e2e/match-flow.spec.js`'s own KS-05-05 Bo1 test drives it the same way): a single
+    // scripted crash already decides the match, so `crashPlayerOneInPage` lands straight on the scoreboard
+    // with `match.isOver()` true and one `fastForward` past `scoreboardSeconds` (2.5 s, `DESIGN-DECISIONS
+    // §2.6`) reaches MATCH_OVER directly — no second round, no new route.
+    const started = await page.evaluate(() => {
+      const kobi = /** @type {any} */ (globalThis).__kobi;
+      kobi.startMatch({ bestOf: 1 });
+      for (let i = 0; i < 60 && kobi.getState() === 'COUNTDOWN'; i += 1) kobi.advance(0.1);
+      kobi.fastForward(0);
+      return kobi.getState();
+    });
+    expect(started).toBe('PLAYING');
+
+    const round = await page.evaluate(crashPlayerOneInPage);
+    expect(round.state).toBe('ROUND_OVER');
+    expect(round.match.isOver).toBe(true);
+
+    const observed = await page.evaluate(() => {
+      const kobi = /** @type {any} */ (globalThis).__kobi;
+      kobi.fastForward(3); // scoreboardSeconds is 2.5 (`DESIGN-DECISIONS §2.6`)
+      return {
+        state: kobi.getState(),
+        snapshot: kobi.getSnapshot(),
+        // The half of the ruling most likely to be undone by accident: `__kobi.sim` must still be the
+        // finished round, not `null` — only `getSnapshot()` changed (KI-03-06).
+        simIsNull: kobi.sim === null,
+      };
+    });
+
+    expect(observed.state).toBe('MATCH_OVER');
+    expect(observed.snapshot).toBeNull();
+    expect(observed.simIsNull).toBe(false);
   });
 });
