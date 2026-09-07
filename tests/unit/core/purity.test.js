@@ -70,6 +70,36 @@ const FORBIDDEN_FORMS = [
 ];
 
 /**
+ * The aliasing form each `no-restricted-globals` entry exists for: `const p = performance; p.now()` never
+ * writes the member expression `performance.now`/`Date.now` the property rule matches on, so it is the one
+ * form in this file that only `no-restricted-globals` reports — every `FORBIDDEN_FORMS` case above is also
+ * covered (redundantly) by `no-restricted-properties` or `no-restricted-syntax`. Kept as its own table,
+ * rather than folded into `FORBIDDEN_FORMS`, because these two cases exist specifically to give
+ * `no-restricted-globals` a test of its own.
+ *
+ * @type {{name: string, code: string, ruleId: string, message: string}[]}
+ */
+const ALIAS_FORMS = [
+  {
+    name: 'aliased performance (const p = performance; p.now())',
+    code: 'export function f() { const p = performance; return p.now(); }\n',
+    ruleId: 'no-restricted-globals',
+    message:
+      "Unexpected use of 'performance'. src/core must be deterministic: do not reach for the ambient performance clock at all, not even through an alias (ARCHITECTURE §4, KI-09-03) — time is counted in whole simulation ticks.",
+  },
+  {
+    name: 'aliased Date (const D = Date; D.now())',
+    code: 'export function f() { const D = Date; return D.now(); }\n',
+    ruleId: 'no-restricted-globals',
+    message:
+      "Unexpected use of 'Date'. src/core must be deterministic: do not reach for the ambient Date clock at all, not even through an alias (ARCHITECTURE §4, KI-09-03) — time is counted in whole simulation ticks.",
+  },
+];
+
+/** Every case AC1 and AC3 exercise, in both directions — the four forbidden forms plus the two alias forms. */
+const ALL_FORMS = [...FORBIDDEN_FORMS, ...ALIAS_FORMS];
+
+/**
  * Lints `code` as though it lived at `relativePath` (a virtual file — it need not exist on disk; ESLint's
  * flat-config `files` globs match against the path alone) using the repository's real, committed
  * `eslint.config.js`.
@@ -86,7 +116,7 @@ async function lintSnippetAt(code, relativePath) {
 
 describe('KI-09-03 guards against ambient state', () => {
   describe('AC1 the lint rule fires on ambient-state access in src/core', () => {
-    for (const form of FORBIDDEN_FORMS) {
+    for (const form of ALL_FORMS) {
       it(`KI-09-03 AC1: ${form.name} in src/core is reported by the real eslint.config.js`, async () => {
         const messages = await lintSnippetAt(form.code, 'src/core/__purity_check__.js');
         const match = messages.find((message) => message.ruleId === form.ruleId);
@@ -97,9 +127,10 @@ describe('KI-09-03 guards against ambient state', () => {
       });
     }
 
-    it('KI-09-03 AC1: a deliberately added Math.random() in a real src/core file is reported the same way', async () => {
-      // The PR's red-run evidence adds this to an actual src/core file and reverts it; this test proves the
-      // same thing without ever leaving src/ dirty — it lints the identical statement, only as a snippet.
+    it('KI-09-03 AC1: Math.random() linted at a real src/core file path (src/core/grid.js) is reported the same way', async () => {
+      // The PR's red-run evidence adds this statement to the actual src/core/grid.js and reverts it; this
+      // test proves the same thing without ever leaving src/ dirty — it lints the identical statement as a
+      // snippet, only *at* grid.js's path rather than inside the committed file itself.
       const messages = await lintSnippetAt(
         'export const cell = { x: 0, y: 0 };\nexport function jitter() { return Math.random(); }\n',
         'src/core/grid.js',
@@ -109,7 +140,7 @@ describe('KI-09-03 guards against ambient state', () => {
   });
 
   describe('AC3 the rule is scoped to src/core only', () => {
-    for (const form of FORBIDDEN_FORMS) {
+    for (const form of ALL_FORMS) {
       it(`KI-09-03 AC3: ${form.name} is not reported in src/game`, async () => {
         const messages = await lintSnippetAt(form.code, 'src/game/__purity_check__.js');
         expect(messages.find((message) => message.ruleId === form.ruleId)).toBeUndefined();

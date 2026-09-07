@@ -90,15 +90,33 @@ export default [
             'src/core must be deterministic: time is counted in whole simulation ticks, never read from `new Date` (ARCHITECTURE §4, KI-09-03).',
         },
       ],
-      // Closes the one gap `no-restricted-properties` leaves open: `const { now } = performance` reads the
-      // same ambient clock without ever writing the member expression `performance.now` the property rule
-      // matches on. Restricting the bare global itself catches that and any other access through it.
+      // Closes the *aliasing* gap the two rules above leave open: `const p = performance; p.now()` (or the
+      // same for `Date`) never writes the member expression `performance.now`/`Date.now` those rules match
+      // on, so restricting the bare globals themselves is what catches it. (Destructuring, e.g.
+      // `const { now } = performance`, is not actually this gap — `no-restricted-properties` already flags
+      // that on its own; this block being the only place both rules fire is aliasing, not destructuring.)
+      // `Date` is listed here for the same reason `performance` is: an alias walks around
+      // `no-restricted-syntax`'s `new Date` check and `no-restricted-properties`'s `Date.now` check exactly
+      // the same way, and there is no reason to guard one ambient clock against aliasing and not the other.
+      //
+      // What neither this nor the two rules above can catch: an indirection that never names `performance`
+      // or `Date` as an identifier at all, e.g. `globalThis.performance.now()` or a value smuggled in through
+      // a parameter. No static rule can chase every such path. The complementary guard is AC2's test
+      // (`tests/unit/core/purity.test.js`): it does not care how a call to the ambient clock is spelled,
+      // only whether one is ever actually made, by replacing the real globals with throwing stubs and
+      // running a full round. The lint rule catches the common, nameable forms early and cheaply, at every
+      // save; the throwing-stub test is the backstop that would still catch a form the lint rule cannot name.
       'no-restricted-globals': [
         'error',
         {
           name: 'performance',
           message:
-            'src/core must be deterministic: do not reach for the ambient performance clock at all, not even via destructuring (ARCHITECTURE §4, KI-09-03) — time is counted in whole simulation ticks.',
+            'src/core must be deterministic: do not reach for the ambient performance clock at all, not even through an alias (ARCHITECTURE §4, KI-09-03) — time is counted in whole simulation ticks.',
+        },
+        {
+          name: 'Date',
+          message:
+            'src/core must be deterministic: do not reach for the ambient Date clock at all, not even through an alias (ARCHITECTURE §4, KI-09-03) — time is counted in whole simulation ticks.',
         },
       ],
     },
