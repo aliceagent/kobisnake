@@ -48,6 +48,62 @@ export default [
     },
   },
   {
+    // KI-09-03 (`docs/sprints/improvement-09-determinism-across-browsers.md`): `src/core` is the pure
+    // simulation (`ARCHITECTURE §4` — integer ticks, a seeded RNG) that every golden log, replay fixture, bot
+    // matrix and `?seed=1` visual baseline is proved against. That proof only holds if the same seed and the
+    // same input log always produce the same event log, which is false the moment anything in here reads
+    // ambient time or randomness instead of the tick counter and `src/core/rng.js`'s seeded `Rng`. These three
+    // built-in rules (no plugin, no new dependency) forbid the four ways that could happen: `Math.random` as
+    // an unseeded second source of randomness, and `Date.now`, `performance.now` and `new Date` as sources of
+    // wall-clock time. Scoped to `src/core` only — `src/game` and `src/render` legitimately use timers
+    // (`src/game/loop.js`, `src/game/input.js`, `src/game/session.js`'s default match seed, …).
+    files: ['src/core/**/*.js'],
+    rules: {
+      'no-restricted-properties': [
+        'error',
+        {
+          object: 'Math',
+          property: 'random',
+          message:
+            'src/core must be deterministic: all randomness goes through the seeded Rng in src/core/rng.js, never Math.random (ARCHITECTURE §4, KI-09-03).',
+        },
+        {
+          object: 'Date',
+          property: 'now',
+          message:
+            'src/core must be deterministic: time is counted in whole simulation ticks, never read from Date.now (ARCHITECTURE §4, KI-09-03).',
+        },
+        {
+          object: 'performance',
+          property: 'now',
+          message:
+            'src/core must be deterministic: time is counted in whole simulation ticks, never read from performance.now (ARCHITECTURE §4, KI-09-03).',
+        },
+      ],
+      // `no-restricted-properties` only sees `Date.now(...)` written as a member access; `new Date(...)` is a
+      // different syntax node (a NewExpression, not a MemberExpression) and needs its own rule to catch it.
+      'no-restricted-syntax': [
+        'error',
+        {
+          selector: 'NewExpression[callee.name="Date"]',
+          message:
+            'src/core must be deterministic: time is counted in whole simulation ticks, never read from `new Date` (ARCHITECTURE §4, KI-09-03).',
+        },
+      ],
+      // Closes the one gap `no-restricted-properties` leaves open: `const { now } = performance` reads the
+      // same ambient clock without ever writing the member expression `performance.now` the property rule
+      // matches on. Restricting the bare global itself catches that and any other access through it.
+      'no-restricted-globals': [
+        'error',
+        {
+          name: 'performance',
+          message:
+            'src/core must be deterministic: do not reach for the ambient performance clock at all, not even via destructuring (ARCHITECTURE §4, KI-09-03) — time is counted in whole simulation ticks.',
+        },
+      ],
+    },
+  },
+  {
     files: ['*.config.js'],
     languageOptions: {
       ecmaVersion: 2022,
