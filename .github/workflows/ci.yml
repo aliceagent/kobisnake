@@ -132,18 +132,28 @@ jobs:
       # overwrite the first's report before it could be uploaded. `continue-on-error` on both lets
       # the visual suite still run (and its report still get produced) even if e2e fails first, so a
       # single failing suite doesn't hide the other's result; the step after fails the job for real.
+      #
+      # Two sequential steps in one job, never two jobs: two Playwright suites at once corrupt both (#86).
+      # Both go through `scripts/run-playwright-suite.mjs` (via their npm scripts), whose container-wide lock
+      # is what enforces that rather than this comment (KI-03-05 AC2).
+      #
+      # `--reporter=github,html` added by KI-03-05. `continue-on-error: true` means these steps report
+      # `success` in the API even when the suite failed, so the only machine-readable trace of *what* went
+      # wrong is a check-run annotation — the job log and the artifact both redirect to blob storage that the
+      # egress proxy refuses, which cost one agent session an hour of reproducing a failure it could not
+      # read. The `github` reporter emits those annotations; `html` still produces the report uploaded below.
       - name: e2e
         id: e2e
         continue-on-error: true
         env:
           PLAYWRIGHT_HTML_REPORT: playwright-report/e2e
-        run: npm run test:e2e
+        run: npm run test:e2e -- --reporter=github,html
       - name: visual
         id: visual
         continue-on-error: true
         env:
           PLAYWRIGHT_HTML_REPORT: playwright-report/visual
-        run: npm run test:visual
+        run: npm run test:visual -- --reporter=github,html
       - name: Fail the job if either suite failed
         if: steps.e2e.outcome == 'failure' || steps.visual.outcome == 'failure'
         run: |
