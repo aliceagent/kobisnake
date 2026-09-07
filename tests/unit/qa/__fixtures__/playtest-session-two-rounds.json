@@ -1,7 +1,7 @@
 {
   "kind": "kobisnake-playtest-session",
   "schemaVersion": 1,
-  "exportedAt": "2026-09-07T21:07:41.725Z",
+  "exportedAt": "2026-09-07T23:13:49.252Z",
   "matchSettings": {
     "bestOf": 1,
     "powerUpsEnabled": true,
@@ -21,10 +21,10 @@
         "kind": "end-of-session"
       }
     },
-    "V3": {
-      "id": "V3",
-      "section": 3,
-      "question": "Long snakes",
+    "R1": {
+      "id": "R1",
+      "section": 6,
+      "question": "\"Does 90 s feel right?\"",
       "answerType": "yes-no",
       "trigger": {
         "kind": "end-of-session"
@@ -153,7 +153,7 @@
         "settingsOverrides": {},
         "inputs": [
           {
-            "t": 0.2916666666666667,
+            "t": 0.3,
             "player": "p1",
             "dir": "UP"
           }
@@ -241,7 +241,7 @@
       "skipped": false
     },
     {
-      "questionId": "V3",
+      "questionId": "R1",
       "player": "P1",
       "value": "yes",
       "skipped": false

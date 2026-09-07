@@ -2,7 +2,6 @@
 import { createSession } from './game/session.js';
 import { createTestHooks } from './game/testHooks.js';
 import { createGameplayRenderer } from './render/renderer.js';
-import { createPlaytestPrompt } from './ui/screens/playtestPrompt.js';
 import { createTuningScreen } from './ui/screens/tuning.js';
 import { createUi } from './ui/ui.js';
 
@@ -97,17 +96,29 @@ if (isTuningEnabled) {
 // KI-11-02: the between-round playtest prompt, gated the same way as `__kobi` and the tuning overlay above —
 // `?playtest=1` (a human running a Gate session on a real deploy can add it) or a dev server, never a plain
 // production load. AC1 needs the prompt's DOM node genuinely absent otherwise, not merely hidden, so — like
-// the other two — the gate has to guard the `createPlaytestPrompt` call itself; `playtestPrompt.js` never
-// reads `window.location` or `import.meta` itself. `session.setPlaytestPrompt` is KI-11-02's own nullable
-// seam (`session.js`'s header note): a normal load never calls it, so `session.js` never has a prompt to ask.
+// the other two — the gate has to guard the construction itself; `playtestPrompt.js` never reads
+// `window.location` or `import.meta`. `session.setPlaytestPrompt` is KI-11-02's own nullable seam
+// (`session.js`'s header note): a normal load never calls it, so `session.js` never has a prompt to ask.
+//
+// **KI-11-05: the import is dynamic, and that is the point of the ticket.** A static `import` put
+// `playtestPrompt.js` and the two `src/qa/` modules it pulls in — about 55 kB of source — into the entry
+// chunk, so every normal player downloaded the whole capture mode and then never ran a line of it. "A normal
+// load is unaffected" has to be true of the download as well as of the DOM. `import()` moves all three into
+// their own chunk that only this branch ever asks for, which is why the offline check still passes with the
+// flag on (the chunk is same-origin, served by the same static host as everything else) and why a plain load
+// makes no request for it at all. Both halves are asserted in `tests/e2e/playtest-bundle.spec.js`.
+//
+// Top-level `await` rather than `.then()`: `session.start()` below fires the first `ui.show()`, and the
+// prompt must be registered before any round can end. `build.target` is `es2022`, so this compiles to a real
+// top-level await rather than being downlevelled.
 // @ts-expect-error import.meta.env is Vite's own addition; not present in this project's jsconfig types.
 const isPlaytestEnabled = import.meta.env.DEV || window.location.search.includes('playtest=1');
 if (isPlaytestEnabled) {
-  // KI-11-03 (declared outside its own `Files:` list; see the PR description): `getReplay` is what lets
-  // `offer()` snapshot the round that just ended at the exact moment `session.js` calls it, before the next
-  // `startRound()` can reset the logs `getReplay()` reads (tech-lead note 1 on issue #162) — the same
-  // `session.getReplay()` the tuning overlay above is already wired to. `getMatchSettings` is read fresh on
-  // every EXPORT click rather than captured once here.
+  const { createPlaytestPrompt } = await import('./ui/screens/playtestPrompt.js');
+  // KI-11-03: `getReplay` is what lets `offer()` snapshot the round that just ended at the exact moment
+  // `session.js` calls it, before the next `startRound()` can reset the logs `getReplay()` reads (tech-lead
+  // note 1 on issue #162) — the same `session.getReplay()` the tuning overlay above is already wired to.
+  // `getMatchSettings` is read fresh on every EXPORT click rather than captured once here.
   const playtestPrompt = createPlaytestPrompt(uiRoot, {
     getReplay: () => session.getReplay(),
     getMatchSettings: () => session.getMatchSettings(),
@@ -115,8 +126,8 @@ if (isPlaytestEnabled) {
   session.setPlaytestPrompt(playtestPrompt);
   // Test-only: `getAnswers()` is plain data (KI-11-02's own contract), so it survives `page.evaluate`'s
   // structured clone with nothing to adapt — extending the already-gated `__kobi` here, rather than touching
-  // `testHooks.js` (outside this ticket's `Files:` list), is what lets `tests/e2e/playtest-prompt.spec.js`
-  // read collected answers without this file reaching into the prompt's DOM.
+  // `testHooks.js`, is what lets `tests/e2e/playtest-prompt.spec.js` read collected answers without this
+  // file reaching into the prompt's DOM.
   if (isDevOrTest) {
     /** @type {any} */ (window).__kobi.getPlaytestAnswers = () => playtestPrompt.getAnswers();
   }

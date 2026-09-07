@@ -1283,7 +1283,12 @@ describe('KI-11-02 the playtest prompt seam', () => {
 
     expect(prompt.offer).toHaveBeenCalledTimes(1);
     expect(prompt.offer).toHaveBeenCalledWith(
-      { roundsPlayed: 1, laserPhaseSeen: true, sessionOver: false },
+      {
+        roundsPlayed: 1,
+        laserPhaseSeen: true,
+        sessionOver: false,
+        practiceExists: false,
+      },
       0,
     );
   });
@@ -1295,7 +1300,12 @@ describe('KI-11-02 the playtest prompt seam', () => {
     playTo(session, { bestOf: 3 });
     crashPlayerOne(session, target); // dies at 2.0s; the default laserStartTime never comes due that early
     expect(prompt.offer).toHaveBeenCalledWith(
-      { roundsPlayed: 1, laserPhaseSeen: false, sessionOver: false },
+      {
+        roundsPlayed: 1,
+        laserPhaseSeen: false,
+        sessionOver: false,
+        practiceExists: false,
+      },
       0,
     );
   });
@@ -1320,7 +1330,12 @@ describe('KI-11-02 the playtest prompt seam', () => {
 
     crashPlayerOne(session, target); // round 2: a short crash, nowhere near this round's own laser phase
     expect(prompt.offer).toHaveBeenLastCalledWith(
-      { roundsPlayed: 2, laserPhaseSeen: true, sessionOver: false },
+      {
+        roundsPlayed: 2,
+        laserPhaseSeen: true,
+        sessionOver: false,
+        practiceExists: false,
+      },
       1,
     );
   });
@@ -1332,7 +1347,12 @@ describe('KI-11-02 the playtest prompt seam', () => {
     playTo(session, { bestOf: 1 });
     crashPlayerOne(session, target);
     expect(prompt.offer).toHaveBeenCalledWith(
-      { roundsPlayed: 1, laserPhaseSeen: false, sessionOver: true },
+      {
+        roundsPlayed: 1,
+        laserPhaseSeen: false,
+        sessionOver: true,
+        practiceExists: false,
+      },
       0,
     );
   });
@@ -1346,7 +1366,12 @@ describe('KI-11-02 the playtest prompt seam', () => {
     playTo(session, { bestOf: 1 });
     crashPlayerOne(session, target);
     expect(prompt.offer).toHaveBeenLastCalledWith(
-      { roundsPlayed: 1, laserPhaseSeen: false, sessionOver: true },
+      {
+        roundsPlayed: 1,
+        laserPhaseSeen: false,
+        sessionOver: true,
+        practiceExists: false,
+      },
       0,
     );
     runFrames(session, SETTINGS.scoreboardSeconds + 0.05, 6);
@@ -1362,7 +1387,12 @@ describe('KI-11-02 the playtest prompt seam', () => {
 
     crashPlayerOne(session, target); // match 2's round 1 — the session's *second* round overall
     expect(prompt.offer).toHaveBeenLastCalledWith(
-      { roundsPlayed: 2, laserPhaseSeen: false, sessionOver: true },
+      {
+        roundsPlayed: 2,
+        laserPhaseSeen: false,
+        sessionOver: true,
+        practiceExists: false,
+      },
       0,
     );
   });

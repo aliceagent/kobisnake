@@ -458,6 +458,20 @@ export function createSession({
   let laserPhaseSeen = false;
 
   /**
+   * KI-11-05 (#169): whether this build has practice mode at all — `RoundFacts.practiceExists`.
+   *
+   * `V3`'s procedure is "Grow both snakes past 15 segments in **practice mode**", and `G2`'s entire pass
+   * condition is "See V3." Practice mode is Sprint 15 (`docs/sprints/README.md`); until it lands there is no
+   * way for two humans to perform either, so `?playtest=1` must not put them. Before Improvement 11 a
+   * facilitator skipped a row that did not apply — removing the facilitator means writing that rule down.
+   *
+   * A plain constant rather than a feature probe on purpose: `src/modes/practice.js` does not exist yet, so
+   * there is nothing to probe, and a constant is greppable. **Sprint 15 flips this to `true`** and the two
+   * questions start being asked with no other change.
+   */
+  const practiceExists = false;
+
+  /**
    * KI-11-02's `RoundFacts.roundsPlayed`, counted across the whole session — every match this
    * `createSession` call ever plays, never reset at a match boundary. `MatchState.roundsPlayed` (`match.js`)
    * is the wrong source for this: it starts a fresh `0` every `createMatch()` call in {@link startMatchState},
@@ -585,7 +599,12 @@ export function createSession({
     if (playtestPrompt !== null) {
       const current = /** @type {MatchState} */ (match);
       playtestPrompt.offer(
-        { roundsPlayed: sessionRoundsPlayed, laserPhaseSeen, sessionOver: current.isOver() },
+        {
+          roundsPlayed: sessionRoundsPlayed,
+          laserPhaseSeen,
+          sessionOver: current.isOver(),
+          practiceExists,
+        },
         roundIndex,
       );
     }
