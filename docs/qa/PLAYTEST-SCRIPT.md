@@ -5,10 +5,9 @@ check. Requires two humans on one keyboard, the production preview URL, and 30 m
 copy of this file attached to the sprint tracking issue. Every question comes from the GDD playtesting
 checklist (section 9), expanded with a concrete procedure and a pass condition so agents can act on the result.
 
-§2–§8's question tables are generated from `src/qa/playtestQuestions.js` (KI-11-01): that file is the source
-of record, and `tests/unit/qa/playtestQuestions.test.js` parses this document and fails the build the moment
-the two disagree, so edit the data file first and bring this document's wording in line with it, not the
-other way round.
+§2–§8's question tables are generated from `src/qa/playtestQuestions.js` (KI-11-01):
+`tests/unit/qa/playtestQuestions.test.js` parses this document and fails the build the moment the two
+disagree, so they cannot silently drift apart.
 
 ## 1. Setup
 - Browser: Chrome latest, 1080p window, sound on. Note laptop/GPU.

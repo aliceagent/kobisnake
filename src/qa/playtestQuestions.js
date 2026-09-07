@@ -34,7 +34,9 @@ export const ANSWER_TYPES = /** @type {const} */ ({
 /** The three trigger shapes the script's own procedure text produces (tech-lead notes on issue #160):
  * a fixed number of rounds having been played, the laser phase having actually been seen at least once
  * (not merely "a round having happened" — a round that never armed its lasers does not satisfy this), and
- * the end of the session. */
+ * the end of the session. `A2` needs both the first and the second at once — its own procedure names both
+ * "after 5 rounds" and the lasers having come — which {@link AfterRoundTrigger}'s `requiresLaserPhase` flag
+ * expresses without a fourth kind. */
 export const TRIGGER_KINDS = /** @type {const} */ ({
   AFTER_ROUND: 'after-round',
   LASER_PHASE_SEEN: 'laser-phase-seen',
@@ -50,6 +52,11 @@ export const TRIGGER_KINDS = /** @type {const} */ ({
  * @typedef {object} AfterRoundTrigger
  * @property {'after-round'} kind
  * @property {number} roundCount - rounds that must have been played before this question is due
+ * @property {boolean} [requiresLaserPhase] - when true, the round count alone is not enough: the laser phase
+ *   must also have been seen at least once this session. `A2`'s procedure names both conditions in one
+ *   sentence ("did the lasers come too early/late?" *after 5 rounds*) — a round count that never saw a laser
+ *   cannot answer a question about the lasers' timing, so this flag makes that the trigger's actual meaning
+ *   instead of only its round-count half.
  */
 
 /**
@@ -90,9 +97,15 @@ export const TRIGGER_KINDS = /** @type {const} */ ({
  * @property {Trigger} trigger
  */
 
-const afterRound = /** @param {number} roundCount @returns {AfterRoundTrigger} */ (roundCount) => ({
+/**
+ * @param {number} roundCount
+ * @param {{requiresLaserPhase?: boolean}} [options]
+ * @returns {AfterRoundTrigger}
+ */
+const afterRound = (roundCount, options) => ({
   kind: TRIGGER_KINDS.AFTER_ROUND,
   roundCount,
+  ...(options?.requiresLaserPhase ? { requiresLaserPhase: true } : {}),
 });
 
 /** @type {LaserPhaseSeenTrigger} */
@@ -248,7 +261,11 @@ export const PLAYTEST_QUESTIONS = [
     // already writes out in full (tech-lead notes on issue #160).
     answerType: ANSWER_TYPES.CHOICE,
     choices: ['too early', 'too late', 'about right'],
-    trigger: afterRound(5),
+    // The procedure names both conditions in one sentence: "after 5 rounds" AND the lasers having actually
+    // come. A round count alone cannot answer whether the lasers were early or late if nobody saw one
+    // (#119 F3: 14.8% of rounds ever reach 30s, median round 16.0s — five short rounds is the expected
+    // Gate 1 case, not an edge case), so this trigger requires both facts.
+    trigger: afterRound(5, { requiresLaserPhase: true }),
   },
   {
     id: 'A3',
@@ -391,11 +408,30 @@ export function findQuestionById(id) {
 }
 
 /**
+ * Whether a trigger's laser-phase condition can only ever be satisfied by a round that actually saw the
+ * lasers — true for {@link TRIGGER_KINDS.LASER_PHASE_SEEN} and for an {@link AfterRoundTrigger} carrying
+ * `requiresLaserPhase`. Exported so a laser-gated question list (KI-11-02's prompt, or this file's own
+ * tests) can be derived from the data instead of hand-maintained, which is what stops a future §5 question
+ * from being added and quietly missing the same gate `A2` was missing.
+ *
+ * @param {Trigger} trigger
+ * @returns {boolean}
+ */
+export function triggerRequiresLaserPhase(trigger) {
+  return (
+    trigger.kind === TRIGGER_KINDS.LASER_PHASE_SEEN ||
+    (trigger.kind === TRIGGER_KINDS.AFTER_ROUND && trigger.requiresLaserPhase === true)
+  );
+}
+
+/**
  * Whether `trigger` has happened yet, given `facts` about the session so far. Pure and cheap so KI-11-02 can
- * call it every round without keeping its own copy of the rule: an `after-round` trigger only needs enough
- * rounds played; a `laser-phase-seen` trigger needs the lasers to have actually armed at least once — a
- * round that ended before `laserStartTime` never satisfies it, however many rounds have been played; an
- * `end-of-session` trigger needs the match itself to be over.
+ * call it every round without keeping its own copy of the rule: an `after-round` trigger needs enough rounds
+ * played, and — when it also {@link triggerRequiresLaserPhase} — the lasers having actually armed too, since
+ * a round count alone cannot answer a question about the lasers if nobody ever saw one; a `laser-phase-seen`
+ * trigger needs the lasers to have actually armed at least once — a round that ended before `laserStartTime`
+ * never satisfies it, however many rounds have been played; an `end-of-session` trigger needs the match
+ * itself to be over.
  *
  * @param {Trigger} trigger
  * @param {RoundFacts} facts
@@ -404,7 +440,7 @@ export function findQuestionById(id) {
 export function isTriggerDue(trigger, facts) {
   switch (trigger.kind) {
     case TRIGGER_KINDS.AFTER_ROUND:
-      return facts.roundsPlayed >= trigger.roundCount;
+      return facts.roundsPlayed >= trigger.roundCount && (!trigger.requiresLaserPhase || facts.laserPhaseSeen);
     case TRIGGER_KINDS.LASER_PHASE_SEEN:
       return facts.laserPhaseSeen;
     case TRIGGER_KINDS.END_OF_SESSION:

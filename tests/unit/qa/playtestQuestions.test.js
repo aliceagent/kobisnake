@@ -8,6 +8,7 @@ import {
   QUESTION_ID_PATTERN,
   TRIGGER_KINDS,
   isTriggerDue,
+  triggerRequiresLaserPhase,
 } from '../../../src/qa/playtestQuestions.js';
 
 const SCRIPT_PATH = fileURLToPath(
@@ -185,20 +186,51 @@ describe('KI-11-01 playtest question bank', () => {
     expect(isTriggerDue(trigger, at)).toBe(true);
   });
 
-  it('KI-11-01 AC2: a laser-phase question is never due for a round in which the lasers never armed, however many rounds were played', () => {
+  it('KI-11-01 AC2: every laser-gated question is never due for a round in which the lasers never armed, however many rounds were played', () => {
     // This is the real content of AC2, per the tech-lead notes: "no question is asked before its trigger can
-    // have happened" means a round count alone can never satisfy a laser-phase trigger.
-    const laserQuestionIds = ['V2', 'A1', 'A3', 'A4'];
-    for (const id of laserQuestionIds) {
-      const question = PLAYTEST_QUESTIONS.find((q) => q.id === id);
-      expect(question?.trigger.kind).toBe(TRIGGER_KINDS.LASER_PHASE_SEEN);
+    // have happened" means a round count alone can never satisfy a question that is actually about the
+    // lasers. The list of which questions those are is derived from the data via `triggerRequiresLaserPhase`
+    // rather than hand-listed here, so a future §5 question cannot be added and quietly miss this gate the
+    // way `A2` originally did (Opus review, PR #168).
+    const laserGatedQuestions = PLAYTEST_QUESTIONS.filter((question) =>
+      triggerRequiresLaserPhase(question.trigger),
+    );
+    expect(laserGatedQuestions.map((question) => question.id).sort()).toEqual([
+      'A1',
+      'A2',
+      'A3',
+      'A4',
+      'V2',
+    ]);
 
+    for (const question of laserGatedQuestions) {
       const manyRoundsNoLasers = { roundsPlayed: 1000, laserPhaseSeen: false, sessionOver: false };
-      expect(isTriggerDue(/** @type {any} */ (question).trigger, manyRoundsNoLasers)).toBe(false);
+      expect(isTriggerDue(question.trigger, manyRoundsNoLasers)).toBe(false);
 
-      const oneRoundWithLasers = { roundsPlayed: 1, laserPhaseSeen: true, sessionOver: false };
-      expect(isTriggerDue(/** @type {any} */ (question).trigger, oneRoundWithLasers)).toBe(true);
+      // Whatever round count the trigger also asks for (0 for a pure laser-phase trigger; `roundCount` for
+      // an after-round trigger that also requires the laser phase), meeting both halves at once is enough.
+      const roundCount = question.trigger.kind === TRIGGER_KINDS.AFTER_ROUND ? question.trigger.roundCount : 0;
+      const enoughRoundsWithLasers = { roundsPlayed: roundCount, laserPhaseSeen: true, sessionOver: false };
+      expect(isTriggerDue(question.trigger, enoughRoundsWithLasers)).toBe(true);
     }
+  });
+
+  it('KI-11-01 AC2: A2 requires both 5 rounds and the laser phase, not either alone', () => {
+    // A2's own procedure names both conditions in one sentence: "did the lasers come too early/late?" *after
+    // 5 rounds*. Five short rounds that never saw a laser cannot answer a question about the lasers' timing.
+    const a2 = PLAYTEST_QUESTIONS.find((question) => question.id === 'A2');
+    expect(a2).toBeDefined();
+    const trigger = /** @type {import('../../../src/qa/playtestQuestions.js').Trigger} */ (a2?.trigger);
+
+    const fiveRoundsNoLasers = { roundsPlayed: 5, laserPhaseSeen: false, sessionOver: false };
+    expect(isTriggerDue(trigger, fiveRoundsNoLasers)).toBe(false);
+
+    const fiveRoundsWithLasers = { roundsPlayed: 5, laserPhaseSeen: true, sessionOver: false };
+    expect(isTriggerDue(trigger, fiveRoundsWithLasers)).toBe(true);
+
+    // Round count alone is never enough, no matter how far past 5 it goes.
+    const manyRoundsNoLasers = { roundsPlayed: 50, laserPhaseSeen: false, sessionOver: false };
+    expect(isTriggerDue(trigger, manyRoundsNoLasers)).toBe(false);
   });
 
   it('KI-11-01 AC2: an end-of-session question is not due until the session is actually over', () => {
