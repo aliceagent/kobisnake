@@ -327,6 +327,65 @@ body {
   background: rgba(0, 0, 0, 0.4);
 }
 
+/* KI-10-02: the match-setup controls card (`DESIGN-DECISIONS §3` "Controls card on match setup"). Two rows,
+   each naming a player's keys and coloured to match the snake it describes via a left border — the same
+   colour-cue pattern `.hud-player--p1`/`--p2` already use above, except keyed by the colour's own catalogue
+   name (`--red`, `--blue`, …) rather than by player number, since which colour belongs to which player is
+   exactly what this screen lets a player change (`.menu-item` rows above). AC2 ("never rely on colour alone")
+   is met in the DOM text itself (`matchSetup.js`'s `controlsCardLabel`), not by this border — this is only the
+   extra colour cue, never the only one. All eight rows are defined up front from the full §2.7 catalogue
+   (matching `src/core/settings.js`'s own `colors` object) even though only red/blue are owned pre-shop, so a
+   later ticket that widens `ownedColors` needs no CSS change here. */
+.controls-card {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  margin-bottom: 0.5rem;
+}
+
+.controls-card-row {
+  padding: 0.5rem 1rem;
+  border-radius: 0.5rem;
+  border-left: 0.35rem solid transparent;
+  background: rgba(255, 255, 255, 0.06);
+  font-size: 1rem;
+  font-weight: 700;
+  letter-spacing: 0.03em;
+  text-align: left;
+}
+
+.controls-card-row--red {
+  border-left-color: #e3261b;
+}
+
+.controls-card-row--blue {
+  border-left-color: #1f6fe5;
+}
+
+.controls-card-row--green {
+  border-left-color: #2fb44b;
+}
+
+.controls-card-row--yellow {
+  border-left-color: #f6c21b;
+}
+
+.controls-card-row--orange {
+  border-left-color: #f27a1a;
+}
+
+.controls-card-row--purple {
+  border-left-color: #8a3fd1;
+}
+
+.controls-card-row--teal {
+  border-left-color: #12b5b0;
+}
+
+.controls-card-row--gold {
+  border-left-color: #e8b028;
+}
+
 /* The 3·2·1·GO / READY? countdown label (`src/ui/screens/countdown.js`). */
 .countdown-label {
   font-size: 6rem;

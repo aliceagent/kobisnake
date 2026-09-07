@@ -5,6 +5,7 @@ import {
   MUSIC_TRACKS,
   changeMatchLength,
   changeMusicTrack,
+  controlsCardLabel,
   pickPlayerColor,
   togglePowerUps,
 } from '../../../src/ui/screens/matchSetup.js';
@@ -105,5 +106,35 @@ describe('changeMusicTrack', () => {
     }
     settings = changeMusicTrack(settings, 1);
     expect(settings.musicTrack).toBe(MUSIC_TRACKS[0]);
+  });
+});
+
+/**
+ * KI-10-02: the controls card (`DESIGN-DECISIONS §3` "Controls card on match setup"). The copy is approved
+ * verbatim; the colour word must come from the *live* `matchSettings.colors`, never a hardcoded literal,
+ * because this card sits on the very screen that changes those colours (§2.7's swap rule).
+ */
+describe('controlsCardLabel — KI-10-02', () => {
+  it('KI-10-02 AC1: at the shipping defaults renders the approved copy exactly, character for character', () => {
+    // Verbatim strings from DESIGN-DECISIONS §3 — do not paraphrase these in the test either.
+    expect(controlsCardLabel(1, 'red')).toBe('PLAYER 1 · RED — W A S D');
+    expect(controlsCardLabel(2, 'blue')).toBe('PLAYER 2 · BLUE — ARROW KEYS');
+  });
+
+  it('KI-10-02: follows a colour change instead of staying on a stale literal', () => {
+    // Same player, same keys — only the live colour word changes, proving the label is derived from
+    // `matchSettings.colors` and not a hardcoded "RED"/"BLUE".
+    expect(controlsCardLabel(1, 'green')).toBe('PLAYER 1 · GREEN — W A S D');
+    expect(controlsCardLabel(2, 'red')).toBe('PLAYER 2 · RED — ARROW KEYS');
+  });
+
+  it('KI-10-02 AC2: names the player in words, not only via colour', () => {
+    expect(controlsCardLabel(1, 'red')).toContain('PLAYER 1');
+    expect(controlsCardLabel(2, 'blue')).toContain('PLAYER 2');
+  });
+
+  it('KI-10-02 AC1: names each player\'s own keys', () => {
+    expect(controlsCardLabel(1, 'red')).toContain('W A S D');
+    expect(controlsCardLabel(2, 'blue')).toContain('ARROW KEYS');
   });
 });
