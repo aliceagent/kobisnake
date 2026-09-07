@@ -19,7 +19,7 @@ pairing is expected to.
   different day** — every number below comes from fixed seeds through a deterministic simulation
   (`ARCHITECTURE §11`), so re-running the command above should reproduce every other line byte for byte.
   Treat any other line changing as a real discrepancy to investigate, not a maintenance chore to reconcile.
-- **Wall time:** ~100s. Real wall-clock time, reported because it is a fair sense of "how long
+- **Wall time:** ~101s. Real wall-clock time, reported because it is a fair sense of "how long
   does this take to regenerate" — but it is **not** reproducible (a busier machine, a different render
   cadence, a different container all move it) the way the date above is not, and unlike every other number in
   this document, which is a simulated quantity computed from the deterministic seeds. Do not expect this
@@ -84,11 +84,11 @@ This pairing does not reach `MATCH_OVER` on this build — #119 F1: a match made
 
 ## Reading it against F3 and KI-03-02
 
-- **greedy vs greedy** reached the laser phase in 12.0% of rounds here, against the reference figure of 12.0% — this run agrees with it (within 5 points).
-- **survivor vs survivor** reached the laser phase in 100.0% of rounds here, against the reference figure of 100.0% — this run agrees with it (within 5 points).
-- **greedy vs survivor** reached the laser phase in 47.8% of rounds here, against the reference figure of 14.8% — this run **differs from it by 33.0 points** — worth checking the aggregation before trusting this document, per the tech-lead ruling on #122 (report real numbers; a disagreement is a signal to investigate, not to adjust). F3's own figure predates this permanent layer's policies (an unseeded scratch run, before Improvement 03 existed). `survivor.js` (KI-03-02, ruling 5) excludes outright every cell a living opponent's head could reach next, where `tests/sim/bots/survivorBot.js` (behind `gate1-bot-matrix.md`'s own 20.6-31.4% for this nominal pairing) only penalises it — a documented improvement in collision avoidance that predicts longer rounds and a higher laser-phase rate, not a bug in this aggregation.
+- **greedy vs greedy** reached the laser phase in 12.0% of rounds here, against the reference figure of 14.8% — this run agrees with it (within 5 points). F3's figure came from an unseeded scratch run over 27 rounds, before this layer existed; these are 50 seeded rounds through the committed driver. Two independent instruments, neither one calibrated against the other, landing within a few points of each other is the strongest evidence in this document — and it is what the sprint exit criterion "re-running it reproduces the 2026-09-07 findings" asks for.
+- **survivor vs survivor** reached the laser phase in 100.0% of rounds here. No independent reference exists. `tests/sim/bots/survivorBot.js` is a different implementation making a different trade (see greedy vs survivor below), and `tests/agent/policies.spec.js` measures these same policies on these same seeds through this same driver, so checking against it would compare a measurement with itself. Read this row as a baseline for future runs to move against, not as a corroborated figure.
+- **greedy vs survivor** reached the laser phase in 47.8% of rounds here. No F3 figure exists for this pairing — F3 measured greedy vs greedy (see above). The closest committed comparison is `gate1-bot-matrix.md`, where 500 headless rounds of `greedyBot` vs `survivorBot` reach the laser phase in **25.0%** of rounds at the shipping defaults (20.6-31.4% across its variants). This run is materially higher, and the reason is a documented difference in the bots: this layer's `survivor.js` (KI-03-02, ruling 5) **excludes outright** every cell a living opponent's head could reach on its next step, where `survivorBot.js` only *penalises* it. A survivor that dies less often to a head-on drags rounds on longer, so more of them cross the threshold — the expected direction of that change, not a defect in this aggregation. The two numbers measure different bots and should not be expected to match.
 
-F3 called a mechanic four sprints were spent on "absent from most of the game" on a 14.8% laser-phase rate for greedy vs survivor; this run is what makes that number re-measurable on demand rather than trusting a one-off scratch script (`tests/agent/README.md`, KI-03-04's own reason to exist).
+F3 called a mechanic four sprints were spent on "absent from most of the game" on a 14.8% laser-phase rate over greedy-driven matches; this run is what makes that number re-measurable on demand rather than trusting a one-off scratch script (`tests/agent/README.md`, KI-03-04's own reason to exist).
 
 ## Machine-readable data
 

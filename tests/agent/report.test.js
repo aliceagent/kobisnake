@@ -1,6 +1,12 @@
 // @ts-check
 import { describe, expect, it } from 'vitest';
-import { aggregatePairing, aggregateRun, percentile, renderReport } from './report.js';
+import {
+  aggregatePairing,
+  aggregateRun,
+  percentile,
+  renderReport,
+  REFERENCE_LASER_PHASE_RATES,
+} from './report.js';
 
 /**
  * KI-03-04 — `report.js` proved against hand-built fixtures, per the tech-lead ruling on #122 (ruling 1):
@@ -188,11 +194,25 @@ describe('KI-03-04 · aggregateRun', () => {
     const run = aggregateRun({
       meta: { date: '2026-09-07', command: 'npm run test:agent:report', wallSeconds: 120 },
       pairings: [
-        { label: 'greedy vs greedy', seeds: [1, 2], results: [match([round()])], expectFinish: true },
-        { label: 'idle vs idle', seeds: [3], results: [match([round()], { finished: false })], expectFinish: false },
+        {
+          label: 'greedy vs greedy',
+          seeds: [1, 2],
+          results: [match([round()])],
+          expectFinish: true,
+        },
+        {
+          label: 'idle vs idle',
+          seeds: [3],
+          results: [match([round()], { finished: false })],
+          expectFinish: false,
+        },
       ],
     });
-    expect(run.meta).toEqual({ date: '2026-09-07', command: 'npm run test:agent:report', wallSeconds: 120 });
+    expect(run.meta).toEqual({
+      date: '2026-09-07',
+      command: 'npm run test:agent:report',
+      wallSeconds: 120,
+    });
     expect(run.pairings).toHaveLength(2);
     expect(run.pairings[0].label).toBe('greedy vs greedy');
     expect(run.pairings[1].label).toBe('idle vs idle');
@@ -203,7 +223,11 @@ describe('KI-03-04 · renderReport', () => {
   /** @returns {import('./report.js').AggregatedRun} */
   function sampleRun(overrides = {}) {
     return aggregateRun({
-      meta: { date: '2026-09-07', command: 'KI_AGENT_REPORT=1 npm run test:agent:report', wallSeconds: 180 },
+      meta: {
+        date: '2026-09-07',
+        command: 'KI_AGENT_REPORT=1 npm run test:agent:report',
+        wallSeconds: 180,
+      },
       pairings: [
         {
           label: 'greedy vs greedy',
@@ -214,7 +238,11 @@ describe('KI-03-04 · renderReport', () => {
         {
           label: 'idle vs idle',
           seeds: [1],
-          results: [match([round({ result: 'DRAW', endReason: 'TIMEOUT', seconds: 6.3 })], { finished: false })],
+          results: [
+            match([round({ result: 'DRAW', endReason: 'TIMEOUT', seconds: 6.3 })], {
+              finished: false,
+            }),
+          ],
           expectFinish: false,
           maxFrames: 6000,
         },
@@ -297,7 +325,9 @@ describe('KI-03-04 · renderReport', () => {
         {
           label: 'greedy vs greedy',
           seeds: [1],
-          results: [match([round({ reachedLaserPhase: true }), round({ reachedLaserPhase: true })])],
+          results: [
+            match([round({ reachedLaserPhase: true }), round({ reachedLaserPhase: true })]),
+          ],
           expectFinish: true,
         },
       ],
@@ -314,14 +344,27 @@ describe('KI-03-04 · renderReport', () => {
     ];
     const run = aggregateRun({
       meta: { date: '2026-09-07', command: 'x', wallSeconds: 1 },
-      pairings: [{ label: 'greedy vs greedy', seeds: [1], results: [match(rounds)], expectFinish: true }],
+      pairings: [
+        { label: 'greedy vs greedy', seeds: [1], results: [match(rounds)], expectFinish: true },
+      ],
     });
     const markdown = renderReport(run);
     expect(markdown).toContain('agrees with it');
     expect(markdown).not.toContain('differs from it');
   });
 
-  it('KI-03-04 ruling 3: a "greedy vs survivor" disagreement carries its known, investigated explanation', () => {
+  it("KI-03-04: F3's 14.8% belongs to greedy vs greedy, the pairing it was measured on", () => {
+    // The correction this test exists to pin. `docs/qa/reports/2026-09-07-agent-qa-pass.md` §2 describes the
+    // harness F3's number came from as "whole matches with a greedy bot ... **both players driven**" — that
+    // is greedy vs greedy. An earlier draft attached 14.8% to greedy vs survivor, which manufactured a
+    // 33-point "discrepancy" that was never real and hid the one genuine cross-instrument agreement this
+    // layer exists to produce. A future edit that moves it back would pass every other test in this file.
+    expect(REFERENCE_LASER_PHASE_RATES['greedy vs greedy']).toBe(14.8);
+    expect(REFERENCE_LASER_PHASE_RATES['greedy vs survivor']).toBeUndefined();
+    expect(REFERENCE_LASER_PHASE_RATES['survivor vs survivor']).toBeUndefined();
+  });
+
+  it('KI-03-04 ruling 3: "greedy vs survivor" is reported against the matrix, not against F3', () => {
     const run = aggregateRun({
       meta: { date: '2026-09-07', command: 'x', wallSeconds: 1 },
       pairings: [
@@ -340,8 +383,13 @@ describe('KI-03-04 · renderReport', () => {
       ],
     });
     const markdown = renderReport(run);
-    expect(markdown).toContain('differs from it');
-    expect(markdown).toContain("survivor.js` (KI-03-02, ruling 5) excludes outright");
-    expect(markdown).toContain('not a bug in this aggregation');
+    // It still says its own number, and it still says what that number can honestly be read against —
+    // but it does not claim to agree or disagree with a figure measured on a different pairing.
+    expect(markdown).toContain('reached the laser phase in 66.7% of rounds here');
+    expect(markdown).toContain('No F3 figure exists for this pairing');
+    expect(markdown).toContain('gate1-bot-matrix.md');
+    expect(markdown).toContain('excludes outright');
+    expect(markdown).not.toContain('differs from it');
+    expect(markdown).not.toContain('agrees with it');
   });
 });

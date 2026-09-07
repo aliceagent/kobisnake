@@ -217,55 +217,64 @@ export function aggregateRun(run) {
  * #122, ruling 3). Quoted, not re-derived — these are the numbers to check a fresh run *against*, so if this
  * run disagrees materially the right response is to go investigate the aggregation, not to edit these.
  *
- * `"greedy vs survivor"` is F3's own figure (`docs/qa/reports/2026-09-07-agent-qa-pass.md` §3: "4 of 27
- * rounds — 14.8 %"), from an unseeded scratch run predating this harness — a close match here corroborates
- * F3, but the seeds are not identical, so exact equality is not expected. `"greedy vs greedy"` and
- * `"survivor vs survivor"` are KI-03-02's own seeded 20-seed mirrored measurement
- * (`tests/agent/policies.spec.js` AC1) — the same seeds this document's generating script uses for those two
- * pairings, so those two should land close to exact.
+ * **There is exactly one entry, and which pairing it belongs to matters.** F3's "4 of 27 rounds — 14.8 %"
+ * (`docs/qa/reports/2026-09-07-agent-qa-pass.md` §3) was measured on harness 1 of that pass, which §2
+ * describes as "whole matches with a greedy bot … **both players driven**" — that is **greedy vs greedy**,
+ * not greedy vs survivor. An earlier draft of this file attached it to the wrong pairing, which both
+ * manufactured a 33-point "discrepancy" that was never real and hid the one genuine cross-instrument
+ * agreement this whole layer exists to produce.
+ *
+ * The other two pairings deliberately have **no** numeric reference, and the reason is worth stating rather
+ * than leaving as an omission: the only figures available for them come from `tests/agent/policies.spec.js`,
+ * which measures the same policies on the same seeds through the same driver. Checking this document against
+ * those would compare a measurement with itself and always agree — a tautology dressed as corroboration.
+ * {@link REFERENCE_CAVEATS} says what each of them *can* honestly be read against instead.
  *
  * @type {Record<string, number>}
  */
 export const REFERENCE_LASER_PHASE_RATES = Object.freeze({
-  'greedy vs greedy': 12.0,
-  'survivor vs survivor': 100.0,
-  'greedy vs survivor': 14.8,
+  'greedy vs greedy': 14.8,
 });
 
 /** How many percentage points away from a reference figure still counts as "agrees" rather than "differs". */
 const REFERENCE_AGREEMENT_TOLERANCE_POINTS = 5;
 
 /**
- * A known, standing reason a pairing's rate is **expected** to differ materially from its reference figure —
- * printed alongside the mechanical flag so a real, investigated cause is not mistaken for an unexplained
- * discrepancy (tech-lead ruling on #122, ruling 3: "say so and investigate", not "force it to agree").
- *
- * `"greedy vs survivor"` is the one entry so far, and the investigation behind it: F3's own 14.8 % came from
- * an unseeded scratch run that predates this permanent layer's policies entirely — Improvement 03 (this
- * sprint) is what turned that scratch run into `tests/agent/policies/`. `survivor.js` (KI-03-02, its own
- * ruling 5) deliberately **excludes outright** every cell a living opponent's own head could reach on its
- * next step, where `tests/sim/bots/survivorBot.js` (the headless bot behind `gate1-bot-matrix.md`'s
- * comparable-sounding row) only *penalises* that cell in its score. That is a real, documented improvement in
- * collision avoidance, not a defect in this document's aggregation, and it predicts exactly the direction
- * seen: a survivor that dies less often to a head-on collision drags rounds on longer, so more of them cross
- * the laser-phase threshold. A materially higher rate here than F3's original figure is therefore the
- * expected outcome of that change, not by itself evidence of a bug — `gate1-bot-matrix.md`'s own 20.6-31.4 %
- * for the same nominal pairing name (a different, headless bot implementation, run at a much larger sample)
- * is the closer comparison, and still not the same measurement.
+ * What each pairing can honestly be read against, printed beside the mechanical comparison (or, for a pairing
+ * with no numeric reference, instead of one). Tech-lead ruling on #122, ruling 3: "say so and investigate",
+ * never "force it to agree".
  *
  * @type {Record<string, string>}
  */
 export const REFERENCE_CAVEATS = Object.freeze({
+  'greedy vs greedy':
+    "F3's figure came from an unseeded scratch run over 27 rounds, before this layer existed; these are 50 " +
+    'seeded rounds through the committed driver. Two independent instruments, neither one calibrated ' +
+    'against the other, landing within a few points of each other is the strongest evidence in this ' +
+    'document — and it is what the sprint exit criterion "re-running it reproduces the 2026-09-07 findings" ' +
+    'asks for.',
+  'survivor vs survivor':
+    'No independent reference exists. `tests/sim/bots/survivorBot.js` is a different implementation making a ' +
+    'different trade (see greedy vs survivor below), and `tests/agent/policies.spec.js` measures these same ' +
+    'policies on these same seeds through this same driver, so checking against it would compare a ' +
+    'measurement with itself. Read this row as a baseline for future runs to move against, not as a ' +
+    'corroborated figure.',
   'greedy vs survivor':
-    "F3's own figure predates this permanent layer's policies (an unseeded scratch run, before Improvement " +
-    '03 existed). `survivor.js` (KI-03-02, ruling 5) excludes outright every cell a living opponent\'s head ' +
-    'could reach next, where `tests/sim/bots/survivorBot.js` (behind `gate1-bot-matrix.md`\'s own ' +
-    '20.6-31.4% for this nominal pairing) only penalises it — a documented improvement in collision ' +
-    'avoidance that predicts longer rounds and a higher laser-phase rate, not a bug in this aggregation.',
+    'No F3 figure exists for this pairing — F3 measured greedy vs greedy (see above). The closest committed ' +
+    'comparison is `gate1-bot-matrix.md`, where 500 headless rounds of `greedyBot` vs `survivorBot` reach ' +
+    'the laser phase in **25.0%** of rounds at the shipping defaults (20.6-31.4% across its variants). This ' +
+    "run is materially higher, and the reason is a documented difference in the bots: this layer's " +
+    "`survivor.js` (KI-03-02, ruling 5) **excludes outright** every cell a living opponent's head could " +
+    'reach on its next step, where `survivorBot.js` only *penalises* it. A survivor that dies less often to ' +
+    'a head-on drags rounds on longer, so more of them cross the threshold — the expected direction of that ' +
+    'change, not a defect in this aggregation. The two numbers measure different bots and should not be ' +
+    'expected to match.',
 });
 
-const fmtPct = (/** @type {number | null} */ value) => (value === null ? '—' : `${value.toFixed(1)}%`);
-const fmtSeconds = (/** @type {number | null} */ value) => (value === null ? '—' : value.toFixed(1));
+const fmtPct = (/** @type {number | null} */ value) =>
+  value === null ? '—' : `${value.toFixed(1)}%`;
+const fmtSeconds = (/** @type {number | null} */ value) =>
+  value === null ? '—' : value.toFixed(1);
 
 /**
  * One row of the match-level table.
@@ -308,7 +317,17 @@ function roundLevelRow(stats) {
  */
 function referenceComparisonLine(stats) {
   const reference = REFERENCE_LASER_PHASE_RATES[stats.label];
-  if (reference === undefined || stats.laserPhaseReachedRatePct === null) return null;
+  const caveatOnly = REFERENCE_CAVEATS[stats.label];
+  if (stats.laserPhaseReachedRatePct === null) return null;
+  if (reference === undefined) {
+    // No numeric reference, but there is something honest to say about why — which is more useful than
+    // silence, and much more useful than inventing a figure to compare against.
+    if (caveatOnly === undefined) return null;
+    return (
+      `- **${stats.label}** reached the laser phase in ${fmtPct(stats.laserPhaseReachedRatePct)} of rounds ` +
+      `here. ${caveatOnly}`
+    );
+  }
   const actual = stats.laserPhaseReachedRatePct;
   const diff = Math.abs(actual - reference);
   const verdict =
@@ -345,7 +364,9 @@ export function renderReport(run) {
   const totalMatches = pairings.reduce((total, stats) => total + stats.matches, 0);
 
   const seedLines = pairings
-    .map((stats) => `  - **${stats.label}:** ${stats.seeds.join(', ')} (${stats.seeds.length} seeds)`)
+    .map(
+      (stats) => `  - **${stats.label}:** ${stats.seeds.join(', ')} (${stats.seeds.length} seeds)`,
+    )
     .join('\n');
 
   const matchTable = [
@@ -379,18 +400,16 @@ export function renderReport(run) {
           )
           .join('\n');
 
-  const comparisonLines = pairings
-    .map(referenceComparisonLine)
-    .filter((line) => line !== null);
+  const comparisonLines = pairings.map(referenceComparisonLine).filter((line) => line !== null);
   const comparisonSection =
     comparisonLines.length === 0
       ? ''
       : '\n## Reading it against F3 and KI-03-02\n\n' +
         comparisonLines.join('\n') +
         '\n\nF3 called a mechanic four sprints were spent on "absent from most of the game" on a 14.8% ' +
-        'laser-phase rate for greedy vs survivor; this run is what makes that number re-measurable on demand ' +
-        'rather than trusting a one-off scratch script (`tests/agent/README.md`, KI-03-04\'s own reason to ' +
-        'exist).\n';
+        'laser-phase rate over greedy-driven matches; this run is what makes that number re-measurable on ' +
+        "demand rather than trusting a one-off scratch script (`tests/agent/README.md`, KI-03-04's own " +
+        'reason to exist).\n';
 
   const jsonBlock = JSON.stringify(
     {
