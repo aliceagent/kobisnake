@@ -295,3 +295,155 @@ body {
   font-weight: 800;
   letter-spacing: 0.05em;
 }
+
+/* KS-07-01: the `?tuning=1` overlay (`src/ui/screens/tuning.js`). A small always-on panel, deliberately not
+   full-screen like `.menu-screen` — it sits over live gameplay, not instead of it — so only the panel itself
+   re-enables pointer events; everything outside it keeps reaching the canvas through `#ui`'s own
+   `pointer-events: none`. Dev-tool styling only, no reference image to match. */
+.tuning-overlay {
+  position: absolute;
+  top: 0.5rem;
+  right: 0.5rem;
+  width: 20rem;
+  max-height: calc(100% - 1rem);
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  padding: 0.75rem;
+  border-radius: 0.75rem;
+  background: rgba(10, 12, 16, 0.85);
+  font-size: 0.75rem;
+  pointer-events: auto;
+  overflow: hidden;
+}
+
+.tuning-overlay[hidden] {
+  display: none;
+}
+
+/* PR #115 review finding: at 1280x720 in PLAYING the expanded panel above sat on the arena's right flank
+   *and* directly on P2's own HUD length pill (which lives in that same flank, top corner — `.hud-row`'s
+   `justify-content: space-between` puts it there). `setRoundActive()` in `screens/tuning.js` adds this class
+   the instant a round goes live, moving the panel down to the *bottom* of that flank instead of narrowing it
+   — the flank is only ~315px, this panel's expanded width is 344px, so no full-height right-side panel could
+   ever clear the pill sitting at that flank's own top corner; moving out of its way is the only fix that
+   does not also have to touch the pill's own layout. */
+.tuning-overlay--collapsed {
+  top: auto;
+  bottom: 0.5rem;
+  width: auto;
+  max-height: none;
+  padding: 0.4rem 0.75rem;
+}
+
+.tuning-overlay--collapsed .tuning-overlay-body,
+.tuning-overlay--collapsed .tuning-overlay-footer {
+  display: none;
+}
+
+.tuning-overlay-header {
+  font-size: 0.9rem;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  cursor: pointer;
+  user-select: none;
+}
+
+.tuning-overlay-body {
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+  overflow-y: auto;
+}
+
+.tuning-row {
+  display: grid;
+  grid-template-columns: 7.5rem 1fr 3.5rem;
+  align-items: center;
+  gap: 0.4rem;
+}
+
+.tuning-row-label {
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  opacity: 0.85;
+}
+
+.tuning-row-value {
+  text-align: right;
+  font-weight: 700;
+}
+
+.tuning-presets {
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+  padding-top: 0.3rem;
+  border-top: 0.0625rem solid rgba(255, 255, 255, 0.15);
+}
+
+.tuning-preset-group {
+  display: flex;
+  align-items: center;
+  gap: 0.3rem;
+  flex-wrap: wrap;
+}
+
+.tuning-preset-group-label {
+  min-width: 5.5rem;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  opacity: 0.85;
+}
+
+.tuning-preset-button {
+  padding: 0.2rem 0.5rem;
+  border: none;
+  border-radius: 0.4rem;
+  background: rgba(255, 255, 255, 0.14);
+  color: #ffffff;
+  font-size: 0.7rem;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.tuning-preset-button:hover {
+  background: rgba(255, 255, 255, 0.26);
+}
+
+.tuning-overlay-footer {
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+  padding-top: 0.3rem;
+  border-top: 0.0625rem solid rgba(255, 255, 255, 0.15);
+}
+
+.tuning-copy-button {
+  padding: 0.35rem 0.5rem;
+  border: none;
+  border-radius: 0.4rem;
+  background: rgba(255, 255, 255, 0.2);
+  color: #ffffff;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.tuning-copy-status {
+  opacity: 0.85;
+  min-height: 1em;
+}
+
+.tuning-replay-json {
+  width: 100%;
+  height: 5rem;
+  resize: vertical;
+  box-sizing: border-box;
+  background: rgba(0, 0, 0, 0.4);
+  color: #ffffff;
+  border: 0.0625rem solid rgba(255, 255, 255, 0.2);
+  border-radius: 0.4rem;
+  font-family: monospace;
+  font-size: 0.65rem;
+}

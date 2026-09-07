@@ -5,6 +5,7 @@ import { DIRECTIONS } from '../../../src/core/grid.js';
 import { SETTINGS, withOverrides } from '../../../src/core/settings.js';
 import { STATES } from '../../../src/game/gameStateMachine.js';
 import { createSession, formatTime, roundSeedFor } from '../../../src/game/session.js';
+import { runRound } from '../../sim/harness.js';
 
 /**
  * KS-05-03: the session rewritten around the state machine.
@@ -1088,5 +1089,107 @@ describe('KS-06-02 writeHud power-up tag', () => {
     // optional for exactly this reason).
     const { session } = buildSession();
     expect(() => playTo(session)).not.toThrow();
+  });
+});
+
+describe('KS-07-01 tuning overrides and the replay recorder', () => {
+  it('AC1: setSettingsOverrides has no effect on the round in progress, only the next one', () => {
+    const { session, target } = buildSession({ seed: 55 });
+    playTo(session, { bestOf: 3 });
+    expect(session.getSim().settings.foodCount).toBe(SETTINGS.foodCount);
+
+    session.setSettingsOverrides({ foodCount: 7 });
+    // Still the same running round, built before the override was set.
+    expect(session.getSim().settings.foodCount).toBe(SETTINGS.foodCount);
+
+    crashPlayerOne(session, target);
+    runFrames(session, SETTINGS.scoreboardSeconds + 0.05, 6);
+
+    expect(session.getState()).toBe(STATES.COUNTDOWN);
+    expect(session.getSim().settings.foodCount).toBe(7);
+  });
+
+  it("AC1: setSettingsOverrides(null) reverts the next round to this session's original settings", () => {
+    const { session, target } = buildSession({ seed: 9 });
+    session.setSettingsOverrides({ foodCount: 7 });
+    playTo(session, { bestOf: 3 });
+    expect(session.getSim().settings.foodCount).toBe(7);
+
+    session.setSettingsOverrides(null);
+    crashPlayerOne(session, target);
+    runFrames(session, SETTINGS.scoreboardSeconds + 0.05, 6);
+
+    expect(session.getSim().settings.foodCount).toBe(SETTINGS.foodCount);
+    expect(session.getSettingsOverrides()).toBeNull();
+  });
+
+  it('getSettingsOverrides() returns exactly what setSettingsOverrides was last called with', () => {
+    const { session } = buildSession();
+    expect(session.getSettingsOverrides()).toBeNull();
+    session.setSettingsOverrides({ foodCount: 2 });
+    expect(session.getSettingsOverrides()).toEqual({ foodCount: 2 });
+    session.setSettingsOverrides(null);
+    expect(session.getSettingsOverrides()).toBeNull();
+  });
+
+  it('AC2: getReplay() before any round has started returns a seedless, empty replay', () => {
+    const { session } = buildSession();
+    expect(session.getReplay()).toEqual({
+      seed: null,
+      settingsOverrides: {},
+      inputs: [],
+      expectedEvents: [],
+    });
+  });
+
+  it("AC2: getReplay() reproduces the round exactly through tests/sim/harness.js's runRound", () => {
+    const { session, target } = buildSession({ seed: 777 });
+    session.setSettingsOverrides({ snakeSpeed: 9, laserStartTime: 25 });
+    playTo(session, { bestOf: 1 });
+    // One recorded input, same key `input.js` maps P1's UP to (`testHooks.js`'s own `PLAYER_KEY_CODES`).
+    // At the overridden `snakeSpeed: 9`, twelve grid steps to the wall take 12/9 ≈ 1.333 s, not the usual
+    // 2.0 s `crashPlayerOne` assumes at the shipping speed — run this one out by hand instead, all the way
+    // past the crash slow-mo beat, so `getReplay()`'s `expectedEvents` is the *whole* round (a human copies
+    // the replay once a round is actually over, same as `crashPlayerOne` does for every other test here).
+    fireKeydown(target, 'KeyW');
+    runFrames(session, 1.4, 28);
+    runFrames(session, SETTINGS.crashSlowMo.duration + 0.05, 14);
+    expect(session.getState()).toBe(STATES.ROUND_OVER);
+
+    const replay = session.getReplay();
+    expect(replay.seed).toBe(session.getSim().seed);
+    expect(replay.settingsOverrides).toEqual({ snakeSpeed: 9, laserStartTime: 25 });
+    expect(replay.inputs).toEqual([{ t: expect.any(Number), player: 'p1', dir: 'UP' }]);
+    expect(replay.expectedEvents.at(-1)).toMatchObject({ type: 'ROUND_OVER', winnerId: 'p2' });
+
+    // The exact fixture shape `tests/sim/replays/*.json` uses (`replay.schema.json`) — a human would paste
+    // `JSON.stringify(replay)` straight into one of those files.
+    const settings = withOverrides(replay.settingsOverrides);
+    const noopBot = () => null;
+    const { events } = runRound({
+      seed: /** @type {number} */ (replay.seed),
+      bots: [noopBot, noopBot],
+      settings,
+      inputLog: replay.inputs,
+    });
+
+    expect(events).toEqual(replay.expectedEvents);
+  });
+
+  it('AC2: getReplay() carries the round forward correctly across a NEXT_ROUND transition', () => {
+    // Regression for the obvious bug: forgetting to reset the recorder in `startRound()` would leak round
+    // 1's events/inputs into round 2's replay.
+    const { session, target } = buildSession({ seed: 321 });
+    playTo(session, { bestOf: 3 });
+    crashPlayerOne(session, target);
+    runFrames(session, SETTINGS.scoreboardSeconds + 0.05, 6);
+    expect(session.getState()).toBe(STATES.COUNTDOWN);
+
+    const replay = session.getReplay();
+    expect(replay.seed).toBe(session.getSim().seed);
+    expect(replay.seed).not.toBe(roundSeedFor(321, 0));
+    expect(replay.inputs).toEqual([]);
+    // Only round 2's own opening FOOD_SPAWNED batch, none of round 1's events.
+    expect(replay.expectedEvents.every((/** @type {any} */ e) => e.tick === 0)).toBe(true);
   });
 });

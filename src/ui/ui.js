@@ -71,6 +71,10 @@ const HUD_STATES = new Set([STATES.COUNTDOWN, STATES.PLAYING, STATES.LASER_WARNI
  * @property {(action: MenuAction) => void} handleMenuAction
  * @property {(text: string) => void} showOverlay
  * @property {() => void} hideOverlay
+ * @property {(screen: import('./screens/tuning.js').TuningScreen | null) => void} setTuningScreen - KS-07-01
+ *   PR #115: registers the `?tuning=1` overlay (if any) so `show()` can fold it on the same `HUD_STATES`
+ *   check that drives the HUD itself, below. `main.js` is the only caller — this stays `null` (a no-op) on
+ *   every build without the tuning flag, so `ui.js` never has to know whether that overlay even exists.
  * @property {() => void} destroy
  */
 
@@ -108,6 +112,11 @@ export function createUi(root) {
   /** @type {Screen | null} */
   let activeScreen = null;
 
+  // KS-07-01 PR #115: `null` until `main.js` registers the dev-only `?tuning=1` overlay, which is most
+  // builds — every call below is guarded with `?.` so this stays exactly a no-op then.
+  /** @type {import('./screens/tuning.js').TuningScreen | null} */
+  let tuningScreen = null;
+
   function hideAll() {
     for (const screen of Object.values(screens)) screen.hide();
   }
@@ -116,7 +125,11 @@ export function createUi(root) {
     hud,
     show(state, props = {}) {
       hideAll();
-      hud.setVisible(HUD_STATES.has(state));
+      const isHudState = HUD_STATES.has(state);
+      hud.setVisible(isHudState);
+      // Same boolean the HUD itself just used: whatever state puts the length pills up is exactly the state
+      // the tuning overlay must not be sitting on top of (PR #115 review finding).
+      tuningScreen?.setRoundActive(isHudState);
       const screen = screens[state];
       if (screen) {
         screen.render(props);
@@ -135,6 +148,9 @@ export function createUi(root) {
     },
     hideOverlay() {
       overlay.hidden = true;
+    },
+    setTuningScreen(screen) {
+      tuningScreen = screen;
     },
     destroy() {
       hud.destroy();

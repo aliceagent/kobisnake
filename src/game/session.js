@@ -1,9 +1,10 @@
 // @ts-check
 import { EVENTS } from '../core/events.js';
+import { DIRECTIONS } from '../core/grid.js';
 import { createMatch } from '../core/match.js';
 import { createRng } from '../core/rng.js';
 import { RoundSimulation } from '../core/round.js';
-import { SETTINGS } from '../core/settings.js';
+import { SETTINGS, withOverrides } from '../core/settings.js';
 import { createGameStateMachine, GAME_EVENTS, STATES } from './gameStateMachine.js';
 import { createInput } from './input.js';
 import { createLoop } from './loop.js';
@@ -36,6 +37,19 @@ import { createLoop } from './loop.js';
  * Nothing but PAUSE stops the wall clock, and it does so by state rather than by scale: the `switch` in
  * `runUpdate` simply has nothing to do in PAUSE. `loop.timeScale` still goes to 0 there, so anything else
  * that ever reads it sees a frozen game.
+ *
+ * ## Tuning overrides and the replay recorder (KS-07-01)
+ *
+ * The `?tuning=1` overlay (`src/ui/screens/tuning.js`) never touches a `RoundSimulation` or `SETTINGS`
+ * itself — it hands this file a `withOverrides()`-shaped tree through {@link setSettingsOverrides}, and this
+ * file is what turns that into the `settings` the *next* `startRound()` builds its `RoundSimulation` from
+ * (AC1: "applies at the next round", never the one in progress, because a running round already captured its
+ * own `settings` at construction and never reads this file's variable again).
+ *
+ * The same override tree is stamped into every round's replay ({@link getReplay}, AC2) alongside a log of
+ * every input actually applied and the full event log the round has produced so far — the exact shape
+ * `tests/sim/replays/*.json` fixtures use, so a human can save `getReplay()`'s JSON straight into one and it
+ * replays identically through `tests/sim/harness.js`'s `runRound`.
  *
  * ## What this file may not do
  *
@@ -217,6 +231,17 @@ const DEFAULT_OWNED_COLORS = ['red', 'blue'];
 const EMPTY_SNAPSHOT = { snakes: [], apples: [] };
 
 /**
+ * Reverse of `core/grid.js`'s `DIRECTIONS`: `{dx, dy}` -> its name. Built once from the live table (rather
+ * than a hand-written mirror, the way `testHooks.js`'s own reverse map is) since this file already imports
+ * `DIRECTIONS` for nothing else. Used only by `handleDirection` (KS-07-01): the replay format
+ * (`tests/sim/replays/replay.schema.json`) records a direction by name, the same as a `pressKey` call would.
+ * @type {Record<string, 'UP' | 'DOWN' | 'LEFT' | 'RIGHT'>}
+ */
+const DIRECTION_NAME_BY_DELTA = /** @type {Record<string, 'UP' | 'DOWN' | 'LEFT' | 'RIGHT'>} */ (
+  Object.fromEntries(Object.entries(DIRECTIONS).map(([name, d]) => [`${d.dx},${d.dy}`, name]))
+);
+
+/**
  * The starting match setup. Player 1 is red and player 2 is blue because that is what
  * `render/renderer.js`'s `DEFAULT_PLAYER_COLORS` has drawn since Sprint 03 — the setup screen now chooses
  * explicitly what used to be a renderer default, and choosing the same two keeps every existing visual
@@ -288,7 +313,7 @@ export function createSession({
   renderer,
   ui,
   seed,
-  settings = SETTINGS,
+  settings: baseSettings = SETTINGS,
   matchSettings: matchSettingsOverrides,
   ownedColors = DEFAULT_OWNED_COLORS,
   inputTarget,
@@ -300,6 +325,23 @@ export function createSession({
   strict = true,
   randomSeed = Date.now,
 }) {
+  /**
+   * The settings the *next* `RoundSimulation` is built from (KS-07-01). Starts as whatever this session was
+   * constructed with; {@link setSettingsOverrides} reassigns it, and every function below that reads
+   * `settings.xxx` already does so live rather than holding a captured copy, so a reassignment here is picked
+   * up automatically the next time `startRound()` runs — never mid-round, because a live `RoundSimulation`
+   * captured its own `settings` at construction and never asks this file for another.
+   */
+  let settings = baseSettings;
+  /**
+   * The exact override tree {@link setSettingsOverrides} was last called with, verbatim — `null` means "no
+   * tuning overrides; use the settings this session was constructed with". Kept separately from `settings`
+   * itself (which is always a *complete* settings object) so {@link getReplay} can stamp only what actually
+   * changed, matching `tests/sim/replays/*.json`'s own `settingsOverrides` field.
+   * @type {import('./tuning.js').TuningSettingsOverride | null}
+   */
+  let settingsOverrides = null;
+
   /** @type {MatchSettings} */
   let matchSettings = { ...defaultMatchSettings(settings), ...matchSettingsOverrides };
 
@@ -317,6 +359,16 @@ export function createSession({
   let roundSeeds = [];
   /** Set by the pause screen's "Restart match", consumed by the countdown that follows it. */
   let restartRequested = false;
+
+  /**
+   * The current round's own input log and full event log, in the exact `{t, player, dir}` /
+   * `{type, tick, t, ...}` shapes `tests/sim/replays/*.json` fixtures use — reset by `startRound`,
+   * appended to as the round plays, and read back verbatim by {@link getReplay} (KS-07-01 AC2).
+   * @type {{t: number, player: string, dir: 'UP' | 'DOWN' | 'LEFT' | 'RIGHT'}[]}
+   */
+  let roundInputLog = [];
+  /** @type {SimEvent[]} */
+  let roundEventLog = [];
 
   /** Wall seconds elapsed inside the current countdown. */
   let countdownElapsed = 0;
@@ -489,6 +541,11 @@ export function createSession({
       powerUpsEnabled: matchSettings.powerUpsEnabled,
       mode: 'match',
     });
+    // KS-07-01 AC2: the replay recorder starts from whatever the constructor already emitted (the opening
+    // apples) so `getReplay()`'s `expectedEvents` matches exactly what `runRound()` would produce — the same
+    // events `tests/sim/harness.js`'s own `[...sim.events]` seeds a fresh run's log with.
+    roundEventLog = [...sim.events];
+    roundInputLog = [];
 
     resetRoundTimers();
     loop.timeScale = 1;
@@ -615,7 +672,13 @@ export function createSession({
    * @param {number} unscaledDt - wall seconds
    */
   function advanceRound(dt, unscaledDt) {
-    if (sim !== null) handleSimEvents(sim.advance(dt));
+    if (sim !== null) {
+      const events = sim.advance(dt);
+      // KS-07-01 AC2: appended before `handleSimEvents` reacts to them, so the recorded log is exactly what
+      // the simulation produced regardless of what the state machine does with it this frame.
+      roundEventLog.push(...events);
+      handleSimEvents(events);
+    }
 
     // The laser warning is five seconds of the *round's* timeline (`§2.4`), so it runs on simulated time and
     // freezes with everything else when the game is paused.
@@ -756,6 +819,13 @@ export function createSession({
     if (playing && readyRemaining > 0) return;
     const playerId = PLAYER_IDS[playerNumber - 1];
     if (playerId === undefined) return;
+    // KS-07-01 AC2: recorded before `applyInput`, at the round's current elapsed time, so `t` matches exactly
+    // what a `tests/sim/replays/*.json` fixture's own `t` means — simulated seconds since round start. An
+    // input a real key press could never produce (queue full, exact reverse, repeat of the current
+    // direction) is recorded anyway, precisely as `input.js`'s own keydown handler would have — replay.schema
+    // .json's own doc says this is "legal to record ... silently dropped ... when applied".
+    const name = DIRECTION_NAME_BY_DELTA[`${dir.dx},${dir.dy}`];
+    if (name !== undefined) roundInputLog.push({ t: sim.elapsed, player: playerId, dir: name });
     sim.applyInput(playerId, dir);
   }
 
@@ -981,5 +1051,45 @@ export function createSession({
     },
     /** Resumes from the pause screen, exactly as its RESUME item does — READY? beat included. */
     resume,
+    /**
+     * Applies a tuning-overlay override tree (`src/game/tuning.js`'s `buildSettingsOverride`) to every round
+     * from the next one onward (KS-07-01 AC1). The round already in progress is untouched — it captured its
+     * own settings when its `RoundSimulation` was constructed and this file never hands it another. Passing
+     * `null` reverts to the settings this session was originally constructed with.
+     *
+     * @param {import('./tuning.js').TuningSettingsOverride | null} overrides
+     */
+    setSettingsOverrides(overrides) {
+      settingsOverrides = overrides;
+      settings = overrides === null ? baseSettings : withOverrides(overrides);
+    },
+    /**
+     * The override tree {@link setSettingsOverrides} was last called with, or `null` (KS-07-01). The overlay
+     * reads this to redraw its own controls after a page that did not set them itself (none in this sprint,
+     * but it keeps the getter honest rather than write-only).
+     */
+    getSettingsOverrides() {
+      return settingsOverrides;
+    },
+    /**
+     * The current round's replay, in exactly the shape `tests/sim/replays/*.json` fixtures use (KS-07-01
+     * AC2): the seed it was built from, the override tree that built its settings, every input actually
+     * applied and the full event log produced so far. `JSON.stringify(session.getReplay())` is a fixture a
+     * human can drop straight into `tests/sim/replays/` and it replays identically through
+     * `tests/sim/harness.js`'s `runRound` — `replay.test.js` already asserts every file there does.
+     *
+     * `seed`/`inputs`/`expectedEvents` read `null`/`[]` when there is no round yet (before the first
+     * countdown) rather than throwing, since the overlay may be open on the main menu.
+     *
+     * @returns {{seed: number | null, settingsOverrides: object, inputs: object[], expectedEvents: object[]}}
+     */
+    getReplay() {
+      return {
+        seed: sim === null ? null : roundSeeds[roundIndex],
+        settingsOverrides: settingsOverrides === null ? {} : { ...settingsOverrides },
+        inputs: roundInputLog.map((entry) => ({ ...entry })),
+        expectedEvents: roundEventLog.map((event) => ({ ...event })),
+      };
+    },
   };
 }

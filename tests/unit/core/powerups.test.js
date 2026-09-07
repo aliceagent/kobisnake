@@ -81,7 +81,12 @@ function remainingAt(/** @type {SimEvent} */ event) {
 /** A minimal fake `Rng` that always picks the first candidate — used where the exact cell/type does not
  * matter and a test only needs the call *count*, not the outcome. */
 function firstPickRng() {
-  return { next: () => 0, int: () => 0, pick: (/** @type {unknown[]} */ array) => array[0], seed: 0 };
+  return {
+    next: () => 0,
+    int: () => 0,
+    pick: (/** @type {unknown[]} */ array) => array[0],
+    seed: 0,
+  };
 }
 
 /** Wraps `rng` so every draw is counted, without changing what it returns. */
@@ -134,7 +139,9 @@ describe('KS-06-01 power-up spawn cycle (RoundSimulation)', () => {
           players: TWO_PLAYERS,
         });
         const events = runTo(sim, SETTINGS.roundDuration);
-        const powerUpEvents = events.filter((event) => event.type.startsWith('POWERUP_') || event.type.startsWith('EFFECT_'));
+        const powerUpEvents = events.filter(
+          (event) => event.type.startsWith('POWERUP_') || event.type.startsWith('EFFECT_'),
+        );
         expect(powerUpEvents).toEqual([]);
         expect(sim.powerUps.pickups).toEqual([]);
       }
@@ -207,7 +214,10 @@ describe('KS-06-01 power-up spawn cycle (RoundSimulation)', () => {
       const powerUps = createPowerUps({ settings, enabled: true, rng: counting.rng });
       const placement = () => ({ grid: settings.grid, occupied: new Set(), heads: [] });
 
-      const firstSpawn = only(powerUps.updateSpawns(settings.powerUpFirstSpawnAt, placement), EVENTS.POWERUP_SPAWNED);
+      const firstSpawn = only(
+        powerUps.updateSpawns(settings.powerUpFirstSpawnAt, placement),
+        EVENTS.POWERUP_SPAWNED,
+      );
       expect(firstSpawn).toHaveLength(1);
       const cell = firstSpawn[0].payload.cell;
 
@@ -325,7 +335,11 @@ describe('KS-06-01 power-up spawn cycle (RoundSimulation)', () => {
       for (let seed = 0; seed < 2000; seed += 1) {
         const powerUps = createPowerUps({ settings, enabled: true, rng: createRng(seed) });
         const events = only(
-          powerUps.updateSpawns(settings.powerUpFirstSpawnAt, () => ({ grid, occupied, heads: [] })),
+          powerUps.updateSpawns(settings.powerUpFirstSpawnAt, () => ({
+            grid,
+            occupied,
+            heads: [],
+          })),
           EVENTS.POWERUP_SPAWNED,
         );
         expect(events).toHaveLength(1);
@@ -415,6 +429,75 @@ describe('KS-06-01 power-up spawn cycle (RoundSimulation)', () => {
       expect(only(sim.events, EVENTS.EFFECT_ENDED)).toEqual([
         expect.objectContaining({ playerId: 'p2', powerUpType: POWERUP_TYPES.SLOW }),
       ]);
+    });
+  });
+
+  describe('KS-07-01 SLOW target mode (tuning overlay, docs/sprints/sprint-07-playtest-gate-1-and-tuning.md)', () => {
+    it('KS-07-01 AC1: settings.slow.targetMode "collector" slows the collector, not the opponent', () => {
+      // `settings.slow.targetMode` is not a `Settings` field (`round.js`'s own `SlowTargetMode` doc comment:
+      // KS-07-01 tech-lead note 1 forbids touching `settings.js` at all) — `withOverrides` merges it in as an
+      // ordinary extra key on `slow` regardless, exactly as the tuning overlay does.
+      const sim = new RoundSimulation({
+        settings: withOverrides({
+          snakeSpeed: 0,
+          godMode: true,
+          powerUpsEnabled: false,
+          slow: { targetMode: 'collector' },
+        }),
+        seed: 4,
+        players: TWO_PLAYERS,
+      });
+      sim.events = [];
+      sim.applyPowerUpEffect(sim.snakes[0], POWERUP_TYPES.SLOW);
+      sim.tickPowerUpEffects();
+
+      expect(sim.snakes[0].speedMultiplier).toBe(SETTINGS.slow.multiplier);
+      expect(sim.snakes[1].speedMultiplier).toBe(1);
+      expect(only(sim.events, EVENTS.EFFECT_STARTED)).toEqual([
+        expect.objectContaining({ playerId: 'p1', powerUpType: POWERUP_TYPES.SLOW }),
+      ]);
+    });
+
+    it('KS-07-01 AC1: settings.slow.targetMode "opponent" matches shipped "everyone-but-collector" in 2p', () => {
+      // With V1's two-player roster there is exactly one "other" snake, so `opponent` and the shipped
+      // `everyone-but-collector` name the same target — see `SlowTargetMode`'s own doc comment in round.js.
+      const sim = new RoundSimulation({
+        settings: withOverrides({
+          snakeSpeed: 0,
+          godMode: true,
+          powerUpsEnabled: false,
+          slow: { targetMode: 'opponent' },
+        }),
+        seed: 5,
+        players: TWO_PLAYERS,
+      });
+      sim.events = [];
+      sim.applyPowerUpEffect(sim.snakes[0], POWERUP_TYPES.SLOW);
+      sim.tickPowerUpEffects();
+
+      expect(sim.snakes[1].speedMultiplier).toBe(SETTINGS.slow.multiplier);
+      expect(sim.snakes[0].speedMultiplier).toBe(1);
+      expect(only(sim.events, EVENTS.EFFECT_STARTED)).toEqual([
+        expect.objectContaining({ playerId: 'p2', powerUpType: POWERUP_TYPES.SLOW }),
+      ]);
+    });
+
+    it('KS-07-01 AC1: no targetMode at all still defaults to "everyone-but-collector" (shipped behaviour)', () => {
+      // `SETTINGS.slow` itself has no `targetMode` key — asserted here so a future edit cannot add one to
+      // the shipping defaults without this test failing (tech-lead note 1: settings.js must never change for
+      // this ticket, and the default must stay implicit).
+      expect(/** @type {any} */ (SETTINGS.slow).targetMode).toBeUndefined();
+
+      const sim = new RoundSimulation({
+        settings: withOverrides({ snakeSpeed: 0, godMode: true, powerUpsEnabled: false }),
+        seed: 6,
+        players: TWO_PLAYERS,
+      });
+      sim.events = [];
+      sim.applyPowerUpEffect(sim.snakes[0], POWERUP_TYPES.SLOW);
+
+      expect(sim.snakes[1].speedMultiplier).toBe(SETTINGS.slow.multiplier);
+      expect(sim.snakes[0].speedMultiplier).toBe(1);
     });
   });
 
