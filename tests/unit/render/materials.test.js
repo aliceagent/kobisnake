@@ -12,6 +12,7 @@ import {
   snakeColorHex,
 } from '../../../src/render/materials.js';
 import { SETTINGS, withOverrides } from '../../../src/core/settings.js';
+import { assertContrastRule } from './contrastRule.js';
 
 /**
  * KS-07-07 (issue #105): `DESIGN-DECISIONS §1 row 20` locks the SLOW pedestal at mid ice-blue `#4FA9DD` and
@@ -143,15 +144,16 @@ function buildRequiredPairs(settings) {
     });
   }
 
-  // The two shipping players against each other (the sprint doc names this exact pair; every pair among all
-  // eight/fourteen colours is KI-02-03's job, not this ticket's).
-  if (playerNames.includes('red') && playerNames.includes('blue')) {
-    pairs.push({
-      key: 'player red vs player blue',
-      a: snakeColorHex('red', settings),
-      b: snakeColorHex('blue', settings),
-    });
-  }
+  // **No player-vs-player pair is built here any more (KI-15-01 AC2, issue #191).** KI-02-01 added
+  // `player red vs player blue` because its own sprint file named that pair, and KI-02-03 added all 28 of
+  // them; the design lead's ruling on #121 took the whole family out of this rule. Luminance measures figure
+  // against ground — an apple on a floor, an icon on its pedestal — and it answers "can two people tell
+  // their snakes apart" badly enough to have ranked `red`/`blue` the worst pair in the catalogue (0.0048),
+  // which is the pair every match starts with and one nobody has ever confused. Those pairs are now measured
+  // by `colourVision.js` (CIEDE2000 under normal, protanope and deuteranope vision) in
+  // `colourVision.test.js`, where `red`/`blue` scores 47.75. The nine luminance waivers went with them, and
+  // #156 — the duplicated red/blue waiver across two maps here — closes as a consequence rather than as its
+  // own change.
 
   // Each power-up pedestal vs each floor shade.
   for (const [pedestalName, pedestalHex] of Object.entries(pedestals)) {
@@ -188,10 +190,10 @@ function buildRequiredPairs(settings) {
  * (the live separation must be `>= measured`) has a safety margin against floating-point noise and never
  * trips on a rounding artefact of the value it is itself supposed to protect.
  *
- * - **`player red vs player blue`** (0.0048) and **`SLOW pedestal vs floor 70%`** (0.0072) are locked by
- *   `DESIGN-DECISIONS`: §2.7's two shipping player colours are isoluminant on purpose, and §1 row 20 locked
- *   `#4FA9DD` three days before this ticket. Neither is this ticket's to repaint — reported on #121 for
- *   Fable, not adjusted here.
+ * - **`SLOW pedestal vs floor 70%`** (0.0072) is locked by `DESIGN-DECISIONS §1 row 20`, which fixed
+ *   `#4FA9DD` three days before KI-02-01. Not this ticket's to repaint — reported on #121 for Fable, not
+ *   adjusted here. (`player red vs player blue` used to head this list at 0.0048. KI-15-01 removed it with
+ *   the rest of the player-vs-player family, per the #121 ruling — see `buildRequiredPairs` above.)
  * - **`SPEED pedestal vs floor 30%`** (0.0961) and **`SLOW pedestal vs floor 30%`** (0.0833) are *new*
  *   measurements this table produces: nothing in `DESIGN-DECISIONS` discusses either pedestal against the
  *   30 % floor tile, so unlike the two pairs above these were never a deliberate choice — this rule is simply
@@ -206,61 +208,21 @@ function buildRequiredPairs(settings) {
  * that ticket proved it met the bar (its PR captures that failing run).
  */
 const WAIVERS = {
-  'player red vs player blue': { measured: 0.0047, blockedBy: '#121' },
   'SLOW pedestal vs floor 70%': { measured: 0.0072, blockedBy: '#121' },
   'SPEED pedestal vs floor 30%': { measured: 0.096, blockedBy: '#121' },
   'SLOW pedestal vs floor 30%': { measured: 0.0833, blockedBy: '#121' },
 };
 
 /**
- * The whole KI-02-01 rule, in one place: every pair either clears `MIN_LUMINANCE_SEPARATION` or is named in
- * `waivers` at no less than its recorded measurement, and `waivers` names nothing that is not an actual pair
- * in `pairs` or that would have passed unwaived (AC1's "(a) every non-waived pair meets the minimum",
- * "(b) every waived pair still measures at least what is recorded", "(c) the waiver list is exactly the set
- * of pairs that fail", all three at once).
- *
- * Factored out of the `it()` blocks below so the "adding a colour without a pair entry" test can run it
- * against a synthetic palette and watch it throw, instead of duplicating the inequality by hand in a way that
- * could quietly drift from the real rule.
- *
- * @param {{ key: string, a: number | string, b: number | string }[]} pairs
- * @param {Record<string, { measured: number, blockedBy: string }>} waivers
+ * This file's half of the split rule: WCAG relative-luminance separation, judged by `pairSeparation` (the
+ * apple's either-body-or-rim rule) against `MIN_LUMINANCE_SEPARATION`. `colourVision.test.js` passes the
+ * other half — CIEDE2000 under three vision models — to the same `assertContrastRule`.
  */
-function assertContrastRule(pairs, waivers) {
-  const pairsByKey = new Map(pairs.map((pair) => [pair.key, pair]));
-
-  for (const key of Object.keys(waivers)) {
-    expect(pairsByKey.has(key), `waiver "${key}" does not match any pair the table builds`).toBe(
-      true,
-    );
-  }
-
-  for (const pair of pairs) {
-    const { key } = pair;
-    const { value: separation, detail } = pairSeparation(pair);
-    const waiver = waivers[key];
-
-    if (waiver) {
-      // (c): a waiver on a pair that actually passes would be hiding it from scrutiny rather than recording
-      // a known failure, so the waived pair must still genuinely fail unwaived.
-      expect(
-        separation,
-        `${key}: waived but clears MIN_LUMINANCE_SEPARATION (${detail}) — drop the waiver`,
-      ).toBeLessThan(MIN_LUMINANCE_SEPARATION);
-      // (b): the ratchet. May improve, must never worsen.
-      expect(
-        separation,
-        `${key}: regressed below its recorded measurement of ${waiver.measured} (${detail}, blocked by ${waiver.blockedBy})`,
-      ).toBeGreaterThanOrEqual(waiver.measured);
-    } else {
-      // (a): every pair not named as a waiver must clear the minimum outright.
-      expect(
-        separation,
-        `${key}: separation ${separation} (${detail}) is below MIN_LUMINANCE_SEPARATION and is not a recorded waiver`,
-      ).toBeGreaterThanOrEqual(MIN_LUMINANCE_SEPARATION);
-    }
-  }
-}
+const LUMINANCE_RULE = {
+  minimum: MIN_LUMINANCE_SEPARATION,
+  measure: pairSeparation,
+  name: 'MIN_LUMINANCE_SEPARATION',
+};
 
 /**
  * Every `.js` file under a directory, recursively. Used only by the AC3 hex-literal scan below — a plain
@@ -285,7 +247,9 @@ function listJsFiles(dir) {
 
 describe('KI-02-01 palette-wide contrast rule (docs/sprints/improvement-02-readability-and-contrast.md, issue #133)', () => {
   it('KI-02-01 AC1: every required pair clears the rule or is an exact, ratcheted waiver', () => {
-    expect(() => assertContrastRule(buildRequiredPairs(SETTINGS), WAIVERS)).not.toThrow();
+    expect(() =>
+      assertContrastRule(buildRequiredPairs(SETTINGS), WAIVERS, LUMINANCE_RULE),
+    ).not.toThrow();
   });
 
   it('KI-02-01 AC1: a colour added to SETTINGS.colors without a matching entry fails the rule, not passes silently', () => {
@@ -315,9 +279,13 @@ describe('KI-02-01 palette-wide contrast rule (docs/sprints/improvement-02-reada
 
     // The unmodified palette must not throw — otherwise the throw below could be some unrelated breakage in
     // buildRequiredPairs/assertContrastRule rather than evidence of the enforcement mechanism itself.
-    expect(() => assertContrastRule(basePairs, WAIVERS)).not.toThrow();
+    expect(() => assertContrastRule(basePairs, WAIVERS, LUMINANCE_RULE)).not.toThrow();
     expect(() =>
-      assertContrastRule([{ key: 'synthetic vs synthetic', a: 0x000000, b: 0x000001 }], {}),
+      assertContrastRule(
+        [{ key: 'synthetic vs synthetic', a: 0x000000, b: 0x000001 }],
+        {},
+        LUMINANCE_RULE,
+      ),
     ).toThrow();
   });
 
@@ -342,6 +310,7 @@ describe('KI-02-01 palette-wide contrast rule (docs/sprints/improvement-02-reada
           { key: 'apple vs floor 30% (unwaived)', a: revertedApple, b: floor30 },
         ],
         {},
+        LUMINANCE_RULE,
       ),
     ).toThrow();
   });
@@ -463,124 +432,16 @@ describe('KI-02-02 the apple reads (docs/sprints/improvement-02-readability-and-
 });
 
 /**
- * KI-02-03 (issue #135, tracked on #121): the GDD promises eight player colours and Sprint 14 unlocks six of
- * them, so any two can end up in the same match — not just the shipping red/blue pair KI-02-01's table
- * already covers. This block asserts every one of the C(8,2) = 28 unordered pairs among today's catalogue,
- * reusing KI-02-01's own `assertContrastRule` (defined above in this file) rather than a second copy of the
- * three-part rule, and its own separate waiver map so this ticket's diff stays additive at the end of the
- * file rather than touching the `WAIVERS` map above (that map belongs to the sibling KI-02-02 PR repainting
- * the apple, per this ticket's merge-conflict discipline).
+ * **KI-02-03's block used to live here** (issue #135): all C(8,2) = 28 player-colour pairs asserted against
+ * `MIN_LUMINANCE_SEPARATION`, with nine ratcheted waivers, plus the duplicated `red`/`blue` waiver #156 was
+ * filed about. KI-15-01 (issue #191, AC2) deleted it whole, on the design lead's ruling on #121: those pairs
+ * are not a luminance question, and waiving them here implied the rule applied and a failure was being
+ * tolerated, which was not what was true. They are measured in `tests/unit/render/colourVision.test.js`
+ * instead, by an instrument that models colour blindness — where the count of failures happens to be nine
+ * again and is almost a different nine, and `red`/`blue` ranks 20th of 28 rather than last.
  *
- * **On the seven-vs-nine discrepancy:** the ticket text that spawned this block states seven of the 28 pairs
- * fail — red/blue, green/orange, green/teal, orange/teal, blue/purple, red/purple, yellow/gold — and that the
- * "remaining 21 clear it." Computing every pair live against `MIN_LUMINANCE_SEPARATION` (the point of doing
- * this at runtime instead of hard-coding the ticket's numbers) finds **nine** failing pairs, not seven: the
- * same seven, plus **gold/teal** (0.1204) and **gold/green** (0.1460), both of which fall short of 0.15 by a
- * comparatively small margin but still fall short. This is reported to the design lead in the PR rather than
- * silently reconciled either direction — the waiver list below records the actual measured nine so the suite
- * asserts what is true of the shipping hexes, not what a prior count said was true of them.
+ * What stayed behind, deliberately: the *guard* KI-02-03 existed to provide before Sprint 14 — a colour
+ * added to `SETTINGS.colors` cannot ship unchecked — is not weakened by the move. It is enforced twice now,
+ * by `KI-02-01 AC1`'s apple-vs-every-player-colour loop above (this file) and by the 28-pair table in
+ * `colourVision.test.js` (KI-15-01 AC3).
  */
-
-/**
- * Every unordered pair among the current player colour catalogue, built from `Object.keys(settings.colors)`
- * combinatorially — never a hand-written list of 28 names. That is what makes a ninth colour appended to
- * `SETTINGS.colors` (Sprint 14 adds six more; a tenth is not impossible after that) get checked automatically:
- * `n·(n−1)/2` pairs fall out of the catalogue's size on its own, and the "combinatorial count is 28" test below
- * pins today's `n = 8` so a future change to that count is visible rather than silently changing what "all
- * pairs" means.
- *
- * Pair keys are alphabetised (`player <a> vs player <b>`, `a < b`) so a given pair has exactly one key
- * regardless of `Object.keys` iteration order, which is what lets `KI_02_03_WAIVERS` below name each pair
- * once.
- *
- * @param {import('../../../src/core/settings.js').Settings} settings
- * @returns {{ key: string, a: number | string, b: number | string }[]}
- */
-function buildAllPlayerColourPairs(settings) {
-  const names = Object.keys(settings.colors);
-  /** @type {{ key: string, a: number | string, b: number | string }[]} */
-  const pairs = [];
-  for (let i = 0; i < names.length; i += 1) {
-    for (let j = i + 1; j < names.length; j += 1) {
-      const [nameA, nameB] = [names[i], names[j]].sort();
-      pairs.push({
-        key: `player ${nameA} vs player ${nameB}`,
-        a: snakeColorHex(nameA, settings),
-        b: snakeColorHex(nameB, settings),
-      });
-    }
-  }
-  return pairs;
-}
-
-/**
- * The nine pairs among today's eight player colours that measure below `MIN_LUMINANCE_SEPARATION`, recorded
- * as ratcheted waivers in the same shape KI-02-01 established (`{ measured, blockedBy: '#121' }`), each
- * `measured` floored to four decimal places below the real value so the ratchet in `assertContrastRule` (the
- * live separation must be `>= measured`) never trips on float noise. None of these are repainted here: the
- * eight hexes are locked by `DESIGN-DECISIONS §2.7` and `src/core/settings.js` is off-limits regardless
- * (`CLAUDE.md`'s never list) — this ticket's job is to measure and report them, not adjust them. All nine are
- * blocked on #121 (the tracking issue) for Fable to decide, worst separation first:
- *  - `blue vs red` — 0.0047 (the shipping pair; KI-02-01's table already waives this one too, under its own
- *    key, for the apple/floor/pedestal table — this is the same fact restated as one of the 28 player pairs).
- *  - `green vs orange` — 0.0088
- *  - `green vs teal` — 0.0255
- *  - `orange vs teal` — 0.0344
- *  - `blue vs purple` — 0.0375
- *  - `purple vs red` — 0.0423
- *  - `gold vs yellow` — 0.0989
- *  - `gold vs teal` — 0.1204 (not named in the ticket that spawned this block; see the discrepancy note above)
- *  - `gold vs green` — 0.146 (ditto)
- */
-const KI_02_03_WAIVERS = {
-  'player blue vs player red': { measured: 0.0047, blockedBy: '#121' },
-  'player green vs player orange': { measured: 0.0088, blockedBy: '#121' },
-  'player green vs player teal': { measured: 0.0255, blockedBy: '#121' },
-  'player orange vs player teal': { measured: 0.0344, blockedBy: '#121' },
-  'player blue vs player purple': { measured: 0.0375, blockedBy: '#121' },
-  'player purple vs player red': { measured: 0.0423, blockedBy: '#121' },
-  'player gold vs player yellow': { measured: 0.0989, blockedBy: '#121' },
-  'player gold vs player teal': { measured: 0.1204, blockedBy: '#121' },
-  'player gold vs player green': { measured: 0.146, blockedBy: '#121' },
-};
-
-describe('KI-02-03 all eight player colours checked against each other (docs/sprints/improvement-02-readability-and-contrast.md, issue #135, tracked on #121)', () => {
-  it("KI-02-03 AC1: the pair count derived from SETTINGS.colors is 28 for today's eight colours", () => {
-    // Pins n·(n−1)/2 for n = 8 so the derivation below is proved combinatorial rather than a disguised
-    // hand-written list of 28 — if a colour is ever added or removed this assertion is the first thing that
-    // moves, on purpose.
-    const names = Object.keys(SETTINGS.colors);
-    expect(names.length).toBe(8);
-    expect(buildAllPlayerColourPairs(SETTINGS).length).toBe(
-      (names.length * (names.length - 1)) / 2,
-    );
-    expect(buildAllPlayerColourPairs(SETTINGS).length).toBe(28);
-  });
-
-  it('KI-02-03 AC1: all 28 pairs either clear MIN_LUMINANCE_SEPARATION or are an exact, ratcheted, reported waiver', () => {
-    // Reuses KI-02-01's own assertContrastRule rather than a second copy of its three-part rule: (a) every
-    // non-waived pair clears the constant, (b) every waived pair still measures at least what is recorded,
-    // (c) the waiver list is exactly the set of pairs that fail — none waived that actually passes.
-    expect(() =>
-      assertContrastRule(buildAllPlayerColourPairs(SETTINGS), KI_02_03_WAIVERS),
-    ).not.toThrow();
-  });
-
-  it('KI-02-03: prove the rule can go red — a synthetic ninth colour colliding with an existing one fails unwaived', () => {
-    // KS-07-07/KI-02-01's "prove the test can go red" pattern, applied to this table specifically: a ninth
-    // colour appended to the catalogue with no contrast entry of its own must fail this rule, not pass
-    // silently, since KI_02_03_WAIVERS names nothing for it. The synthetic colour is pinned to player blue's
-    // own current hex, read back through snakeColorHex rather than a literal, so the collision is 0 by
-    // construction whatever blue's hex is today or becomes later.
-    const blueHex = snakeColorHex('blue', SETTINGS);
-    const settingsWithExtraColour = withOverrides({ colors: { syntheticNinth: blueHex } });
-
-    // The unmodified palette must not throw, so the throw below is evidence of the added colour specifically.
-    expect(() =>
-      assertContrastRule(buildAllPlayerColourPairs(SETTINGS), KI_02_03_WAIVERS),
-    ).not.toThrow();
-    expect(() =>
-      assertContrastRule(buildAllPlayerColourPairs(settingsWithExtraColour), KI_02_03_WAIVERS),
-    ).toThrow();
-  });
-});
