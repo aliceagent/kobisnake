@@ -1,0 +1,97 @@
+# KI-03-05: the agent playtest layer's CI job (Improvement 03, tracking issue #122).
+#
+# `tests/agent` plays whole matches of the built site in a real browser and checks invariants on every
+# simulated frame. It runs **nightly and on demand**, not on every pull request — the layer's own ticket says
+# so, and it matches `QA-STRATEGY §1`, which puts the slower whole-run checks in the nightly column and keeps
+# the per-PR gate at unit + sim + e2e + visual. The trade-off is stated rather than hidden: a regression in
+# this layer is found the morning after the merge, not on the pull request that caused it. The suite is cheap
+# enough (≈ 40 s of tests on top of the build) that moving it onto pull requests later is a one-line change —
+# it would have to go *inside* `ci.yml`'s existing `browser` job, after the other two suites, never as a
+# parallel job (see "Never two at once" below).
+#
+# ## Never two Playwright suites at once (#86, KI-03-05 AC2)
+#
+# Two Playwright suites running together in one container corrupt both. That is enforced three ways, in
+# descending order of how much they can be forgotten:
+#
+# 1. **At runtime.** Every Playwright invocation in every workflow goes through
+#    `scripts/run-playwright-suite.mjs`, which holds one container-wide lock; a second suite waits for the
+#    first. This is the guarantee that survives someone adding a job without reading this comment, and
+#    `tests/agent/workflows.test.js` asserts that no workflow ever calls `playwright test` around it.
+# 2. **Per job.** This workflow's only job runs exactly one suite. `ci.yml`'s `browser` job runs e2e and then
+#    visual as two sequential steps in one job. `nightly.yml` runs one suite per matrix leg.
+# 3. **Across runs of this workflow**, by the concurrency group below: a scheduled run and a hand-fired one
+#    cannot overlap.
+#
+# Jobs in *different* workflows still run on different runners, which are different containers and cannot
+# contend — the lock is per machine, so it neither helps nor hinders there.
+name: Agent playtest
+
+on:
+  schedule:
+    # 05:00 UTC daily — an hour after `nightly.yml`, so the two never share a runner's queue on a busy
+    # morning and a failure here is unambiguous about which suite produced it.
+    - cron: '0 5 * * *'
+  # On demand: the sprint file asks for it, and it is how a design lead re-runs the numbers after a tuning
+  # change without waiting for tomorrow.
+  workflow_dispatch: {}
+
+concurrency:
+  group: ${{ github.workflow }}
+  cancel-in-progress: false
+
+env:
+  NODE_VERSION: '20'
+
+jobs:
+  agent:
+    name: agent playtest
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+      - run: npm ci
+
+      - name: Read installed Playwright version
+        id: playwright-version
+        run: |
+          version=$(node -p "require('./package-lock.json').packages['node_modules/@playwright/test'].version")
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+
+      # Same cache key shape as `ci.yml`, so a run here warms the browser binary for the pull-request job too.
+      - uses: actions/cache@v4
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-chromium-${{ runner.os }}-${{ steps.playwright-version.outputs.version }}
+      - run: npx playwright install --with-deps chromium
+
+      # `--reporter=github,html` matters more than it looks. A failure's own message names the **seed**
+      # (`failureReasons` in `tests/agent/driver.js`), and the `github` reporter turns it into a check-run
+      # annotation — which is the only part of a failed CI run that an agent session can actually read: the
+      # job-log and artifact endpoints both redirect to blob storage that the egress proxy refuses. Without
+      # this, "CI is red" is all anyone gets, and diagnosing it means reproducing it locally. `html` is kept
+      # alongside for a human, and `PLAYWRIGHT_HTML_REPORT` gives it its own folder as in `ci.yml`.
+      - name: agent playtest
+        id: agent
+        env:
+          PLAYWRIGHT_HTML_REPORT: playwright-report/agent
+        run: npm run test:agent -- --reporter=github,html
+
+      # AC1's "uploads the report": the committed run document (KI-03-04) as this run regenerated it, plus
+      # Playwright's own report. `if: always()` so a red run still uploads the evidence that explains it —
+      # that is the whole point of the artifact.
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: agent-playtest-report
+          path: |
+            docs/qa/playtests/agent-run.md
+            playwright-report/
+            test-results/
+          # Longer than `ci.yml`'s 14 days: these are the design lead's statistics over time, not a
+          # throwaway debugging aid, and a nightly series is only useful if you can look back across it.
+          retention-days: 30
+          if-no-files-found: warn

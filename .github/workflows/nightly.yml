@@ -56,6 +56,15 @@ jobs:
       # `--browser` cannot be used here: Playwright rejects it outright whenever the config defines any
       # project ("Cannot use --browser option when configuration file defines projects"), which is what
       # issue #21 was. Visual baselines are Chromium-specific, so only e2e runs cross-browser.
+      #
+      # Through `scripts/run-playwright-suite.mjs` like every other Playwright invocation in this repository
+      # (KI-03-05 AC2, #86), so the rule is "no workflow ever calls `playwright test` directly" with no
+      # exceptions to remember — `tests/agent/workflows.test.js` asserts exactly that. This leg is the only
+      # suite in its own job, so the lock never actually makes it wait; uniformity is the point.
+      #
+      # `--reporter=github` puts a failure into the check-run annotations, which is the only part of a failed
+      # run an agent session can read (the log and artifact endpoints redirect to blob storage the egress
+      # proxy refuses). `html` is kept alongside it for a human.
       - name: e2e
         env:
           PLAYWRIGHT_HTML_REPORT: playwright-report/${{ matrix.browser }}
@@ -63,7 +72,9 @@ jobs:
           # in software. WebKit passes without it, but it is the correct setting for a GPU-less runner
           # and it is what the Firefox leg will need when #23 re-adds it in Sprint 16.
           LIBGL_ALWAYS_SOFTWARE: '1'
-        run: npx playwright test tests/e2e --project=${{ matrix.browser }}
+        run: >-
+          node scripts/run-playwright-suite.mjs e2e-${{ matrix.browser }}
+          tests/e2e --project=${{ matrix.browser }} --reporter=github,html
 
       - uses: actions/upload-artifact@v4
         if: failure()
