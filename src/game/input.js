@@ -18,6 +18,13 @@ import { DIRECTIONS } from '../core/grid.js';
  * controls which callback(s) a key fires: `'game'` only steers, `'menu'` only navigates, `'both'` does both
  * from the same keypress (a key that means a direction fires `onDirection` *and* the matching menu action).
  * The default mode is `'game'`, since most of a KOBI Snake session is spent playing rather than in a menu.
+ *
+ * A third, optional callback exists purely for KS-07-06's instrumentation: `onDirectionTimed(playerId, dir,
+ * atMs)` fires immediately before `onDirection`, for the same key, carrying the clock reading taken at the
+ * moment this module decoded the keydown — the earliest instant of the ticket's "keydown -> queued ->
+ * committed step -> first rendered frame" pipeline. It changes nothing about `onDirection`'s own contract
+ * (still called with exactly `(playerId, dir)`, so every existing caller and test is untouched) and defaults
+ * to a no-op, so a caller that does not pass it pays nothing beyond one extra no-op call per steering key.
  */
 
 /** @typedef {{dx: number, dy: number}} Direction */
@@ -38,10 +45,16 @@ import { DIRECTIONS } from '../core/grid.js';
  * @typedef {object} CreateInputOptions
  * @property {(playerId: 1 | 2, dir: Direction) => void} [onDirection] Fired for a gameplay steering key.
  * @property {(action: MenuAction) => void} [onMenu] Fired for a menu-navigation key.
+ * @property {(playerId: 1 | 2, dir: Direction, atMs: number) => void} [onDirectionTimed] KS-07-06: fired
+ *   immediately before `onDirection`, for the same steering key, with a clock reading taken right here (see
+ *   `now` below). Defaults to a no-op.
  * @property {InputMode} [mode] Initial mode. Defaults to `'game'`.
  * @property {boolean} [soloSteering] When true, both WASD and the arrow keys steer player 1. Defaults to false.
  * @property {EventTarget} [target] Where to listen for `keydown`. Defaults to `window` when it exists, so the
  *   module can be imported (though not constructed without an explicit target) in a plain Node environment.
+ * @property {() => number} [now] KS-07-06: the clock `onDirectionTimed` reads. Defaults to `performance.now`
+ *   where there is one, else `Date.now` — injectable so a test can supply a controlled clock without this
+ *   module ever having its own opinion about which one is "real".
  */
 
 /**
@@ -94,6 +107,20 @@ const DIRECTION_MENU_ACTIONS = new Map([
 const PREVENT_DEFAULT_CODES = new Set(['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'Space']);
 
 /**
+ * KS-07-06's default clock for `onDirectionTimed`: `performance.now()` where there is one, `Date.now()`
+ * where there is not. Mirrors `loop.js`'s own `defaultNow` (and `inputLatency.js`'s copy of it) — duplicated
+ * rather than imported so this module keeps its existing zero-dependency shape.
+ *
+ * @returns {number}
+ */
+function defaultNow() {
+  const performanceRef = /** @type {{now?: () => number} | undefined} */ (
+    /** @type {any} */ (globalThis).performance
+  );
+  return performanceRef?.now ? performanceRef.now() : Date.now();
+}
+
+/**
  * Wires up keyboard listening. Call `destroy()` on the returned handle when the input is no longer needed
  * (leaving a global listener behind leaks across rounds/menus and across tests).
  *
@@ -104,9 +131,11 @@ export function createInput(options = {}) {
   const {
     onDirection = () => {},
     onMenu = () => {},
+    onDirectionTimed = () => {},
     mode: initialMode = 'game',
     soloSteering: initialSoloSteering = false,
     target = typeof window !== 'undefined' ? window : undefined,
+    now = defaultNow,
   } = options;
 
   if (target === undefined) {
@@ -141,11 +170,16 @@ export function createInput(options = {}) {
     if (mode !== 'menu') {
       const dir = PLAYER_ONE_KEYS.get(code);
       if (dir !== undefined) {
+        // KS-07-06: the timed callback fires first, on the same key, so its timestamp is the earliest
+        // reading this module ever takes for this input — see the module comment on `onDirectionTimed`.
+        onDirectionTimed(1, dir, now());
         onDirection(1, dir);
       } else {
         const p2Dir = PLAYER_TWO_KEYS.get(code);
         if (p2Dir !== undefined) {
-          onDirection(soloSteering ? 1 : 2, p2Dir);
+          const playerId = soloSteering ? 1 : 2;
+          onDirectionTimed(playerId, p2Dir, now());
+          onDirection(playerId, p2Dir);
         }
       }
     }

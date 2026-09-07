@@ -7,6 +7,7 @@ import { RoundSimulation } from '../core/round.js';
 import { SETTINGS, withOverrides } from '../core/settings.js';
 import { createGameStateMachine, GAME_EVENTS, STATES } from './gameStateMachine.js';
 import { createInput } from './input.js';
+import { createInputLatencyTracker, disabledInputLatencyStats } from './inputLatency.js';
 import { createLoop } from './loop.js';
 
 /**
@@ -57,6 +58,20 @@ import { createLoop } from './loop.js';
  * UI arrive as injected objects with the shapes typed below. `main.js` builds the real ones; a unit test
  * builds fakes and drives an entire best-of match in Node. That is the same trick Sprint 03 used, and the
  * reason this rewrite is testable at all.
+ *
+ * ## KS-07-06 deviation, declared per its own tech-lead notes
+ *
+ * KS-07-06's `Files:` list is `src/game/input.js`, `src/game/testHooks.js` and its own e2e spec — not this
+ * file. Its tech lead anticipated exactly this gap: "queued" is `sim.applyInput` (this file's own
+ * `handleDirection`), and "committed step" / "first rendered frame" are only ever visible here, between
+ * `sim.advance()` and `renderer.render()` — nowhere in `input.js` can see either. The changes are the
+ * smallest that make both observable: a `handleDirectionTimed` counterpart to `handleDirection` (records a
+ * keydown's clock reading), one extra argument threaded through `handleDirection` into the new
+ * `inputLatency.js` tracker, two calls bracketing the existing `renderer.render()` in `drawFrame`, and a
+ * `resetForRound()` call in `startRound`. Nothing here observes `RoundSimulation` any way `getState()`
+ * itself does not already offer (`ARCHITECTURE §4`'s "never poll internal fields" survives intact), and the
+ * whole tracker is `null` — costing nothing beyond one extra `if` per keydown and one per frame — unless
+ * `enableInputStats` is on, which only `main.js`'s `?test=1`/DEV gate ever turns on.
  */
 
 /** @typedef {import('./input.js').Direction} Direction */
@@ -152,8 +167,9 @@ import { createLoop } from './loop.js';
  * reader casts to the shape it actually needs.
  *
  * @typedef {object} RoundSnapshot
+ * @property {number} tick - KS-07-06: the integer sim tick this snapshot was taken at.
  * @property {number | null} timeRemaining
- * @property {{id: string, length: number, effects: {type: string, remaining: number}[]}[]} snakes
+ * @property {{id: string, length: number, direction: {dx: number, dy: number}, effects: {type: string, remaining: number}[]}[]} snakes
  */
 
 /**
@@ -187,6 +203,11 @@ import { createLoop } from './loop.js';
  * @property {boolean} [strict] - forwarded to the state machine: throw on an illegal transition (development
  *   and tests) or ignore and log it once (production).
  * @property {() => number} [randomSeed] - draws a match seed when none is fixed; defaults to `Date.now`
+ * @property {boolean} [enableInputStats] - KS-07-06: build the input-latency tracker `getInputStats()`
+ *   reads. Defaults to `false`, matching `ARCHITECTURE §11`'s `__kobi` gate: `main.js` passes `true` only
+ *   under `import.meta.env.DEV`/`?test=1`, so a normal production session builds no tracker at all and pays
+ *   nothing for it — not the two extra calls a frame, not the `sim.getState().tick` read on an accepted
+ *   input, nothing (see this file's own "KS-07-06 deviation" note above).
  */
 
 /** HUD timer text is throttled to 10 Hz (`ARCHITECTURE §8`). */
@@ -324,6 +345,7 @@ export function createSession({
   blurSource,
   strict = true,
   randomSeed = Date.now,
+  enableInputStats = false,
 }) {
   /**
    * The settings the *next* `RoundSimulation` is built from (KS-07-01). Starts as whatever this session was
@@ -344,6 +366,16 @@ export function createSession({
 
   /** @type {MatchSettings} */
   let matchSettings = { ...defaultMatchSettings(settings), ...matchSettingsOverrides };
+
+  /**
+   * KS-07-06: `null` unless `enableInputStats` is on (production never turns it on — see the option's own
+   * doc comment above). Shares this session's own `now` clock with `createInput`'s `onDirectionTimed`, so a
+   * test that injects a fake clock sees every stage measured against the same one.
+   * @type {ReturnType<typeof createInputLatencyTracker> | null}
+   */
+  const inputLatency = enableInputStats
+    ? createInputLatencyTracker({ now, simHz: settings.simHz, snakeSpeed: settings.snakeSpeed })
+    : null;
 
   /** The seed the *next* match is built from; `null` means "draw a fresh one". @type {number | null} */
   let fixedSeed = seed;
@@ -554,6 +586,10 @@ export function createSession({
     hudAccumulator = 0;
     writeHud();
     setCountdownStep(0);
+    // KS-07-06: a fresh `RoundSimulation` resets every snake to its spawn heading; without this, that
+    // heading could be misread as a commit matching a stale pending entry from the round that just ended
+    // (see `resetForRound`'s own comment in `inputLatency.js`).
+    inputLatency?.resetForRound();
   }
 
   function resetRoundTimers() {
@@ -798,7 +834,15 @@ export function createSession({
 
   /** Draws one frame of whatever the sim currently looks like, without advancing anything. */
   function drawFrame() {
-    renderer.render(sim === null ? EMPTY_SNAPSHOT : sim.getState(), lastDt);
+    const state = sim === null ? EMPTY_SNAPSHOT : sim.getState();
+    // KS-07-06: `observeState` must see the state *before* it is drawn (it is looking for a direction that
+    // changed on `sim.advance()` earlier this same frame) and `markRendered` immediately after — bracketing
+    // the one `renderer.render()` call below is what makes "committed" and "first rendered frame" two
+    // distinct timestamps rather than one. Both are `null`-safe no-ops when `enableInputStats` is off, and
+    // reuse the very snapshot `renderer.render` already needed, so there is no extra `getState()` call here.
+    inputLatency?.observeState(/** @type {RoundSnapshot} */ (state));
+    renderer.render(state, lastDt);
+    inputLatency?.markRendered();
   }
 
   // --- input --------------------------------------------------------------------------------------------
@@ -826,7 +870,32 @@ export function createSession({
     // .json's own doc says this is "legal to record ... silently dropped ... when applied".
     const name = DIRECTION_NAME_BY_DELTA[`${dir.dx},${dir.dy}`];
     if (name !== undefined) roundInputLog.push({ t: sim.elapsed, player: playerId, dir: name });
-    sim.applyInput(playerId, dir);
+    const accepted = sim.applyInput(playerId, dir);
+    if (inputLatency !== null) {
+      // `sim.getState()` is only read here on an *accepted* input — a handful of times a second at most for
+      // a human player, never once a frame — so KS-07-06 never adds the cost `ARCHITECTURE §4`'s snapshot
+      // clone would if this ran on every `runUpdate` instead. A rejected input passes `-1`, which
+      // `recordApplied` documents it never reads.
+      const tick = accepted ? /** @type {RoundSnapshot} */ (sim.getState()).tick : -1;
+      inputLatency.recordApplied(playerId, tick, accepted);
+    }
+  }
+
+  /**
+   * KS-07-06: the timing counterpart to {@link handleDirection}, fired by `input.js`'s `onDirectionTimed`
+   * for the same key, immediately before it. Purely a recording call — it makes no decision about whether
+   * the input will be accepted; `handleDirection`'s own `sim.applyInput` call, a moment later in the same
+   * synchronous keydown, resolves that.
+   *
+   * @param {number} playerNumber
+   * @param {Direction} dir
+   * @param {number} atMs
+   */
+  function handleDirectionTimed(playerNumber, dir, atMs) {
+    if (inputLatency === null) return;
+    const playerId = PLAYER_IDS[playerNumber - 1];
+    if (playerId === undefined) return;
+    inputLatency.recordKeydown(playerId, dir, atMs);
   }
 
   /**
@@ -925,11 +994,15 @@ export function createSession({
   const input = createInput({
     onDirection: handleDirection,
     onMenu: handleMenuAction,
+    // KS-07-06: `handleDirectionTimed` costs one extra no-op-shaped call per steering key when
+    // `inputLatency` is `null` (every production load) — see `handleDirectionTimed`'s own early return.
+    onDirectionTimed: handleDirectionTimed,
     // 'both' for the session's whole life: the same key means steering in one state and navigation in
     // another, and the two handlers above already know which state they are in. Switching `input.js`'s mode
     // on every transition would put the same knowledge in two places.
     mode: 'both',
     target: inputTarget,
+    now,
   });
 
   const loop = createLoop({
@@ -992,6 +1065,14 @@ export function createSession({
      */
     getSeeds() {
       return { matchSeed, roundIndex, roundSeeds: [...roundSeeds] };
+    },
+    /**
+     * KS-07-06: the keydown-to-render latency stats, in both ms and sim steps (AC1). Safe to call whether or
+     * not `enableInputStats` was on — {@link disabledInputLatencyStats} answers with the same shape, `enabled:
+     * false`, when it was not, so `testHooks.js`'s `getInputStats()` never has to branch.
+     */
+    getInputStats() {
+      return inputLatency === null ? disabledInputLatencyStats() : inputLatency.getStats();
     },
     /**
      * Runs one update by hand for `unscaledSeconds` of wall time, with no render. `testHooks.js`'s

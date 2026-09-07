@@ -36,7 +36,17 @@ const ui = createUi(uiRoot);
 // @ts-expect-error import.meta.env is Vite's own addition; not present in this project's jsconfig types.
 const isDevOrTest = import.meta.env.DEV || window.location.search.includes('test=1');
 
-const session = createSession({ renderer, ui, seed, strict: isDevOrTest });
+// KS-07-06 (declared outside its own `Files:` list; see `session.js`'s "KS-07-06 deviation" note): the same
+// dev/test flag that gates `strict` and `__kobi` itself also gates the input-latency tracker, so a normal
+// production load builds no tracker at all — `session.js`'s handful of extra call sites all short-circuit on
+// a `null` tracker rather than doing any work.
+const session = createSession({
+  renderer,
+  ui,
+  seed,
+  strict: isDevOrTest,
+  enableInputStats: isDevOrTest,
+});
 
 // `window.__kobi` (KS-03-06, `ARCHITECTURE §11`): present only in dev or when the page is explicitly asked
 // for it with `?test=1`. KS-03-06 AC1 needs the hooks *absent*, not merely unused, from a plain production
