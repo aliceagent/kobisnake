@@ -249,8 +249,15 @@ import { createLoop } from './loop.js';
  * @property {(action: ScreenAction) => void} handleAction
  */
 
-/** HUD timer text is throttled to 10 Hz (`ARCHITECTURE §8`). */
-const HUD_INTERVAL_SECONDS = 1 / 10;
+/**
+ * HUD timer text is throttled to 10 Hz (`ARCHITECTURE §8`).
+ *
+ * Exported — a one-word, zero-behaviour-change deviation from KI-03-03's `Files:` list, declared in that
+ * ticket's PR (tech-lead ruling on issue #122) — so `tests/agent/invariants.js` can derive its HUD-agreement
+ * tolerance from the real throttle instead of retyping `1 / 10` as a second copy that could drift from this
+ * one.
+ */
+export const HUD_INTERVAL_SECONDS = 1 / 10;
 
 /**
  * The countdown's four beats, in order (`DESIGN-DECISIONS §2.4`). Each lasts `countdownStepSeconds`, read
