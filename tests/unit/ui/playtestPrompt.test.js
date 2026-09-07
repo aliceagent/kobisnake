@@ -6,7 +6,7 @@ import {
   createPlaytestPromptState,
   selectDueQuestions,
 } from '../../../src/ui/screens/playtestPrompt.js';
-import { PLAYTEST_QUESTIONS } from '../../../src/qa/playtestQuestions.js';
+import { PLAYTEST_QUESTIONS, isTriggerDue } from '../../../src/qa/playtestQuestions.js';
 
 /**
  * KI-11-02: the pure logic behind the `?playtest=1` between-round prompt — selection, the two-question cap,
@@ -230,5 +230,54 @@ describe('createPlaytestPromptState: at most two questions, never re-offered mid
     state.handleAction('CONFIRM');
     state.handleAction('CONFIRM');
     expect(new Set(state.getFields().map((f) => f.questionId))).toEqual(questionIds);
+  });
+});
+
+describe('PR #176 review: every question becomes due at some point across a plausible Bo3 session', () => {
+  /**
+   * `PLAYTEST-SCRIPT.md` §1 pins the session to Best of 3 while §4 asks for 5 rounds *played* before
+   * `C1`-`C3` are due — a single Bo3 match (2-3 rounds) never reaches `roundsPlayed: 5` on its own, so this
+   * models `RoundFacts.roundsPlayed` the way `session.js`'s `sessionRoundsPlayed` now does: counted across
+   * matches, never reset at a match boundary (the defect this fix corrects — it used to read
+   * `MatchState.roundsPlayed`, which *does* reset per match and stranded every §4 question and `A2` behind a
+   * boundary they could never cross).
+   *
+   * Five gaps, modelling two Bo3 matches back to back: match 1 is a straight 2-0 sweep (rounds 1-2, session
+   * ends at round 2), match 2 goes the full three rounds and is where the laser phase is first seen (rounds
+   * 3-5, session ends at round 5) — the smallest sequence that reaches `roundsPlayed: 5` while also touching
+   * both `laserPhaseSeen` and `sessionOver`.
+   */
+  const SESSION_GAPS = [
+    { roundsPlayed: 1, laserPhaseSeen: false, sessionOver: false },
+    { roundsPlayed: 2, laserPhaseSeen: false, sessionOver: true }, // match 1 ends, swept 2-0
+    { roundsPlayed: 3, laserPhaseSeen: true, sessionOver: false }, // match 2, round 1 — lasers seen
+    { roundsPlayed: 4, laserPhaseSeen: true, sessionOver: false },
+    { roundsPlayed: 5, laserPhaseSeen: true, sessionOver: true }, // match 2 ends, 2-1 after 3 rounds
+  ];
+
+  it('no question in the bank is permanently unreachable under the prescribed Bo3 setup', () => {
+    // Derived from the bank itself, not hard-coded to a count (`PLAYTEST-SCRIPT.md`'s own count drifts as
+    // questions are added; a question added later and left ungated would silently strand itself here too).
+    const neverDue = PLAYTEST_QUESTIONS.filter(
+      (question) => !SESSION_GAPS.some((facts) => isTriggerDue(question.trigger, facts)),
+    ).map((question) => question.id);
+
+    expect(neverDue).toEqual([]);
+  });
+
+  it('C1-C3 (fair deaths, the sprint\'s own headline question) and A2 specifically are reachable', () => {
+    // The exact defect the review caught: `C1`-`C3` (`afterRound(5)`) and `A2` (`afterRound(5,
+    // requiresLaserPhase)`) are the ones a per-match `roundsPlayed` counter stranded, since a Bo3 match never
+    // plays a 5th round. Named individually, on top of the whole-bank sweep above, because these are the
+    // questions the sprint file's own goal line ("every 'that was unfair' arrives with the replay that
+    // proves it") is about.
+    for (const id of ['C1', 'C2', 'C3', 'A2']) {
+      const question = PLAYTEST_QUESTIONS.find((candidate) => candidate.id === id);
+      expect(question).toBeDefined();
+      const dueSomewhere = SESSION_GAPS.some((facts) =>
+        isTriggerDue(/** @type {NonNullable<typeof question>} */ (question).trigger, facts),
+      );
+      expect(dueSomewhere).toBe(true);
+    }
   });
 });

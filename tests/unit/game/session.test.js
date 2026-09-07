@@ -1300,6 +1300,36 @@ describe('KI-11-02 the playtest prompt seam', () => {
     );
   });
 
+  it('PR #176 review: roundsPlayed is counted for the whole session, not reset at a match boundary', () => {
+    const prompt = createFakePrompt({ opensTo: false });
+    const { session, ui, target } = buildSession({ seed: 5 });
+    session.setPlaytestPrompt(prompt);
+
+    // Match 1: Best of 1 — one round is the whole match.
+    playTo(session, { bestOf: 1 });
+    crashPlayerOne(session, target);
+    expect(prompt.offer).toHaveBeenLastCalledWith(
+      { roundsPlayed: 1, laserPhaseSeen: false, sessionOver: true },
+      0,
+    );
+    runFrames(session, SETTINGS.scoreboardSeconds + 0.05, 6);
+    expect(session.getState()).toBe(STATES.MATCH_OVER);
+
+    // REMATCH: a fresh match, same settings (`session.js`'s own KS-05-03 test, reused here). `roundIndex`
+    // resets to 0 for the new match — this is deliberately still about `roundsPlayed`, not that key — but
+    // `match.roundsPlayed` (the wrong source this fix removed) would also reset to 0 here, which is exactly
+    // the bug: a per-match counter can never tell match 2's first round from match 1's.
+    lastShow(ui, STATES.MATCH_OVER).onRematch();
+    runFrames(session, SETTINGS.countdownStepSeconds * 4 + 0.01, 8);
+    expect(session.getState()).toBe(STATES.PLAYING);
+
+    crashPlayerOne(session, target); // match 2's round 1 — the session's *second* round overall
+    expect(prompt.offer).toHaveBeenLastCalledWith(
+      { roundsPlayed: 2, laserPhaseSeen: false, sessionOver: true },
+      0,
+    );
+  });
+
   it('tech-lead note 3: advanceScoreboard never auto-advances while the prompt is open, and resumes the moment it closes', () => {
     const prompt = createFakePrompt({ opensTo: true });
     const { session, target } = buildSession({ seed: 1 });
