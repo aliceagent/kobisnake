@@ -1,0 +1,250 @@
+{
+  "kind": "kobisnake-playtest-session",
+  "schemaVersion": 1,
+  "exportedAt": "2026-09-07T21:07:41.725Z",
+  "matchSettings": {
+    "bestOf": 1,
+    "powerUpsEnabled": true,
+    "musicTrack": "track1",
+    "colors": {
+      "1": "red",
+      "2": "blue"
+    }
+  },
+  "questions": {
+    "V1": {
+      "id": "V1",
+      "section": 3,
+      "question": "Find your head",
+      "answerType": "yes-no",
+      "trigger": {
+        "kind": "end-of-session"
+      }
+    },
+    "V3": {
+      "id": "V3",
+      "section": 3,
+      "question": "Long snakes",
+      "answerType": "yes-no",
+      "trigger": {
+        "kind": "end-of-session"
+      }
+    }
+  },
+  "rounds": [
+    {
+      "roundIndex": 0,
+      "seed": 2693262067,
+      "result": "DRAW",
+      "endReason": "DEATH",
+      "laserPhaseSeen": false,
+      "replay": {
+        "seed": 2693262067,
+        "settingsOverrides": {},
+        "inputs": [],
+        "expectedEvents": [
+          {
+            "type": "FOOD_SPAWNED",
+            "tick": 0,
+            "t": 0,
+            "index": 0,
+            "cell": {
+              "x": 16,
+              "y": 11
+            }
+          },
+          {
+            "type": "FOOD_SPAWNED",
+            "tick": 0,
+            "t": 0,
+            "index": 1,
+            "cell": {
+              "x": 10,
+              "y": 2
+            }
+          },
+          {
+            "type": "FOOD_SPAWNED",
+            "tick": 0,
+            "t": 0,
+            "index": 2,
+            "cell": {
+              "x": 5,
+              "y": 20
+            }
+          },
+          {
+            "type": "FOOD_SPAWNED",
+            "tick": 0,
+            "t": 0,
+            "index": 3,
+            "cell": {
+              "x": 22,
+              "y": 7
+            }
+          },
+          {
+            "type": "FOOD_EATEN",
+            "tick": 40,
+            "t": 0.3333333333333333,
+            "snakeId": "p2",
+            "index": 0,
+            "cell": {
+              "x": 16,
+              "y": 11
+            }
+          },
+          {
+            "type": "FOOD_SPAWNED",
+            "tick": 40,
+            "t": 0.3333333333333333,
+            "index": 0,
+            "cell": {
+              "x": 2,
+              "y": 17
+            }
+          },
+          {
+            "type": "SNAKE_DIED",
+            "tick": 380,
+            "t": 3.1666666666666665,
+            "snakeId": "p1",
+            "cause": "WALL",
+            "cell": {
+              "x": 24,
+              "y": 12
+            }
+          },
+          {
+            "type": "SNAKE_DIED",
+            "tick": 380,
+            "t": 3.1666666666666665,
+            "snakeId": "p2",
+            "cause": "WALL",
+            "cell": {
+              "x": -1,
+              "y": 11
+            }
+          },
+          {
+            "type": "ROUND_OVER",
+            "tick": 380,
+            "t": 3.1666666666666665,
+            "result": "DRAW",
+            "reason": "DEATH",
+            "winnerId": null,
+            "lengths": [
+              4,
+              5
+            ]
+          }
+        ]
+      },
+      "answers": []
+    },
+    {
+      "roundIndex": 1,
+      "seed": 11749833,
+      "result": "P2_WIN",
+      "endReason": "DEATH",
+      "laserPhaseSeen": false,
+      "replay": {
+        "seed": 11749833,
+        "settingsOverrides": {},
+        "inputs": [
+          {
+            "t": 0.2916666666666667,
+            "player": "p1",
+            "dir": "UP"
+          }
+        ],
+        "expectedEvents": [
+          {
+            "type": "FOOD_SPAWNED",
+            "tick": 0,
+            "t": 0,
+            "index": 0,
+            "cell": {
+              "x": 20,
+              "y": 17
+            }
+          },
+          {
+            "type": "FOOD_SPAWNED",
+            "tick": 0,
+            "t": 0,
+            "index": 1,
+            "cell": {
+              "x": 12,
+              "y": 20
+            }
+          },
+          {
+            "type": "FOOD_SPAWNED",
+            "tick": 0,
+            "t": 0,
+            "index": 2,
+            "cell": {
+              "x": 8,
+              "y": 5
+            }
+          },
+          {
+            "type": "FOOD_SPAWNED",
+            "tick": 0,
+            "t": 0,
+            "index": 3,
+            "cell": {
+              "x": 18,
+              "y": 7
+            }
+          },
+          {
+            "type": "SNAKE_DIED",
+            "tick": 260,
+            "t": 2.1666666666666665,
+            "snakeId": "p1",
+            "cause": "WALL",
+            "cell": {
+              "x": 6,
+              "y": 24
+            }
+          },
+          {
+            "type": "ROUND_OVER",
+            "tick": 260,
+            "t": 2.1666666666666665,
+            "result": "P2_WIN",
+            "reason": "DEATH",
+            "winnerId": "p2",
+            "lengths": [
+              4,
+              4
+            ]
+          }
+        ]
+      },
+      "answers": []
+    }
+  ],
+  "sessionAnswers": [
+    {
+      "questionId": "V1",
+      "player": "P1",
+      "value": "yes",
+      "skipped": false
+    },
+    {
+      "questionId": "V1",
+      "player": "P2",
+      "value": "no",
+      "skipped": false
+    },
+    {
+      "questionId": "V3",
+      "player": "P1",
+      "value": "yes",
+      "skipped": false
+    }
+  ]
+}

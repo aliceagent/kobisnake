@@ -71,6 +71,28 @@ anything visual, textual, timing- or rule-related changed. Do not merge. Report 
   status that Vercel posts, or through the Vercel connector.
 - Never put model names in commits, code, or comments.
 
+## Running a playtest gate without a facilitator (Improvement 11)
+
+Sprint 07 and Sprint 17 are the two points where this project needs humans, and Gate 1 sat waiting on *three*
+of them — two players and a facilitator to read `docs/qa/PLAYTEST-SCRIPT.md` aloud and write the answers down.
+Improvement 11 removes the third. The full player-facing instructions are in `PLAYTEST-SCRIPT.md` §1; this is
+what the build team needs to know.
+
+- **`?playtest=1`** turns on capture mode. Without the flag nothing changes — no DOM node, no listener, no
+  extra work per frame — and a test asserts the absence rather than merely the invisibility.
+- Between rounds the game asks **at most two** of the script's questions, in the script's own words, keyed off
+  what has actually happened: no laser question before the lasers have been seen, no §4 fairness question
+  before five rounds have been played **across the session** (a Best-of-3 match never reaches five on its own).
+- **Every round is recorded**, whether or not it carried a question, in the KS-07-01 recorder's shape.
+- **EXPORT** hands back one JSON document plus a markdown summary. Nothing is uploaded; the offline
+  zero-network check still passes with the flag on.
+- `node scripts/playtest-to-issues.mjs <session.json>` turns that file into ready-to-paste issue bodies, one
+  per failing answer, each carrying the round's seed and a replay that drops straight into
+  `tests/sim/replays/` and reproduces tick for tick.
+
+So a gate now costs two people and thirty minutes, and produces one file the design lead reads and the build
+team can act on without a transcription step in between.
+
 ## Fable's cadence
 Fable checks each active sprint session at least twice a day: reviews open PRs labelled
 `needs-design-review`, answers `BLOCKED:` comments, walks exit criteria when "READY FOR SIGN-OFF" is posted,
