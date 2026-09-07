@@ -1,7 +1,8 @@
-# KOBI Snake — 20-Sprint Roadmap
+# KOBI Snake — Roadmap
 
-Twenty sprints take the repository from empty to a released, Vercel-hosted, two-player 3D Snake game, then into
-post-1.0 single-player and arena variants. Sprints 01–18 are Version 1. Each sprint file is self-contained: goal,
+Twenty numbered sprints take the repository from empty to a released, Vercel-hosted, two-player 3D Snake game,
+then into post-1.0 single-player and arena variants. Alongside them runs an **improvement track of ten
+sprints (I01–I10)**, added on 2026-09-07 from an agent QA pass of the shipping build; see below. Sprints 01–18 are Version 1. Each sprint file is self-contained: goal,
 scope, prerequisites, tickets with owners and acceptance criteria, QA plan, references, risks and exit criteria.
 Read `docs/process/AGENT-ROLES-AND-WORKFLOW.md` for how a sprint runs and who does what, and
 `docs/process/HANDOFF.md` for the kick-off prompt of each sprint.
@@ -30,6 +31,41 @@ Read `docs/process/AGENT-ROLES-AND-WORKFLOW.md` for how a sprint runs and who do
 | [18](sprint-18-release-1-0.md) | Release 1.0 | — | Opus | Production on Vercel, `v1.0.0`, changelog, developer guide for the 11-year-old |
 | [19](sprint-19-single-player.md) | Single Player | 8 | Sonnet | Post-1.0: solo survival with laser cycles, score, high score, difficulties |
 | [20](sprint-20-arena-variants-backlog.md) | Arena Variants (prototype gate) | — | Fable | Post-1.0: Zigzag Zone and Moving Obstacles prototyped, decision to ship or shelve |
+
+## Improvement track (I01–I10)
+
+Ten sprints that improve the game as it stands, derived from the agent QA pass of 2026-09-07
+(`docs/qa/reports/2026-09-07-agent-qa-pass.md`). **They run in parallel with the numbered roadmap, not after
+it.** Each is self-contained, each can start against `main` today, and none of them waits on Gate 1 — which is
+part of the point: the project has been blocked on two humans being in a room, and most of what a playtest
+reports does not need them.
+
+| # | Sprint | Lead | Why it exists | Blocks |
+|---|---|---|---|---|
+| [I01](improvement-01-match-termination-and-draws.md) | Match termination & draws | Opus | **F1**: a match of draws never ends — 12 rounds played, 0–0, forever | — |
+| [I02](improvement-02-readability-and-contrast.md) | Readability & contrast | Sonnet | **F2**: apples are low-contrast and share player one's hue | S08–S10, S14 |
+| [I03](improvement-03-agent-playtest-harness.md) | Agent playtest harness | Opus | Nothing plays whole matches through the whole stack; F1 and F2 survived 643 green tests | I04, I06, I08 |
+| [I04](improvement-04-round-pacing-and-the-climax.md) | Round pacing & the climax | Fable | **F3**: only 4 of 27 rounds lasted long enough to see a laser | — |
+| [I05](improvement-05-replay-capture-and-playback.md) | Replays you can watch | Sonnet | KS-07-01 records replays with nowhere to play them back | — |
+| [I06](improvement-06-resilience-and-recovery.md) | Resilience & recovery | Opus | Nothing handles WebGL context loss; a sleeping laptop kills the match | — |
+| [I07](improvement-07-input-controls-and-feel.md) | Controls: rebinding & feel | Sonnet | Keys are hard-coded WASD/arrows; no route in for other layouts or hands | — |
+| [I08](improvement-08-performance-budgets-before-the-art.md) | Performance budgets | Opus | `ARCHITECTURE §12` states budgets nothing enforces until S16 — after the art lands | S08–S10 |
+| [I09](improvement-09-determinism-across-browsers.md) | Determinism in a browser | Opus | Every determinism proof runs in Node; replays and baselines depend on it | I05 |
+| [I10](improvement-10-first-minute.md) | The first minute | Sonnet | **F6**: five of six menu items say COMING SOON, and nothing says what the game is | — |
+
+```
+I01  I02  I05  I07  I09  I10      (independent, start any time)
+      │                │
+      ▼                ▼
+     S08–S10          I05
+I03 ─┬─► I04
+     ├─► I06 (KI-06-04)
+     └─► I08 (KI-08-02)
+```
+
+Ticket IDs are `KI-NN-TT`; branches `iNN/ki-NN-TT-slug`; PR titles `KI-NN-TT: description`. Everything else —
+one ticket per PR, squash merge, `needs-design-review` on anything visual, the never list in `CLAUDE.md` —
+is unchanged.
 
 ## Dependency graph
 
