@@ -9,6 +9,15 @@ import { createFocusModel } from '../focus.js';
  * PRACTICE (disabled until S15), TUTORIAL (disabled until S15), SHOP (disabled until S14), SETTINGS (disabled
  * until S12). "1 PLAYER" has no `GAME_EVENTS` entry at all — it never fires `onSelect` regardless, being
  * permanently disabled this sprint — so it is the one row below with no `event` field.
+ *
+ * KI-10-01: the one playable row (`2 PLAYERS`) reads as the primary action and the five unavailable rows are
+ * grouped into their own box below it, so the screen stops reading as mostly locked. This is presentation
+ * only: `MENU_ITEMS` keeps its order, the default-focused row is unchanged (still index 1, `2 PLAYERS` — the
+ * only enabled entry `firstFocusableIndex` can land on), and every disabled row is exactly as unselectable as
+ * before (`focus.js` skips disabled entries regardless of where their DOM node lives). The `rows` array below
+ * still has one element per `MENU_ITEMS` entry, in `MENU_ITEMS` order — only *which parent* each row is
+ * appended to changes, not the row-to-item index mapping `updateFocusClasses` and the mouse handlers rely on.
+ * The one-line description under the title is `DESIGN-DECISIONS §3`'s approved copy, used verbatim.
  */
 
 /** @typedef {import('../focus.js').MenuAction} MenuAction */
@@ -63,12 +72,27 @@ export function createMainMenuScreen(root) {
   title.textContent = 'KOBI SNAKE';
   panel.appendChild(title);
 
+  // KI-10-00 approved copy (`DESIGN-DECISIONS §3`), verbatim. Answers "what is this and who plays it" in its
+  // first four words, which is the line's whole job — it goes right under the title.
+  const description = doc.createElement('p');
+  description.className = 'menu-description';
+  description.textContent =
+    'Two players, one keyboard. Eat apples, grow long, and make the other snake crash.';
+  panel.appendChild(description);
+
   /** @type {MainMenuProps} */
   let props = { onSelect: () => {} };
 
+  // A box for the unavailable rows so five "COMING SOON" items read as one locked group instead of
+  // dominating the list beside the one thing a player can actually do (KI-10-01).
+  const lockedGroup = doc.createElement('div');
+  lockedGroup.className = 'menu-item-group menu-item-group--locked';
+
   const rows = MENU_ITEMS.map((item) => {
     const row = doc.createElement('div');
-    row.className = item.disabled ? 'menu-item menu-item--disabled' : 'menu-item';
+    row.className = item.disabled
+      ? 'menu-item menu-item--disabled'
+      : 'menu-item menu-item--primary';
 
     const label = doc.createElement('span');
     label.className = 'menu-item-label';
@@ -82,9 +106,13 @@ export function createMainMenuScreen(root) {
       row.appendChild(tag);
     }
 
-    panel.appendChild(row);
+    // The enabled row (2 PLAYERS) sits directly in the panel as the primary action; every disabled row goes
+    // into the locked group, in its original relative order (AC1 keeps every item on screen either way).
+    (item.disabled ? lockedGroup : panel).appendChild(row);
     return row;
   });
+
+  panel.appendChild(lockedGroup);
 
   container.appendChild(panel);
   root.appendChild(container);

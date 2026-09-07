@@ -235,6 +235,16 @@ body {
   margin-bottom: 0.25rem;
 }
 
+/* KI-10-01: the one-line "what is this and who plays it" description, under the title and above the menu
+   list. Legibility only, same grey-box treatment as the rest of this screen (Sprint 11 restyles it). */
+.menu-description {
+  margin: 0 0 0.5rem;
+  font-size: 0.95rem;
+  font-weight: 500;
+  line-height: 1.4;
+  color: rgba(255, 255, 255, 0.75);
+}
+
 .menu-line {
   font-size: 1.15rem;
   font-weight: 600;
@@ -263,10 +273,38 @@ body {
   justify-content: center;
 }
 
+/* KI-10-01: the main menu's one playable row (2 PLAYERS) reads as the clear primary action — bigger, brighter,
+   and on its own above the locked group below, instead of just another row in a list of six. */
+.menu-item--primary {
+  padding: 1rem 1.5rem;
+  font-size: 1.25rem;
+  background: rgba(255, 255, 255, 0.14);
+}
+
 /* AC2: disabled rows (main menu's "COMING SOON" items) are visibly inert and never take the focus ring. */
 .menu-item--disabled {
   opacity: 0.45;
   cursor: default;
+}
+
+/* KI-10-01: the five unavailable rows share one smaller, quieter box below the primary action, so the screen
+   reads as "one thing to do, and more coming" rather than a wall of locked doors. Structural only — Sprint 11
+   restyles the toy-panel look on top of this. */
+.menu-item-group {
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+}
+
+.menu-item-group--locked {
+  margin-top: 0.5rem;
+  padding-top: 0.75rem;
+  border-top: 1px solid rgba(255, 255, 255, 0.12);
+}
+
+.menu-item-group--locked .menu-item {
+  padding: 0.5rem 1rem;
+  font-size: 0.85rem;
 }
 
 /* AC4: the one visible focus ring every grey-box screen shares. */
