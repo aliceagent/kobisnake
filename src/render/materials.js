@@ -1,6 +1,7 @@
 // @ts-check
 import * as THREE from 'three';
 import { SETTINGS } from '../core/settings.js';
+import { linearChannels } from './colourVision.js';
 
 /**
  * The only place in the codebase that is allowed to name a colour (`CLAUDE.md` "The never list"). Every value
@@ -121,15 +122,17 @@ export const COLORS = {
  * readable as it is unreadable. WCAG's gamma-aware weighting reports what the eye actually reports: the two
  * are nearly indistinguishable (`materials.test.js` asserts the naive-average failure mode directly).
  *
+ * KI-15-01 (issue #191) moved the sRGB gamma decode itself into `colourVision.js`'s `linearChannels` and
+ * left the weighting here. That file needs the same decode for CIE L*a*b*, and two copies of the transfer
+ * function is the one mistake this helper exists to have already fixed once. The dependency runs
+ * materials -> colourVision and never the other way: `colourVision.js` imports nothing, so `src/ui/` can use
+ * the colour-vision check (KI-15-02) without pulling three.js in behind it.
+ *
  * @param {number | string} color - a `COLORS` entry (`0xRRGGBB`) or a `SETTINGS.colors` entry (`'#rrggbb'`)
  * @returns {number} 0 (black) to 1 (white)
  */
 export function relativeLuminance(color) {
-  const hex = typeof color === 'string' ? Number.parseInt(color.replace('#', ''), 16) : color;
-  const channels = [(hex >> 16) & 0xff, (hex >> 8) & 0xff, hex & 0xff].map((byte) => {
-    const c = byte / 255;
-    return c <= 0.04045 ? c / 12.92 : ((c + 0.055) / 1.055) ** 2.4;
-  });
+  const channels = linearChannels(color);
   return 0.2126 * channels[0] + 0.7152 * channels[1] + 0.0722 * channels[2];
 }
 

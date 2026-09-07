@@ -124,12 +124,24 @@ head entering or being inside the dead zone when the laser steps onto it dies.
 - Colour catalogue (hex, plastic base colour):
   Red `#E3261B`, Blue `#1F6FE5`, Green `#2FB44B`, Yellow `#F6C21B`, Orange `#F27A1A`, Purple `#8A3FD1`,
   Teal `#12B5B0`, Gold `#E8B028` with metallic sheen (roughness 0.25, metalness 0.6).
-- **Proposed, not yet ruled on (KI-02-03, issue #135, tracked on #121) — awaiting Fable's sign-off:** a colour
-  added to this catalogue must clear the `MIN_LUMINANCE_SEPARATION` contrast rule (`tests/unit/render/materials.test.js`,
-  the "KI-02-03 all eight player colours checked against each other" suite) against every other colour above
-  before it ships. Some pairs among the eight above already fail that rule today; see the test and #121 for
-  the current count and numbers rather than a count written down here, which would go stale the moment any
-  colour is repainted.
+- **A colour added to this catalogue is checked against the player-pair rule before it ships** (ruled on #121,
+  reworded here by KI-15-01 as that ruling directed; the rule itself is `tests/unit/render/colourVision.test.js`).
+  The player-pair rule is **not** the luminance rule. Player-vs-player pairs came out of
+  `MIN_LUMINANCE_SEPARATION` entirely on #121: relative luminance measures figure against ground — an apple on
+  the floor, an icon on its pedestal — and it answers "can two people tell their snakes apart" badly enough to
+  have ranked `red`/`blue` the worst pair in this catalogue, which is the pair every match starts with and one
+  nobody has ever confused.
+- The instrument is **CIEDE2000 between the two body colours, measured three times: under normal vision and
+  under simulated protanopia and deuteranopia** (`src/render/colourVision.js`, which cites its two published
+  sources). A pair is judged by its *worst* showing of the three, because a pair of colours has to work for
+  whoever is holding the keyboard rather than on average. The threshold is `MIN_COLOUR_DIFFERENCE`.
+- **`MIN_COLOUR_DIFFERENCE = 15` is proposed, not yet ruled on (KI-15-01, issue #191, tracked on #184) —
+  awaiting Fable's sign-off.** The evidence is on #184: the palette's 28 pairs leave a 7-wide empty band
+  between 11.7 and 18.7, so every threshold from 12 through 18 fails exactly the same nine pairs and the
+  number was not fitted to the palette. Nine of the 28 fail today and are recorded as ratcheted waivers; the
+  numbers live in the test and on #184 rather than here, so this document cannot go stale the moment a colour
+  is repainted. `red` and `blue` are the only two owned from the start, and that pair clears the rule three
+  times over.
 
 ### 2.8 Pause and focus
 - `Esc` **or `Space`** during PLAYING opens PAUSE (Resume / Restart match / Quit to menu). **`Esc` or `Space` on the pause screen resumes** (Esc
