@@ -24,8 +24,10 @@ npm run test:agent
 
 **Never run two Playwright suites at once in one container** — two concurrent suites corrupt both
 ([#86](https://github.com/aliceagent/kobisnake/issues/86)). `test:e2e`, `test:visual` and `test:agent` all run
-through `scripts/run-playwright-suite.mjs`, which holds one lock in the OS temp directory and *refuses* (it
-does not queue) if another suite already holds it. Separate CI runners are separate containers and never see
+through `scripts/run-playwright-suite.mjs`, which holds one lock in the OS temp directory. A second suite
+**queues** behind the first, saying so while it waits, and gives up after 20 minutes. Queueing rather than
+refusing is deliberate: several agents verify in parallel in one container, and turning every concurrent run
+into a spurious failure would be worse than waiting. Separate CI runners are separate containers and never see
 each other's lock; a lock whose process is gone, or older than 30 minutes, is treated as abandoned.
 
 The suite fails on any of three things (KI-03-01 AC3), each reported with the **seed** so it can be replayed:
