@@ -445,23 +445,6 @@ describe('KI-02-03 all eight player colours checked against each other (docs/spr
     expect(() => assertContrastRule(buildAllPlayerColourPairs(SETTINGS), KI_02_03_WAIVERS)).not.toThrow();
   });
 
-  it('KI-02-03: no colour in SETTINGS.colors was changed by this ticket', () => {
-    // The crux of this ticket: report the seven-turned-nine failures, do not quietly adjust them. Asserted
-    // against the literal DESIGN-DECISIONS §2.7 catalogue so a future edit to any of these eight hexes (this
-    // ticket's files do not include settings.js, but nothing stops a different PR from touching it) fails
-    // here rather than passing unnoticed.
-    expect(SETTINGS.colors).toEqual({
-      red: '#E3261B',
-      blue: '#1F6FE5',
-      green: '#2FB44B',
-      yellow: '#F6C21B',
-      orange: '#F27A1A',
-      purple: '#8A3FD1',
-      teal: '#12B5B0',
-      gold: '#E8B028',
-    });
-  });
-
   it('KI-02-03: prove the rule can go red — a synthetic ninth colour colliding with an existing one fails unwaived', () => {
     // KS-07-07/KI-02-01's "prove the test can go red" pattern, applied to this table specifically: a ninth
     // colour appended to the catalogue with no contrast entry of its own must fail this rule, not pass

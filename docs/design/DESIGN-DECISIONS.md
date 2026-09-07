@@ -124,8 +124,9 @@ head entering or being inside the dead zone when the laser steps onto it dies.
 - **Proposed, not yet ruled on (KI-02-03, issue #135, tracked on #121) — awaiting Fable's sign-off:** a colour
   added to this catalogue must clear the `MIN_LUMINANCE_SEPARATION` contrast rule (`tests/unit/render/materials.test.js`,
   the "KI-02-03 all eight player colours checked against each other" suite) against every other colour above
-  before it ships; nine of the current 28 pairs already fail that rule today and are reported on #121 rather
-  than repainted.
+  before it ships. Some pairs among the eight above already fail that rule today; see the test and #121 for
+  the current count and numbers rather than a count written down here, which would go stale the moment any
+  colour is repainted.
 
 ### 2.8 Pause and focus
 - `Esc` **or `Space`** during PLAYING opens PAUSE (Resume / Restart match / Quit to menu). **`Esc` or `Space` on the pause screen resumes** (Esc
