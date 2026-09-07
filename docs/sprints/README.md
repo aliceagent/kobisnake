@@ -51,8 +51,8 @@ reports does not need them.
 | [I06](improvement-06-resilience-and-recovery.md) | Resilience & recovery | Opus | Nothing handles WebGL context loss; a sleeping laptop kills the match | — |
 | [I07](improvement-07-input-controls-and-feel.md) | Controls: rebinding & feel | Sonnet | Keys are hard-coded WASD/arrows; no route in for other layouts or hands | — |
 | [I08](improvement-08-performance-budgets-before-the-art.md) | Performance budgets | Opus | `ARCHITECTURE §12` states budgets nothing enforces until S16 — after the art lands | S08–S10 |
-| [I09](improvement-09-determinism-across-browsers.md) | Determinism in a browser | Opus | Every determinism proof runs in Node; replays and baselines depend on it | I05 |
-| [I10](improvement-10-first-minute.md) | The first minute | Sonnet | **F6**: five of six menu items say COMING SOON, and nothing says what the game is | — |
+| [I09](improvement-09-determinism-across-browsers.md) | Determinism in a browser | Opus | Every determinism proof runs in Node; replays and baselines depend on it. **Complete 2026-09-07** (#159): Chromium reproduces the goldens tick for tick on every PR; `src/core` lint-guarded and stub-proved free of ambient time and randomness; 100 000-tick clock exactness; WebKit leg awaits its first nightly | I05 |
+| [I10](improvement-10-first-minute.md) | The first minute | Sonnet | **F6**: five of six menu items say COMING SOON, and nothing says what the game is. **Complete 2026-09-07** (#123): 2 PLAYERS reads as the primary action with the unavailable rows grouped, the approved description line, a controls card that follows live colours, and HOW TO PLAY directly under 2 PLAYERS | — |
 
 ```
 I01  I02  I05  I07  I09  I10      (independent, start any time)

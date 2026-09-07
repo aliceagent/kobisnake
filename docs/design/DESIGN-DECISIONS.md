@@ -165,6 +165,8 @@ eleven-year-old: short words, no jargon, and no exclamation mark doing the work 
 - **The scoreboard on the third consecutive draw** (#150): that round is not replayed, so it must not say REPLAY.
   It reads **"THIRD DRAW — MATCH OVER"**, then the match-over screen follows as usual. The ordinary draw keeps
   "DRAW — REPLAY" and the second keeps its "one more and the match is called" warning.
+- **The playtest prompt's key hint** (#182, Improvement 11): one line under the answers, verbatim:
+  "← → CHOOSE · ENTER ANSWER · ESC SKIP". The questions themselves are `PLAYTEST-SCRIPT.md`'s own words.
 - **The match-setup miniature arena shows one apple** (#157), at a fixed cell, so a player choosing a colour sees
   it beside the thing they will be chasing. It is a picture, not a round: nothing moves.
 

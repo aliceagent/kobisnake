@@ -19,6 +19,23 @@ Signing, SBOM publication beyond a generated file, anything that requires a paid
 
 ## Tickets
 
+### KI-19-00 · Test infrastructure under contention (#170, #175, #151, #181)
+Owner: Opus · Size: M · Depends on: — · **First, before any other ticket**
+Files: `playwright.config.js`, `vitest.config.js`, `tests/e2e/inputLatency.spec.js`, `CLAUDE.md`, `scripts/run-playwright-suite.mjs`
+Spec: The design-lead ruling on #170: (1) derive the preview port from the checkout path (hash the repository
+root into a private-range port) and make `baseURL` follow, so a `vite preview` from another worktree is never
+reused and an orphan never blocks the next run; CI unaffected. (2) #175/#151: KS-07-06 AC1 gates on
+`stepWaitTicks` only; the wall-clock half is printed as information and never fails the job — the module
+comment says why, citing KS-07-06's own three-machine table. (3) #181: cap Vitest worker parallelism locally
+to half the cores, leave CI alone, and add to `CLAUDE.md`'s setup section: "a green summary with a red exit
+is the runner, not a test; re-run once." Never make the suite ignore unhandled errors.
+Acceptance criteria:
+- [ ] AC1 Two worktrees in one container run `test:e2e` one after the other against their own builds; asserted by a test that starts a server from one checkout and shows the other refuses to reuse it.
+- [ ] AC2 `inputLatency.spec.js` cannot fail on wall-clock milliseconds; the tick assertion is unchanged.
+- [ ] AC3 Local Vitest worker count is capped; CI's is not; both stated in `vitest.config.js`.
+- [ ] AC4 The four issues are closed by this PR with a sentence each.
+QA: e2e (run twice, from two worktrees), unit.
+
 ### KI-19-01 · Integrity gates
 Owner: Opus · Size: M · Depends on: —
 Files: `.github/workflows/ci.yml`, `package.json`, `.npmrc`
