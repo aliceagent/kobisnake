@@ -32,7 +32,17 @@ import { closeSync, openSync, readFileSync, rmSync, writeSync } from 'node:fs';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 
-const LOCK_PATH = join(tmpdir(), 'kobi-playwright-suite.lock');
+/**
+ * One lock per machine, in the OS temp directory.
+ *
+ * `KOBI_SUITE_LOCK_PATH` overrides it, and that override is not a convenience — it is a correctness
+ * requirement for `tests/agent/suiteLock.test.js`. That file has to create and delete locks to prove the
+ * rules, it runs under `npm run test:unit`, and `npm run test:unit` is routinely run *while a real Playwright
+ * suite is holding the real lock*. Pointed at the real path it would delete a live suite's lock and let a
+ * second suite start beside it — a test of the guard rail breaking the guard rail. It was caught doing
+ * exactly that. Nothing but that test sets this.
+ */
+const LOCK_PATH = process.env.KOBI_SUITE_LOCK_PATH ?? join(tmpdir(), 'kobi-playwright-suite.lock');
 
 /**
  * Ownership is decided by **process liveness alone**, deliberately, and there is no age at which a live

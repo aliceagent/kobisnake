@@ -19,7 +19,16 @@ import { afterEach, describe, expect, it } from 'vitest';
  * a second Playwright suite (#86 again — a test of the rule must not break the rule).
  */
 
-const LOCK_PATH = join(tmpdir(), 'kobi-playwright-suite.lock');
+/**
+ * A lock path of this file's own, **never the real one**.
+ *
+ * These tests create and delete locks, and `npm run test:unit` is routinely run while a real Playwright suite
+ * holds the real lock — a first version of this file pointed at the real path and was caught deleting a live
+ * suite's lock mid-run, which would have let a second suite start beside it. A test of the guard rail must
+ * not be able to break the guard rail. `run-playwright-suite.mjs` reads `KOBI_SUITE_LOCK_PATH` for exactly
+ * this, and for nothing else.
+ */
+const LOCK_PATH = join(tmpdir(), `kobi-suite-lock-test-${process.pid}.lock`);
 const RUNNER = 'scripts/run-playwright-suite.mjs';
 
 /** @type {import('node:child_process').ChildProcess | null} */
@@ -48,11 +57,21 @@ function holdLock(ageMs) {
 function runRunner(waitMs) {
   return spawnSync(process.execPath, [RUNNER, 'agent', '--help'], {
     encoding: 'utf8',
-    env: { ...process.env, KOBI_SUITE_LOCK_WAIT_MS: String(waitMs) },
+    env: {
+      ...process.env,
+      KOBI_SUITE_LOCK_WAIT_MS: String(waitMs),
+      KOBI_SUITE_LOCK_PATH: LOCK_PATH,
+    },
   });
 }
 
 describe('KI-03-01 · the #86 Playwright suite lock', () => {
+  it('KI-03-01: these tests never touch the lock a real suite uses', () => {
+    // The bug this guards against is subtle and was real: `afterEach` below deletes `LOCK_PATH`, and if that
+    // resolved to the shared path, running `npm run test:unit` beside a live suite would unlock it.
+    expect(LOCK_PATH).not.toBe(join(tmpdir(), 'kobi-playwright-suite.lock'));
+  });
+
   it('KI-03-01: a live holder is never evicted, however old its lock is', () => {
     holdLock(2 * 60 * 60 * 1000); // two hours old, and still alive
     const result = runRunner(1_500);
