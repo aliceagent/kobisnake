@@ -4,6 +4,14 @@ Closes #<issue>  ·  Ticket: KS-NN-TT  ·  Sprint: NN  ·  Owner model: Opus / S
 ## What changed
 <!-- Two to five sentences. Reference GDD sections / DESIGN-DECISIONS rows / reference images by filename. -->
 
+## Player-visible?
+<!-- Delete the line that does not apply. A change is player-visible if it alters what is on screen, what the
+     game does, what a key press causes, or what the game says. Tests, CI, tooling and refactors are not,
+     however large. If yes: add the `player-visible` label AND a line to CHANGELOG.md under [Unreleased] —
+     .github/workflows/changelog.yml checks the two go together. -->
+- **Yes** — labelled `player-visible`, and CHANGELOG.md has the entry.
+- **No** — nothing a player could notice changed.
+
 ## Acceptance criteria
 <!-- Copy the ticket's checkboxes and tick each one, naming the test that proves it. -->
 - [ ] AC1 — `tests/...`
