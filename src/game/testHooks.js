@@ -41,6 +41,9 @@ import { STATES } from './gameStateMachine.js';
  * @property {() => import('./inputLatency.js').InputLatencyStats} getInputStats - KS-07-06. Answers with
  *   `{enabled: false, ...}` when the session was not built with `enableInputStats: true` — the whole point
  *   being that this always exists to call, never throws, and a caller only has to check `.enabled`.
+ * @property {() => object} getRenderedSnapshot - KI-15-02: the exact object the last `drawFrame` handed the
+ *   renderer, so a spec can assert the match-setup apple's fixed cell without depending on a three.js draw-
+ *   call count or another implementation detail of *how* it was drawn.
  */
 
 /**
@@ -127,6 +130,10 @@ import { STATES } from './gameStateMachine.js';
  *   half of it) leaves the crash beat with zero camera displacement, without depending on `session.js` ever
  *   wiring a `camera.shake()` call into a crash itself (see this ticket's PR notes: it does not, today).
  *   `0` when there is no camera to shake.
+ * @property {() => object} getRenderedSnapshot - KI-15-02/#157: the exact object the last `drawFrame()` call
+ *   handed the renderer — `session.js`'s own `EMPTY_SNAPSHOT`, its `MATCH_SETUP_SNAPSHOT`, or a live round's
+ *   state. What a match-setup e2e spec reads to assert the preview apple's fixed cell without depending on a
+ *   three.js draw-call count or another implementation detail of *how* it got drawn.
  */
 
 /**
@@ -344,6 +351,9 @@ export function createTestHooks({ session, renderer, eventTarget, KeyboardEventC
     getSnapshot() {
       if (session.getState() === STATES.MATCH_OVER) return null;
       return session.getSim()?.getState() ?? null;
+    },
+    getRenderedSnapshot() {
+      return session.getRenderedSnapshot();
     },
     pressKey,
     /**

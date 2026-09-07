@@ -4,7 +4,12 @@ import { RESULTS } from '../../../src/core/events.js';
 import { DIRECTIONS } from '../../../src/core/grid.js';
 import { SETTINGS, withOverrides } from '../../../src/core/settings.js';
 import { STATES } from '../../../src/game/gameStateMachine.js';
-import { createSession, formatTime, roundSeedFor } from '../../../src/game/session.js';
+import {
+  MATCH_SETUP_APPLE_CELL,
+  createSession,
+  formatTime,
+  roundSeedFor,
+} from '../../../src/game/session.js';
 import { runRound } from '../../sim/harness.js';
 
 /**
@@ -870,6 +875,38 @@ describe('KS-05-03 the HUD and the renderer', () => {
     session.renderFrame();
     const drawn = /** @type {any} */ (renderer.render.mock.calls.at(-1))[0];
     expect(drawn.snakes).toHaveLength(2);
+  });
+
+  it('KI-15-02 AC2: MATCH_SETUP alone gets the one-apple preview at its fixed cell — MAIN_MENU stays empty', () => {
+    const { session, ui, renderer } = buildSession();
+
+    // MAIN_MENU: unchanged from KS-05-03's own assertion above — no apple leaks onto the screen #157's
+    // ruling was never about.
+    session.renderFrame();
+    expect(renderer.render.mock.calls.at(-1)[0]).toEqual({ snakes: [], apples: [] });
+    expect(session.getRenderedSnapshot()).toEqual({ snakes: [], apples: [] });
+
+    lastShow(ui, STATES.MAIN_MENU).onSelect('SELECT_2P');
+    expect(session.getState()).toBe(STATES.MATCH_SETUP);
+    session.renderFrame();
+
+    const drawn = /** @type {any} */ (renderer.render.mock.calls.at(-1))[0];
+    expect(drawn.snakes).toEqual([]);
+    expect(drawn.apples).toEqual([MATCH_SETUP_APPLE_CELL]);
+    expect(session.getRenderedSnapshot()).toBe(drawn);
+
+    // Inside the 24×24 grid (`DESIGN-DECISIONS §2.1`) and nowhere near either spawn (`§2.3`), so a reviewer
+    // reading only the test does not have to open session.js to see the cell is sane.
+    expect(MATCH_SETUP_APPLE_CELL.x).toBeGreaterThanOrEqual(0);
+    expect(MATCH_SETUP_APPLE_CELL.x).toBeLessThan(SETTINGS.grid.width);
+    expect(MATCH_SETUP_APPLE_CELL.y).toBeGreaterThanOrEqual(0);
+    expect(MATCH_SETUP_APPLE_CELL.y).toBeLessThan(SETTINGS.grid.height);
+
+    // Leaving MATCH_SETUP back to MAIN_MENU drops the apple again — it is not sticky state.
+    lastShow(ui, STATES.MATCH_SETUP).onBack();
+    expect(session.getState()).toBe(STATES.MAIN_MENU);
+    session.renderFrame();
+    expect(renderer.render.mock.calls.at(-1)[0]).toEqual({ snakes: [], apples: [] });
   });
 
   it('KS-05-03: steering is ignored outside a round', () => {
