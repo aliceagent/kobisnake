@@ -57,6 +57,14 @@ import { REPLAY_COPY } from './replay.js';
 /** @typedef {import('../focus.js').MenuAction} MenuAction */
 
 /**
+ * KI-19-03's stamp: `main.js`'s own seam, since this module never reads `import.meta` itself (that stays
+ * confined to `main.js` — see this file's `setBuildStamp` doc comment).
+ * @typedef {object} BuildStamp
+ * @property {string} commit - short commit hash, or `'unknown'` (`scripts/build-stamp.mjs`'s own fallback).
+ * @property {string} date - an ISO-8601 build date, or `''` before `setBuildStamp` has ever been called.
+ */
+
+/**
  * @typedef {object} MainMenuProps
  * @property {(gameEvent: string) => void} onSelect - called with a `GAME_EVENTS` name; never for a disabled
  *   row, and never for HOW TO PLAY (KI-10-03), which opens its overlay locally instead of firing an event.
@@ -88,6 +96,47 @@ const MENU_ITEMS = Object.freeze([
   Object.freeze({ label: 'SHOP', disabled: true, event: GAME_EVENTS.SELECT_SHOP }),
   Object.freeze({ label: 'SETTINGS', disabled: true, event: GAME_EVENTS.SELECT_SETTINGS }),
 ]);
+
+/**
+ * KI-19-03: what a screen built before `main.js` ever calls {@link setBuildStamp} shows — a plain unit test
+ * that constructs this screen directly (as `tests/unit/ui/mainMenu.test.js` does) rather than through
+ * `main.js`'s boot sequence. A real page never observes this: `main.js` calls `setBuildStamp` before it
+ * builds the one `createUi` (and so the one `MAIN_MENU` screen) that will ever exist for the page's life.
+ * @type {BuildStamp}
+ */
+const DEFAULT_BUILD_STAMP = Object.freeze({ commit: 'unknown', date: '' });
+
+/** @type {BuildStamp} */
+let currentBuildStamp = DEFAULT_BUILD_STAMP;
+
+/**
+ * `main.js`'s seam for KI-19-03 (`ARCHITECTURE §11`): the commit short-hash and build date `vite.config.js`'s
+ * `define` bakes into `import.meta.env` at build time. This module never reads `import.meta` itself — only
+ * `main.js` is allowed to (that file's own comment on `isDevOrTest`) — so `main.js` resolves the value and
+ * hands it here as a plain argument instead.
+ *
+ * Called once, before `main.js` builds `createUi` (that file's own comment explains why the ordering is
+ * safe: there is exactly one `MAIN_MENU` screen for the life of a page, and this runs before it exists), so
+ * every render of that one screen already carries the real stamp.
+ *
+ * @param {BuildStamp} stamp
+ */
+export function setBuildStamp(stamp) {
+  currentBuildStamp = stamp;
+}
+
+/**
+ * `commit · YYYY-MM-DD` — small enough for a corner of the menu, specific enough for a bug report. The full
+ * ISO timestamp is what `window.__kobi.buildStamp.date` carries for a harness that wants more precision; a
+ * human reading the menu does not need the time of day.
+ *
+ * @param {BuildStamp} stamp
+ * @returns {string}
+ */
+function formatBuildStamp(stamp) {
+  const day = stamp.date.slice(0, 10);
+  return day ? `${stamp.commit} · ${day}` : stamp.commit;
+}
 
 /**
  * Build the main menu screen inside `root`.
@@ -156,6 +205,19 @@ export function createMainMenuScreen(root) {
   panel.appendChild(lockedGroup);
 
   container.appendChild(panel);
+
+  // KI-19-03: small, in the corner of the screen, independent of the panel's own flex layout (`.build-stamp`
+  // in `styles.css` positions it against this screen's `inset: 0`). Visible on every normal production load
+  // — the whole point being that a bug report can name which build with no extra step, never gated behind
+  // `?test=1` — unlike `window.__kobi.buildStamp` (`main.js`), which stays behind `__kobi`'s existing
+  // dev/test gate. `data-build-stamp` is this element's own stable test hook, the same pattern
+  // `container.dataset.screen` above uses for the screen itself.
+  const buildStampEl = doc.createElement('div');
+  buildStampEl.className = 'build-stamp';
+  buildStampEl.dataset.buildStamp = '';
+  buildStampEl.textContent = formatBuildStamp(currentBuildStamp);
+  container.appendChild(buildStampEl);
+
   root.appendChild(container);
 
   // KI-10-03: the HOW TO PLAY overlay, appended after the menu panel so it stacks above it. Built inside

@@ -2,6 +2,7 @@
 import { createSession } from './game/session.js';
 import { createTestHooks } from './game/testHooks.js';
 import { createGameplayRenderer } from './render/renderer.js';
+import { setBuildStamp } from './ui/screens/mainMenu.js';
 import { createTuningScreen } from './ui/screens/tuning.js';
 import { createUi } from './ui/ui.js';
 
@@ -27,6 +28,27 @@ const seedParam = new URLSearchParams(window.location.search).get('seed');
 const seed = seedParam === null ? null : Number(seedParam);
 
 const renderer = createGameplayRenderer(canvas);
+
+// KI-19-03: the commit short-hash and build date `vite.config.js`'s `define` bakes into `import.meta.env` at
+// build time (`docs/sprints/improvement-19-supply-chain-and-release-engineering.md`). Read once here, next
+// to `isDevOrTest` below, for the same reason that flag is read here and nowhere else: `import.meta.env` is
+// Vite's own build-time addition, and `main.js` is the one place allowed to ask. Two separate
+// `@ts-expect-error` lines, not one covering both accesses, matching every other `import.meta.env` read in
+// this file.
+// @ts-expect-error import.meta.env is Vite's own addition; not present in this project's jsconfig types.
+const buildCommit = import.meta.env.KOBI_BUILD_COMMIT;
+// @ts-expect-error import.meta.env is Vite's own addition; not present in this project's jsconfig types.
+const buildDate = import.meta.env.KOBI_BUILD_DATE;
+const buildStamp = { commit: buildCommit, date: buildDate };
+
+// `mainMenu.js`'s own seam (see that module's doc comment on `setBuildStamp`): called before `createUi`
+// below builds the one `MAIN_MENU` screen that will ever exist for the life of this page, so its first
+// render already carries the real stamp rather than the module's `'unknown'` default. Visible on every
+// normal production load — this is the whole point (a bug report has to be able to name which build with no
+// extra step, never gated behind `?test=1`) — unlike `window.__kobi.buildStamp` below, which stays behind
+// the existing dev/test gate like the rest of `__kobi`.
+setBuildStamp(buildStamp);
+
 const ui = createUi(uiRoot);
 
 // One flag, read once, for two jobs: the state machine throws on an illegal transition instead of ignoring
@@ -71,6 +93,11 @@ const session = createSession({
 // and one such expression is easier to keep right than two.
 if (isDevOrTest) {
   /** @type {any} */ (window).__kobi = createTestHooks({ session, renderer });
+  // KI-19-03: additional to the menu's own always-visible stamp above — never a substitute for it, and gated
+  // by the same `isDevOrTest` this whole block already guards, not a looser check of its own (extending the
+  // already-gated hooks object here, rather than touching `testHooks.js` outside this ticket's `Files:` list,
+  // matches how `getPlaytestAnswers` is added to `__kobi` below).
+  /** @type {any} */ (window).__kobi.buildStamp = buildStamp;
 }
 
 // KS-07-01: the tuning overlay, gated the same way as `__kobi` above but on its own flag — `?tuning=1` (a

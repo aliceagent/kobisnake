@@ -348,6 +348,21 @@ body {
   display: none;
 }
 
+/* KI-19-03: the build stamp (commit short-hash + build date), small and in the corner of the main menu —
+   `.menu-screen` (above) is already `position: absolute; inset: 0`, so this positions against the whole
+   screen rather than the centred `.menu-panel`. Legible but quiet: a bug report needs to be able to read it,
+   nobody playing the game needs to notice it. */
+.build-stamp {
+  position: absolute;
+  right: 0.75rem;
+  bottom: 0.5rem;
+  font-size: 0.7rem;
+  font-weight: 500;
+  letter-spacing: 0.02em;
+  color: rgba(255, 255, 255, 0.4);
+  pointer-events: none;
+}
+
 /* KI-10-02: the match-setup controls card (`DESIGN-DECISIONS §3` "Controls card on match setup"). Two rows,
    each naming a player's keys and coloured to match the snake it describes via a left border — the same
    colour-cue pattern `.hud-player--p1`/`--p2` already use above, except keyed by the colour's own catalogue
