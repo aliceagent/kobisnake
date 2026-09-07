@@ -93,17 +93,18 @@ async function playTwoRoundsAnswerThreeQuestionsAndExport(page) {
   await page.evaluate(nextRoundInPage);
 
   // Round 1: P1 crashes into the top wall — P2's only win, and Best of 1 ends the match the instant this
-  // round is recorded. Every `end-of-session` question becomes due in the same gap; V1 and V3 are the first
-  // two in the bank's own order (`src/qa/playtestQuestions.js`).
+  // round is recorded. Every `end-of-session` question becomes due in the same gap; V1 and R1 are the first
+  // two in the bank's own order (`src/qa/playtestQuestions.js`). Not V1 and V3: KI-11-05 (#169) gates `V3`
+  // and `G2` on practice mode existing, which it does not until Sprint 15, so they are skipped over here.
   await page.evaluate(crashPlayerOneInPage);
   await expect(page.locator('[data-playtest-prompt]')).toBeVisible();
   // Tech-lead note 4 on issue #161 (carried over from KI-11-02): the state machine itself never leaves
   // ROUND_OVER while the gap is open, match-over included.
   expect(await page.evaluate(() => /** @type {any} */ (globalThis).__kobi.getState())).toBe('ROUND_OVER');
   await expect(page.locator('[data-playtest-question="V1"]')).toBeVisible();
-  await expect(page.locator('[data-playtest-question="V3"]')).toBeVisible();
+  await expect(page.locator('[data-playtest-question="R1"]')).toBeVisible();
 
-  // Answer exactly three fields — V1:P1, V1:P2, V3:P1 — and leave V3:P2 untouched, on purpose: EXPORT must
+  // Answer exactly three fields — V1:P1, V1:P2, R1:P1 — and leave R1:P2 untouched, on purpose: EXPORT must
   // be reachable "at any time" (the ticket's own words), including with a gap still open, and this proves
   // both halves of that claim in the same run.
   await expect(page.locator('[data-playtest-field="V1:1"]')).toHaveClass(/--focused/);
@@ -111,9 +112,9 @@ async function playTwoRoundsAnswerThreeQuestionsAndExport(page) {
   await expect(page.locator('[data-playtest-field="V1:2"]')).toHaveClass(/--focused/);
   await page.keyboard.press('ArrowLeft'); // P2's LEFT: 'yes' -> 'no'
   await page.keyboard.press('Enter'); // V1:P2 = 'no'
-  await expect(page.locator('[data-playtest-field="V3:1"]')).toHaveClass(/--focused/);
-  await page.keyboard.press('Enter'); // V3:P1 = 'yes' (the default)
-  await expect(page.locator('[data-playtest-field="V3:2"]')).toHaveClass(/--focused/); // left unconfirmed
+  await expect(page.locator('[data-playtest-field="R1:1"]')).toHaveClass(/--focused/);
+  await page.keyboard.press('Enter'); // R1:P1 = 'yes' (the default)
+  await expect(page.locator('[data-playtest-field="R1:2"]')).toHaveClass(/--focused/); // left unconfirmed
 
   await page.locator('[data-playtest-export-button]').click();
 
@@ -139,18 +140,18 @@ test.describe('KI-11-03 automatic replay capture and the session file', () => {
     expect(doc.rounds[1].replay.expectedEvents.length).toBeGreaterThan(0);
     expect(doc.rounds[1].answers).toEqual([]);
 
-    // V1 and V3 are both `end-of-session` questions (`playtestQuestions.js`) — they follow no particular
+    // V1 and R1 are both `end-of-session` questions (`playtestQuestions.js`) — they follow no particular
     // round, so all three answers land in `sessionAnswers`, never faked into a round's own `answers`.
     expect(doc.sessionAnswers).toHaveLength(3);
     expect(doc.sessionAnswers).toEqual(
       expect.arrayContaining([
         { questionId: 'V1', player: 'P1', value: 'yes', skipped: false },
         { questionId: 'V1', player: 'P2', value: 'no', skipped: false },
-        { questionId: 'V3', player: 'P1', value: 'yes', skipped: false },
+        { questionId: 'R1', player: 'P1', value: 'yes', skipped: false },
       ]),
     );
     expect(doc.questions.V1.question).toBe('Find your head'); // the script's own words, verbatim
-    expect(doc.questions.V3.question).toBe('Long snakes');
+    expect(doc.questions.R1.question).toBe('"Does 90 s feel right?"');
 
     // The status message must be visible, never silent, whichever branch the clipboard write took.
     const status = await page.locator('[data-playtest-export-status]').textContent();

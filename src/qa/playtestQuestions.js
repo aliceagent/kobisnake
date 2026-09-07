@@ -67,6 +67,14 @@ export const TRIGGER_KINDS = /** @type {const} */ ({
 /**
  * @typedef {object} EndOfSessionTrigger
  * @property {'end-of-session'} kind
+ * @property {boolean} [requiresPractice] - **KI-11-05 (#169).** When true, the end of the session is not
+ *   enough: practice mode must exist in the build. `V3`'s procedure is "Grow both snakes past 15 segments in
+ *   **practice mode**", and practice mode arrives in Sprint 15 — so until it does, that question cannot be
+ *   performed, and `G2`'s whole pass condition is the cross-reference "See V3." Before Improvement 11 a
+ *   facilitator simply skipped a row that did not apply; `?playtest=1` removed the facilitator, so the rule
+ *   the facilitator was applying has to be written down. Same shape as {@link AfterRoundTrigger}'s
+ *   `requiresLaserPhase`, and for the same reason: a question is not asked before it can honestly be
+ *   answered (AC2).
  */
 
 /** @typedef {AfterRoundTrigger | LaserPhaseSeenTrigger | EndOfSessionTrigger} Trigger */
@@ -80,6 +88,9 @@ export const TRIGGER_KINDS = /** @type {const} */ ({
  * @property {boolean} laserPhaseSeen - true once any round's lasers have armed (left the parked state) at
  *   least once this session; false for a session where every round ended before `laserStartTime`
  * @property {boolean} sessionOver - true once the match itself has ended
+ * @property {boolean} practiceExists - **KI-11-05 (#169).** Whether this build has practice mode at all
+ *   (Sprint 15). False for every build before it lands, which is what keeps `V3` and `G2` from being put to
+ *   two humans who have no way to perform them.
  */
 
 /**
@@ -113,6 +124,13 @@ const laserPhaseSeen = { kind: TRIGGER_KINDS.LASER_PHASE_SEEN };
 
 /** @type {EndOfSessionTrigger} */
 const endOfSession = { kind: TRIGGER_KINDS.END_OF_SESSION };
+
+/** `end-of-session`, and only once practice mode exists to perform the question in (#169). */
+/** @type {EndOfSessionTrigger} */
+const endOfSessionNeedingPractice = {
+  kind: TRIGGER_KINDS.END_OF_SESSION,
+  requiresPractice: true,
+};
 
 /** @type {readonly PlaytestQuestion[]} */
 export const PLAYTEST_QUESTIONS = [
@@ -197,7 +215,7 @@ export const PLAYTEST_QUESTIONS = [
     passCondition: 'Both remain readable; segments do not merge visually.',
     answerType: ANSWER_TYPES.YES_NO,
     choices: null,
-    trigger: endOfSession,
+    trigger: endOfSessionNeedingPractice,
   },
 
   // §4 Collision fairness (play 5 rounds)
@@ -335,7 +353,7 @@ export const PLAYTEST_QUESTIONS = [
     passCondition: 'See V3.',
     answerType: ANSWER_TYPES.YES_NO,
     choices: null,
-    trigger: endOfSession,
+    trigger: endOfSessionNeedingPractice,
   },
 
   // §8 Power-ups
@@ -444,6 +462,9 @@ export function isTriggerDue(trigger, facts) {
     case TRIGGER_KINDS.LASER_PHASE_SEEN:
       return facts.laserPhaseSeen;
     case TRIGGER_KINDS.END_OF_SESSION:
+      // #169: `requiresPractice` questions wait for the mode their own procedure names, however over the
+      // session is — the same "not before it can honestly be answered" rule `requiresLaserPhase` applies.
+      if (trigger.requiresPractice === true && !facts.practiceExists) return false;
       return facts.sessionOver;
     default:
       return false;

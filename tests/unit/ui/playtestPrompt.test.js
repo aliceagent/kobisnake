@@ -248,22 +248,41 @@ describe('PR #176 review: every question becomes due at some point across a plau
    * 3-5, session ends at round 5) — the smallest sequence that reaches `roundsPlayed: 5` while also touching
    * both `laserPhaseSeen` and `sessionOver`.
    */
-  const SESSION_GAPS = [
-    { roundsPlayed: 1, laserPhaseSeen: false, sessionOver: false },
-    { roundsPlayed: 2, laserPhaseSeen: false, sessionOver: true }, // match 1 ends, swept 2-0
-    { roundsPlayed: 3, laserPhaseSeen: true, sessionOver: false }, // match 2, round 1 — lasers seen
-    { roundsPlayed: 4, laserPhaseSeen: true, sessionOver: false },
-    { roundsPlayed: 5, laserPhaseSeen: true, sessionOver: true }, // match 2 ends, 2-1 after 3 rounds
+/**
+   * @param {boolean} practiceExists — KI-11-05 (#169): whether the build has practice mode. Today's builds do
+   *   not (Sprint 15), which is exactly what `V3` and `G2` are now gated on, so the sweep below is run both
+   *   ways rather than assuming one.
+   */
+  const sessionGaps = (practiceExists) => [
+    { roundsPlayed: 1, laserPhaseSeen: false, sessionOver: false, practiceExists },
+    { roundsPlayed: 2, laserPhaseSeen: false, sessionOver: true, practiceExists }, // match 1 ends, swept 2-0
+    { roundsPlayed: 3, laserPhaseSeen: true, sessionOver: false, practiceExists }, // match 2 r1 — lasers seen
+    { roundsPlayed: 4, laserPhaseSeen: true, sessionOver: false, practiceExists },
+    { roundsPlayed: 5, laserPhaseSeen: true, sessionOver: true, practiceExists }, // match 2 ends, 2-1
   ];
+
+  /** @param {boolean} practiceExists */
+  const neverDueIn = (practiceExists) =>
+    PLAYTEST_QUESTIONS.filter(
+      (question) => !sessionGaps(practiceExists).some((facts) => isTriggerDue(question.trigger, facts)),
+    ).map((question) => question.id);
+
+  const SESSION_GAPS = sessionGaps(true);
 
   it('no question in the bank is permanently unreachable under the prescribed Bo3 setup', () => {
     // Derived from the bank itself, not hard-coded to a count (`PLAYTEST-SCRIPT.md`'s own count drifts as
     // questions are added; a question added later and left ungated would silently strand itself here too).
-    const neverDue = PLAYTEST_QUESTIONS.filter(
-      (question) => !SESSION_GAPS.some((facts) => isTriggerDue(question.trigger, facts)),
-    ).map((question) => question.id);
+    // Run against a build that *has* practice mode, so the only thing this can catch is a question stranded
+    // by accident — the two stranded on purpose are asserted separately below.
+    expect(neverDueIn(true)).toEqual([]);
+  });
 
-    expect(neverDue).toEqual([]);
+  it('KI-11-05 (#169): V3 and G2, and only those two, wait for a build with practice mode', () => {
+    // Their procedures name practice mode, which is Sprint 15. Until it lands they cannot be performed, so
+    // `?playtest=1` does not ask them — the rule a facilitator used to apply by simply skipping the row.
+    // Asserted as an exact set: if a third question is ever gated this way, or one of these two is
+    // un-gated, this fails rather than drifting.
+    expect(neverDueIn(false)).toEqual(['V3', 'G2']);
   });
 
   it('C1-C3 (fair deaths, the sprint\'s own headline question) and A2 specifically are reachable', () => {
