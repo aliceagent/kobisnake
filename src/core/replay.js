@@ -9,8 +9,7 @@ import { DIRECTIONS } from './grid.js';
  * (`src/game/session.js`) and Improvement 11's exported playtest session (`src/qa/playtestSession.js`'s
  * `Replay` typedef) are already, independently, exactly `{ seed, settingsOverrides, inputs, expectedEvents }`.
  * This file gives that one shape a name, an optional version tag, and a parser that turns "malformed JSON" or
- * "a future format" into a message a human can act on instead of an exception a caller must remember to
- * catch.
+ * "a future format" into a named, diagnostic result instead of an exception a caller must remember to catch.
  *
  * ## Why `version` cannot be required
  *
@@ -33,9 +32,21 @@ import { DIRECTIONS } from './grid.js';
  *
  * ## Deliberately not validated
  *
- * `expectedEvents`' entries are not shape-checked beyond "the field is an array", matching
- * `replay.schema.json`: an event's own shape is `src/core/events.js`'s contract, not this file's, and this
- * parser has no simulation to check it against anyway (that is KI-05-02's job).
+ * An `expectedEvents` entry is checked only for being a plain object — nothing about its *interior*
+ * (`type`/`tick`/`t`/payload fields), matching `replay.schema.json`, which likewise leaves an event's shape
+ * unconstrained: an event's own shape is `src/core/events.js`'s contract, not this file's, and this parser
+ * has no simulation to check it against anyway (that is KI-05-02's job). Because the interior is never
+ * inspected, an `expectedEvents` entry cannot be rebuilt field by field the way an `inputs` entry is — it is
+ * copied wholesale instead, so any field a future event type carries survives the round trip unexamined.
+ *
+ * ## Error messages are developer diagnostics, not player-facing copy
+ *
+ * Every `ReplayError.message` here states a fact about the file and stops — no "try this", no imperative
+ * mood, no reassurance. KI-05-03 is the screen that will show `error.message` to a player, and the copy for
+ * that screen is a design decision awaiting the design lead's ruling on issue #211; a parser message that
+ * reads like finished player-facing text would ship an unapproved answer to a question already out for that
+ * ruling (the failure mode issues #150 and #182 exist to prevent). Do not "improve" these into friendlier
+ * copy without that ruling — replace them once #211 resolves, in KI-05-03, not here.
  */
 
 /** @typedef {import('./grid.js').Direction} Direction */
@@ -156,8 +167,10 @@ function describeInvalidInput(entry, index) {
 
 /**
  * Validates an already-`JSON.parse`d value against the replay format and, on success, rebuilds a clean
- * {@link Replay} field by field — the same discipline `src/qa/playtestSession.js` uses, so a stray extra key
- * in the input can never leak into the result.
+ * {@link Replay}. The top level and every `inputs` entry are rebuilt field by field — the same discipline
+ * `src/qa/playtestSession.js` uses — so a stray extra key on either can never leak into the result;
+ * `expectedEvents` entries are copied wholesale instead, since their interior is never inspected (module doc
+ * "Deliberately not validated") and so has no fixed set of fields to rebuild from.
  *
  * @param {unknown} value
  * @returns {ParseReplayResult}
@@ -182,16 +195,23 @@ function validateParsedReplay(value) {
         : describe(version);
     return fail(
       REPLAY_ERROR_CODES.UNSUPPORTED_VERSION,
-      `This replay is version ${found}, but this build only understands version ${CURRENT_REPLAY_VERSION}. ` +
-        'Open it with a newer build of the game, or re-record it.',
+      `This replay is version ${found}; this build understands version ${CURRENT_REPLAY_VERSION}.`,
     );
   }
 
-  // seed: null is a legitimate "no round yet" recording (module doc), so both a finite number and null pass.
-  if (typeof value.seed !== 'number' && value.seed !== null) {
+  // seed: null is a legitimate "no round yet" recording (module doc), so null passes alongside an integer.
+  // NaN, Infinity and non-integers must not: `typeof` alone lets all three through (they are all `number`),
+  // and RoundSimulation/mulberry32 do not throw on any of them - a NaN or fractional seed silently produces a
+  // different round instead of failing loudly, which is worse than rejecting it here.
+  if (value.seed !== null && !Number.isInteger(value.seed)) {
+    // A number that fails Number.isInteger (NaN, Infinity, 1.5, ...) is more useful reported as its own
+    // value than as just "number" - that is what distinguishes this from every other INVALID_* message,
+    // which only needs the type.
+    const seedDescription =
+      typeof value.seed === 'number' ? String(value.seed) : describe(value.seed);
     return fail(
       REPLAY_ERROR_CODES.INVALID_SEED,
-      `seed must be a number (or null for a replay recorded before any round started), got ${describe(value.seed)}.`,
+      `seed must be an integer (or null for a replay recorded before any round started), got ${seedDescription}.`,
     );
   }
 
@@ -222,6 +242,18 @@ function validateParsedReplay(value) {
       `expectedEvents must be an array, got ${describe(value.expectedEvents)}.`,
     );
   }
+  // Only "is this a plain object" is checked (module doc "Deliberately not validated") - but that much has
+  // to be checked, or a non-object entry (42, null, "x") silently spreads into `{}` / `{}` / `{"0":"x"}`
+  // below: a fabricated, plausible-looking event standing in for a malformed file, which then fails
+  // KI-05-02 AC1's log comparison with a diff pointing at the simulation instead of at the replay.
+  for (let i = 0; i < value.expectedEvents.length; i += 1) {
+    if (!isPlainObject(value.expectedEvents[i])) {
+      return fail(
+        REPLAY_ERROR_CODES.INVALID_EXPECTED_EVENTS,
+        `expectedEvents[${i}] must be an object, got ${describe(value.expectedEvents[i])}.`,
+      );
+    }
+  }
 
   return {
     ok: true,
@@ -231,7 +263,16 @@ function validateParsedReplay(value) {
       settingsOverrides: isPlainObject(value.settingsOverrides)
         ? { ...value.settingsOverrides }
         : {},
-      inputs: value.inputs.map((entry) => ({ .../** @type {ReplayInput} */ (entry) })),
+      // Rebuilt as exactly {t, player, dir} - not spread - so a stray extra key on an input entry
+      // (replay.schema.json's additionalProperties: false applies to an entry too) can never leak through;
+      // describeInvalidInput above already proved each of these three fields has the right type and value.
+      inputs: value.inputs.map((entry) => {
+        const validated = /** @type {ReplayInput} */ (entry);
+        return { t: validated.t, player: validated.player, dir: validated.dir };
+      }),
+      // Copied wholesale, not rebuilt field by field: an event's interior is deliberately unchecked (module
+      // doc), so there are no known field names to rebuild from - only "is a plain object" is this file's
+      // business here.
       expectedEvents: value.expectedEvents.map((event) => ({
         .../** @type {Record<string, unknown>} */ (event),
       })),
@@ -263,11 +304,7 @@ export function parseReplay(input) {
     parsed = JSON.parse(input);
   } catch (error) {
     const reason = error instanceof Error ? error.message : String(error);
-    return fail(
-      REPLAY_ERROR_CODES.INVALID_JSON,
-      `This is not valid JSON (${reason}). Check that the whole file or paste made it in - a cut-off ` +
-        'paste is the usual cause.',
-    );
+    return fail(REPLAY_ERROR_CODES.INVALID_JSON, `This is not valid JSON (${reason}).`);
   }
 
   return validateParsedReplay(parsed);

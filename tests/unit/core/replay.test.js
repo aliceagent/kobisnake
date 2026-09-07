@@ -118,6 +118,20 @@ describe('KI-05-01 replay format', () => {
       expect(result.ok).toBe(true);
       if (result.ok) expect(result.replay.settingsOverrides).toEqual({});
     });
+
+    // Tech-lead review of #225: an inputs entry is rebuilt as exactly {t, player, dir}, not spread, so a
+    // stray key on it (replay.schema.json's additionalProperties: false applies to an entry too) can never
+    // leak through - matching the module doc's rebuild-discipline claim, which used to be true only at the
+    // top level.
+    it('KI-05-01 AC1: a stray extra key on an inputs entry does not leak into the parsed result', () => {
+      const replay = { ...validReplay(), inputs: [{ t: 0, player: 'p1', dir: 'UP', bogus: 9 }] };
+      const result = parseReplay(JSON.stringify(replay));
+      expect(result.ok).toBe(true);
+      if (result.ok) {
+        expect(result.replay.inputs).toEqual([{ t: 0, player: 'p1', dir: 'UP' }]);
+        expect(Object.keys(result.replay.inputs[0])).not.toContain('bogus');
+      }
+    });
   });
 
   describe('AC2: a truncated file, a wrong-typed field, and a version-2 file each produce a named error', () => {
@@ -168,6 +182,31 @@ describe('KI-05-01 replay format', () => {
 
     it('KI-05-01 AC2: seed as a string is INVALID_SEED, not an exception', () => {
       const result = parseReplay(JSON.stringify({ ...validReplay(), seed: 'not a number' }));
+      expect(result.ok).toBe(false);
+      if (!result.ok) expect(result.error.code).toBe(REPLAY_ERROR_CODES.INVALID_SEED);
+    });
+
+    // Tech-lead review of #225: `typeof value.seed !== 'number'` alone lets NaN, Infinity and 1.5 through,
+    // since all three are `typeof 'number'`. None of them throws downstream (mulberry32 is plain Math.imul
+    // arithmetic), so an accepted NaN/Infinity/fractional seed would silently produce a different round
+    // rather than fail loudly here, which is a worse failure than rejecting it up front.
+    it('KI-05-01 AC2: seed: NaN is INVALID_SEED, not an exception', () => {
+      // NaN has no JSON literal (JSON.stringify turns it into `null`, which is legitimate here - module
+      // doc), so this exercises the already-parsed-value half of parseReplay's input (its other accepted
+      // shape) rather than round-tripping through JSON text.
+      const result = parseReplay({ ...validReplay(), seed: NaN });
+      expect(result.ok).toBe(false);
+      if (!result.ok) expect(result.error.code).toBe(REPLAY_ERROR_CODES.INVALID_SEED);
+    });
+
+    it('KI-05-01 AC2: seed: Infinity is INVALID_SEED, not an exception', () => {
+      const result = parseReplay({ ...validReplay(), seed: Infinity });
+      expect(result.ok).toBe(false);
+      if (!result.ok) expect(result.error.code).toBe(REPLAY_ERROR_CODES.INVALID_SEED);
+    });
+
+    it('KI-05-01 AC2: seed: 1.5 (a non-integer number) is INVALID_SEED, not an exception', () => {
+      const result = parseReplay(JSON.stringify({ ...validReplay(), seed: 1.5 }));
       expect(result.ok).toBe(false);
       if (!result.ok) expect(result.error.code).toBe(REPLAY_ERROR_CODES.INVALID_SEED);
     });
@@ -249,6 +288,34 @@ describe('KI-05-01 replay format', () => {
       const result = parseReplay(JSON.stringify({ ...validReplay(), expectedEvents: 'nope' }));
       expect(result.ok).toBe(false);
       if (!result.ok) expect(result.error.code).toBe(REPLAY_ERROR_CODES.INVALID_EXPECTED_EVENTS);
+    });
+
+    // Tech-lead review of #225: without this check, a non-object entry silently spreads into a fabricated
+    // event (`{...42}` and `{...null}` are both `{}`, `{..."x"}` is `{"0":"x"}`) instead of being rejected,
+    // which would surface later as a confusing diff in KI-05-02's log comparison rather than as a parse error
+    // naming the actual malformed file.
+    it.each([
+      { label: 'a number', value: 42 },
+      { label: 'null', value: null },
+      { label: 'a string', value: 'x' },
+      { label: 'an array', value: [] },
+    ])(
+      'KI-05-01 AC2: an expectedEvents entry that is $label is INVALID_EXPECTED_EVENTS, not silently rebuilt',
+      ({ value }) => {
+        const result = parseReplay(JSON.stringify({ ...validReplay(), expectedEvents: [value] }));
+        expect(result.ok).toBe(false);
+        if (!result.ok) {
+          expect(result.error.code).toBe(REPLAY_ERROR_CODES.INVALID_EXPECTED_EVENTS);
+          expect(result.error.message).toContain('expectedEvents[0]');
+        }
+      },
+    );
+
+    it('KI-05-01 AC2: a valid expectedEvents entry is copied wholesale, keeping every field it has', () => {
+      const event = { type: 'FOOD_SPAWNED', tick: 3, t: 0.025, index: 0, cell: { x: 1, y: 2 } };
+      const result = parseReplay(JSON.stringify({ ...validReplay(), expectedEvents: [event] }));
+      expect(result.ok).toBe(true);
+      if (result.ok) expect(result.replay.expectedEvents).toEqual([event]);
     });
 
     it('KI-05-01 AC2: INVALID_JSON still reports a useful message when the underlying failure is not an Error instance', () => {
