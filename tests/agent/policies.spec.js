@@ -133,20 +133,24 @@ test.describe('KI-03-02 · play policies', () => {
   });
 
   test(
-    'KI-03-02: idle policy reproduces #119 F1 — an all-draw match does not terminate ' +
-      '(DESIGN-DECISIONS §1 row 26 is unimplemented; I01/#120)',
+    'KI-03-02: idle policy — an all-draw match ends on the third consecutive draw ' +
+      '(DESIGN-DECISIONS §1 row 26; #119 F1, I01/#120)',
     async ({ page }) => {
       test.setTimeout(120_000);
 
-      // This is a characterisation test of a known, open defect, not a weakened one. Two idle players draw
-      // every round (the golden-log round with no input at all fixes a DRAW at tick 380) and nothing in this
-      // build ever ends a match made only of draws — DESIGN-DECISIONS §1 row 26 rules that the third
-      // consecutive draw must end the match, but I01 (#120) has not landed it yet. Every assertion below is
-      // exactly what this build actually does today, bounded by `maxFrames` so the test reports the defect
-      // instead of hanging on it. **It is the tripwire that goes red the moment I01 lands**, and I01 owns
-      // flipping it to the row-26 assertion (a Bo3 of nothing but draws ends on the third one, decided by
-      // whoever has more round wins, or a tie if level).
-      const maxFrames = 6000; // 100 simulated seconds: several full round-countdown-scoreboard cycles.
+      // The idle policy is the state that found **F1**: two players who put the keyboard down draw every
+      // round (the golden no-input round fixes a DRAW at tick 380), and on the build the 2026-09-07 QA pass
+      // examined, a match made only of draws could never end — 12 rounds, 0-0, forever.
+      //
+      // This test was written as a *characterisation* test of that open defect, asserting what the build then
+      // did, and documented as the tripwire that would go red the moment I01 implemented
+      // `DESIGN-DECISIONS §1 row 26`. **It went red exactly as designed**: I01 (#120) merged to `main`
+      // while this ticket was in review, and this assertion is the flip it called for. What it asserts now is
+      // row 26 itself — the third consecutive draw ends the match, nobody has more wins, so nobody wins it.
+      //
+      // It is still the test that catches F1 coming back: if the cap were ever removed or miscounted, an
+      // idle match would run past three rounds and every assertion below would fail.
+      const maxFrames = 6000; // 100 simulated seconds — far more than row 26 should ever need.
       const result = await playMatch(page, {
         seed: 1,
         bestOf: 3,
@@ -156,14 +160,24 @@ test.describe('KI-03-02 · play policies', () => {
       });
 
       expect(result.pageErrors).toEqual([]);
-      expect(result.finished).toBe(false);
-      expect(result.frames).toBe(maxFrames);
-      expect(result.rounds.length).toBeGreaterThan(0);
+      // The match ends, which is the whole of row 26 ("every match must terminate").
+      expect(result.finished).toBe(true);
+      expect(result.frames).toBeLessThan(maxFrames);
+      // Exactly three rounds, every one a draw: the cap is `SETTINGS.maxConsecutiveDraws`, read rather than
+      // retyped, so this follows the design value if it is ever tuned.
+      expect(result.rounds).toHaveLength(SETTINGS.maxConsecutiveDraws);
       expect(result.rounds.every((round) => round.result === 'DRAW')).toBe(true);
+      // Level wins, so the match is a tie won by nobody — row 26's own words.
+      expect(result.match).toMatchObject({
+        winner: null,
+        wins: { 1: 0, 2: 0 },
+        roundsPlayed: SETTINGS.maxConsecutiveDraws,
+        isOver: true,
+      });
 
       console.log(
-        `KI-03-02: idle vs idle (seed 1) played ${result.rounds.length} rounds inside a ${maxFrames}-frame ` +
-          `budget, every one a DRAW, and never reached MATCH_OVER — #119 F1, reproduced.`,
+        `KI-03-02: idle vs idle (seed 1) ended after ${result.rounds.length} rounds, every one a DRAW, ` +
+          `with no winner — DESIGN-DECISIONS §1 row 26, the rule #119 F1 asked for.`,
       );
     },
   );
