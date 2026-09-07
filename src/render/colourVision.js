@@ -43,8 +43,15 @@
  * its gamma decoding, so the dependency runs materials → colourVision and never the other way.
  */
 
-/** The three vision models every player pair is measured under. @type {readonly VisionModel[]} */
-export const VISION_MODELS = /** @type {const} */ (['normal', 'protanopia', 'deuteranopia']);
+/**
+ * The three vision models every player pair is measured under. Frozen for the same reason
+ * {@link DICHROMAT_MATRICES} is: it is a published definition of what "measured" means here, not a list a
+ * caller may extend at runtime — a fourth entry appended by accident would silently change every number in
+ * `colourVision.test.js`.
+ *
+ * @type {readonly VisionModel[]}
+ */
+export const VISION_MODELS = Object.freeze(['normal', 'protanopia', 'deuteranopia']);
 
 /** @typedef {'normal' | 'protanopia' | 'deuteranopia'} VisionModel */
 
