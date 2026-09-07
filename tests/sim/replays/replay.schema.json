@@ -7,6 +7,11 @@
   "additionalProperties": false,
   "required": ["seed", "inputs", "expectedEvents"],
   "properties": {
+    "version": {
+      "type": "integer",
+      "const": 1,
+      "description": "KI-05-01 (src/core/replay.js): the replay format version. Optional - no committed fixture writes it and an absent version is parsed as version 1 (ARCHITECTURE §4). Present only so a hand-edited or future-tooling-generated fixture can say so explicitly; src/core/replay.js's parseReplay() rejects anything other than 1."
+    },
     "seed": {
       "type": "integer",
       "description": "Passed straight to RoundSimulation/runRound as the round seed (src/core/rng.js). Only the low 32 bits are used."

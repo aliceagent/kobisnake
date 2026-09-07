@@ -112,6 +112,16 @@ propose it in the PR description and Opus approves before merge.
 - Determinism: constructor takes `{ settings, seed, players, powerUpsEnabled }`. Same seed + same input log ⇒
   identical event log. Tests assert on this. An **input log** (`{t, player, dir}`) can be recorded from a real
   game and replayed in a test.
+- **Replay format** (`src/core/replay.js`, KI-05-01): a recorded round is `{ seed, settingsOverrides, inputs,
+  expectedEvents }` — `seed` (a number, or `null` for a replay taken before any round exists),
+  `settingsOverrides` (the override tree the round's settings were built from; optional, `{}` when omitted),
+  `inputs` (the input log above), and `expectedEvents` (the event log the round produced). An optional integer
+  `version` may tag the file; **an absent `version` means version 1**, the only version this format has. This
+  is one shape shared by three producers — `tests/sim/replays/*.json`'s committed fixtures, `session.js`'s
+  `getReplay()`, and Improvement 11's exported playtest session (`rounds[i].replay` in
+  `src/qa/playtestSession.js`) — never three. `parseReplay()` validates and normalises any of the three into a
+  `Replay`, returning `{ ok: false, error: { code, message } }` instead of throwing on malformed or
+  future-versioned input, so a UI can show `error.message` with no `try`/`catch` of its own.
 - Snakes: `segments[0]` is the head. `pendingGrowth` counter adds a tail segment on the next step instead of
   removing it. Per-snake `speedMultiplier` = product of active effect multipliers.
 - Step resolution: all snakes that are due to step in this sim tick are stepped **simultaneously** (compute all
