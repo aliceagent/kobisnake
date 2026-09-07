@@ -36,6 +36,7 @@ file is the authority on numbers and edge cases.
 | 20 | Power-up visuals | Speed = yellow lightning bolt over a blue two-tier pedestal inside a cyan ring. Slow = **white snowflake over a mid ice-blue pedestal (`#4FA9DD`) inside a pale-blue ring**; the icon must contrast with its pedestal as strongly as the bolt does (white-on-white was unreadable at gameplay scale, Sprint 06). Different silhouette, icon, colour and pedestal. | GDD: never rely on colour alone. |
 | 24 | Camera | **Perspective camera, vertical FOV 32°, pitch 78° below horizontal** (image 03 panel C), yaw 0, fixed position framing the whole arena plus one wall thickness of margin. Small shake on crash, ≤ 2 % zoom pulse on laser warning, no rotation. **Confirmed picture (Sprint 03):** at 16:9 the arena fills ≈ 84 % of the frame height and ≈ 48 % of its width; the flanks carry Sprint 09's decoration, as in panel C, not the wider board of image 02. | Locked by the camera comparison sheet. |
 | 25 | Music production | **Two lanes.** (a) Synthesised in-repo (note data + Web Audio synth) as the guaranteed baseline. (b) **Freesound assets** chosen by the owner: CC0 preferred, CC-BY allowed with attribution in the credits screen, no NC/ND licences; files bundled under `public/audio/` (OGG + MP3, ≤ 300 kB each, music ≤ 1.5 MB per track), listed in `docs/design/AUDIO-ASSETS.md` with Freesound URL, author and licence. Agents cannot reach freesound.org; the owner supplies the files. Still no CDN, still offline after load. | Owner has a Freesound account and prefers real recordings; the synth lane guarantees the game is never silent. |
+| 26 | A match that cannot be won | **A draw is still replayed, but no more than twice in a row.** The third consecutive draw ends the match: whoever has more round wins takes it, and if the wins are level nobody wins and the match is a tie. A decisive round resets the count. `maxConsecutiveDraws: 3`. A tie awards no keys. | Agent QA 2026-09-07 (#119 F1): two idle players draw at tick 380 every round and the match could never end. Every match must terminate. |
 
 ## 2. Rules the GDD left implicit
 
@@ -93,7 +94,11 @@ head entering or being inside the dead zone when the laser steps onto it dies.
   (head-on resolves by length: longer survives, equal both die).
 - When one snake dies the round ends immediately (survivor wins). `crashSlowMo`: game time runs at 0.25× for 0.6 s,
   then ROUND_OVER.
-- Round result is one of `P1_WIN | P2_WIN | DRAW`. Draws never count; the match simply replays the round.
+- Round result is one of `P1_WIN | P2_WIN | DRAW`. Draws never count; the match simply replays the round —
+  but **only twice in a row** (`§1` row 26). The third consecutive draw ends the match: the player with more
+  wins takes it, and if the wins are level the match is a tie, won by nobody and worth no keys. Any decisive
+  round resets the count. Without this a match of draws never ends, which two idle players reach in ninety
+  seconds (agent QA 2026-09-07, #119 F1).
 - Head-on (same cell, or swap) is evaluated **before** body contact, because after a step the other snake's
   former head cell has become its neck.
 - Head-on length comparison uses the lengths **before** this step's growth is applied.
@@ -107,6 +112,8 @@ head entering or being inside the dead zone when the laser steps onto it dies.
   displayed with the "needs N more win(s)" line from the GDD example.
 - Match win rewards: Bo1 0 keys, Bo3 1 key, Bo5 2 keys, to the winner only. Keys are added when the MATCH_OVER
   screen shows the key animation, and persisted immediately.
+- A match ends when a player reaches the win target **or** on the third consecutive draw (`§1` row 26). It
+  can therefore end with nobody having won; the match-over screen says so and awards no keys.
 - After MATCH_OVER: `REMATCH` (same settings, swap nothing) or `MAIN MENU`.
 
 ### 2.7 Player colours
@@ -128,6 +135,24 @@ and `ownedColors` replacing `unlockedColors`. Corrupt or missing data → defaul
 ## 3. Visual notes for un-illustrated screens
 
 These substitute for the GDD images that were not supplied (see `docs/reference/README.md`).
+
+**First-minute copy (Improvement 10, KI-10-00).** Approved strings, to be used verbatim. Written for an
+eleven-year-old: short words, no jargon, and no exclamation mark doing the work that clarity should.
+
+- **Under the title on the main menu:** "Two players, one keyboard. Eat apples, grow long, and make the other
+  snake crash."
+- **HOW TO PLAY panel**, four lines in this order:
+  1. "Eat apples to grow longer."
+  2. "Don't hit a wall, yourself, or the other snake."
+  3. "After 30 seconds the lasers close in."
+  4. "The last snake alive wins the round."
+- **Controls card on match setup.** Two blocks, each labelled in words as well as colour (the GDD's "never rely
+  on colour alone" applies here too): "PLAYER 1 · RED — W A S D" and "PLAYER 2 · BLUE — ARROW KEYS". If
+  Improvement 07 has landed, read the live bindings rather than these literals and say so in the PR.
+- **Items that are not ready** keep the existing "COMING SOON". They stay visible and stay unselectable: the
+  GDD promises them, and hiding them would misrepresent the game's shape.
+- **A match that ends level** (`§1` row 26): the match-over screen reads "IT'S A TIE" with the score line
+  beneath it, and no key is awarded.
 
 **Match setup (GDD image 15).** Same dark rounded panels as the main-menu image. Left column: MATCH LENGTH
 (three pills), POWER-UPS (ON/OFF pills), MUSIC (three pills). Centre: a miniature arena with the two chosen snake
@@ -204,6 +229,7 @@ export const SETTINGS = {
   scoreboardSeconds: 2.5,
 
   bestOfOptions: [1, 3, 5],
+  maxConsecutiveDraws: 3, // §1 row 26 — the third draw in a row ends the match
   rewards: { 1: 0, 3: 1, 5: 2 },
 
   colors: { /* see section 2.7 */ },
