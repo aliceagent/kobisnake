@@ -2,6 +2,7 @@
 import { createSession } from './game/session.js';
 import { createTestHooks } from './game/testHooks.js';
 import { createGameplayRenderer } from './render/renderer.js';
+import { createTuningScreen } from './ui/screens/tuning.js';
 import { createUi } from './ui/ui.js';
 
 /**
@@ -58,6 +59,26 @@ const session = createSession({
 // and one such expression is easier to keep right than two.
 if (isDevOrTest) {
   /** @type {any} */ (window).__kobi = createTestHooks({ session, renderer });
+}
+
+// KS-07-01: the tuning overlay, gated the same way as `__kobi` above but on its own flag — `?tuning=1` (a
+// human on a real production deploy can add it) or a dev server, never a plain production load. AC3 needs
+// the overlay's DOM node genuinely absent otherwise, not merely hidden, so — like `__kobi` — the gate has to
+// guard the `createTuningScreen` call itself; `tuning.js`/`ui/screens/tuning.js` never read `window` or
+// `import.meta` themselves.
+// @ts-expect-error import.meta.env is Vite's own addition; not present in this project's jsconfig types.
+const isTuningEnabled = import.meta.env.DEV || window.location.search.includes('tuning=1');
+if (isTuningEnabled) {
+  const tuningScreen = createTuningScreen(uiRoot, {
+    onChange: (overrides) => session.setSettingsOverrides(overrides),
+    getReplay: () => session.getReplay(),
+  });
+  // PR #115 review: without this, the panel sat on top of the arena's right flank and P2's own HUD pill for
+  // the whole round. `ui.js`'s `show()` now folds it on every state that puts the round's HUD up — see that
+  // file's `setTuningScreen`/`HUD_STATES` — so this registration has to happen before `session.start()`
+  // below fires the first `ui.show()`.
+  ui.setTuningScreen(tuningScreen);
+  tuningScreen.show();
 }
 
 session.start();
