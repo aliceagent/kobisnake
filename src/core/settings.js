@@ -112,6 +112,9 @@
  * @property {CrashSlowMoSettings} crashSlowMo
  * @property {number} scoreboardSeconds - seconds the between-round scoreboard is shown
  * @property {number[]} bestOfOptions - selectable match lengths
+ * @property {number} maxConsecutiveDraws - draws in a row that end a match without either player reaching
+ *   the win target: the player with more round wins takes it, or nobody does on a level score (a tie)
+ *   (DESIGN-DECISIONS §1 row 26)
  * @property {RewardsSettings} rewards - key rewards to the match winner, by best-of format
  * @property {ColorCatalogue} colors
  * @property {ShopPrices} shopPrices
@@ -163,6 +166,7 @@ const SETTINGS_SOURCE = {
   scoreboardSeconds: 2.5,
 
   bestOfOptions: [1, 3, 5],
+  maxConsecutiveDraws: 3, // §1 row 26 — the third draw in a row ends the match
   rewards: { 1: 0, 3: 1, 5: 2 },
 
   // Colour catalogue, DESIGN-DECISIONS §2.7 ("plastic base colour" hex values). See the ColorCatalogue
