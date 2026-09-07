@@ -386,6 +386,35 @@ body {
   border-left-color: #e8b028;
 }
 
+/* KI-10-03: the HOW TO PLAY panel (`src/ui/screens/howToPlayPanel.js`) — a text-only overlay owned by the
+   main-menu screen, not a state-machine state of its own. Reuses `.menu-screen`'s own centring/dimming
+   rule set so it reads as a modal stacked over the menu; grey-box only like everything else here, Sprint
+   11's job to restyle. */
+.how-to-play-overlay {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(10, 12, 16, 0.55);
+}
+
+.how-to-play-overlay[hidden] {
+  display: none;
+}
+
+.how-to-play-panel {
+  max-width: 28rem;
+  align-items: flex-start;
+  text-align: left;
+}
+
+.how-to-play-line {
+  font-size: 1.05rem;
+  font-weight: 500;
+  line-height: 1.4;
+}
+
 /* The 3·2·1·GO / READY? countdown label (`src/ui/screens/countdown.js`). */
 .countdown-label {
   font-size: 6rem;
