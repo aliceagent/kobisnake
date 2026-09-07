@@ -28,6 +28,24 @@ Node 20 (`.nvmrc`). Run `npm install` once per worktree — `node_modules` is no
 
 There is no `test:sim` script: simulation tests live in `tests/sim/` but run under `npm run test:unit`.
 
+**Several worktrees share one container, and the test tooling knows it (KI-19-00):**
+- **A green summary with a red exit is the runner, not a test; re-run once.** `npm run test:unit` can print
+  `718 passed` and still exit non-zero, with `Error: [vitest-worker]: Timeout calling "onTaskUpdate"` — that is
+  Vitest's own progress RPC starved by a busy box (#181), not a failing test. Re-run once; if it exits red a
+  second time, or the summary is not green, it is real. Never reach for
+  `dangerouslyIgnoreUnhandledErrors` to make it go away: a clean exit bought by muting unhandled errors hides
+  the real ones too.
+- **The preview port is derived from your checkout's path**, not fixed at 4173 (#170), so a `vite preview`
+  from another worktree can never be reused and an orphan can never block your `--strictPort`. `npm run
+  preview` and `npm run test:e2e` in the same worktree agree on it. `scripts/preview-port.mjs` prints it:
+  `node -e "import('./scripts/preview-port.mjs').then(m => console.log(m.previewBaseUrl()))"`.
+- **Never run two Playwright suites at once.** Every suite goes through `scripts/run-playwright-suite.mjs`,
+  which holds one container-wide lock: a second suite waits for the first, and after 20 minutes gives up and
+  says which process it waited for rather than starting beside it (#86). Per-checkout ports do not change
+  this — the contention #86 is about is one GPU-less browser stack, which every worktree shares.
+- **`tests/e2e/inputLatency.spec.js` gates on simulated ticks, not milliseconds** (#175, #151). Its
+  `KS-07-06 WALL CLOCK` lines are information; only `stepWaitTicks` can fail the job.
+
 ## The never list
 - Never load anything from a CDN or external URL. three.js comes from npm and is bundled. The built site makes
   zero network requests after load; a test enforces this.
