@@ -35,14 +35,35 @@ import { tmpdir } from 'node:os';
 const LOCK_PATH = join(tmpdir(), 'kobi-playwright-suite.lock');
 
 /**
- * A lock older than this is treated as abandoned even if its process id happens to belong to something else
- * by now. The longest suite here is `tests/e2e` at ≈ 4 min on CI, and Playwright's own `webServer` timeout is
- * 2 min on top of that.
+ * Ownership is decided by **process liveness alone**, deliberately, and there is no age at which a live
+ * holder is evicted.
+ *
+ * An earlier version of this file also treated a lock older than thirty minutes as abandoned, on the
+ * reasoning that no suite here runs that long. Then a `tests/e2e` run **hung** — alive, holding the lock,
+ * producing nothing — and at the thirty-minute mark a waiting suite declared it abandoned and started
+ * anyway. Two Playwright suites ran at once, which is the one thing this file exists to prevent. An age
+ * threshold cannot tell "wedged" from "slow", and getting it wrong fails *open*, which is the worst
+ * direction for a guard rail.
+ *
+ * So a lock is released only when its process is gone. A holder that never finishes is handled at the other
+ * end instead — {@link WAIT_TIMEOUT_MS} makes the *waiter* give up and say so, loudly, rather than quietly
+ * starting a second suite on top of the first.
  */
-const STALE_AFTER_MS = 30 * 60 * 1000;
 
-/** How long a second suite waits for the first before giving up. */
-const WAIT_TIMEOUT_MS = 20 * 60 * 1000;
+/**
+ * How long a second suite waits for the first before giving up and failing.
+ *
+ * This, not an age check on the lock, is what bounds the damage from a wedged holder — and it fails *closed*:
+ * the waiting run stops with a message naming the process it waited for, instead of starting a second suite
+ * beside a first that may still be driving a browser. Generous enough for the longest legitimate wait in this
+ * repository (a full `tests/e2e` at ≈ 4 min on CI, plus its 2 min `webServer` start-up, plus a suite queued
+ * ahead of that one).
+ *
+ * `KOBI_SUITE_LOCK_WAIT_MS` overrides it. That exists for `tests/agent/suiteLock.test.js`, which has to prove
+ * the waiter gives up rather than evicting a live holder and cannot spend twenty minutes doing it; nothing
+ * else sets it, and a real run that shortens it is asking for the failure this file exists to prevent.
+ */
+const WAIT_TIMEOUT_MS = Number(process.env.KOBI_SUITE_LOCK_WAIT_MS ?? 20 * 60 * 1000);
 
 /** How often it re-checks, and how often it says out loud that it is still waiting. */
 const POLL_MS = 2_000;
@@ -71,7 +92,7 @@ function processIsAlive(pid) {
 
 /** @param {{pid: number, startedAt: number}} held */
 function isAbandoned(held) {
-  return !processIsAlive(held.pid) || Date.now() - held.startedAt > STALE_AFTER_MS;
+  return !processIsAlive(held.pid);
 }
 
 /**
@@ -97,7 +118,7 @@ function tryAcquire(label) {
     process.stderr.write(
       held === null
         ? 'Removing an unreadable Playwright suite lock.\n'
-        : `Removing an abandoned Playwright suite lock from "${held.label}" (pid ${held.pid}).\n`,
+        : `Removing the Playwright suite lock of "${held.label}" (pid ${held.pid}), whose process is gone.\n`,
     );
     rmSync(LOCK_PATH, { force: true });
     return tryAcquire(label);
@@ -130,8 +151,10 @@ function acquire(label) {
       process.stderr.write(
         `\nGave up waiting for the "${held.label}" Playwright suite (pid ${held.pid}) after ` +
           `${Math.round(WAIT_TIMEOUT_MS / 60000)} minutes.\n` +
-          `Two Playwright suites at once corrupt both (#86), so this run did not start.\n` +
-          `If nothing is really running, delete ${LOCK_PATH} and try again.\n\n`,
+          `Two Playwright suites at once corrupt both (#86), so this run did not start — which is the ` +
+          `safe outcome, not a workaround to route around.\n` +
+          `That suite is still alive. Find out what it is doing (\`ps -o pid,etime,args -p ${held.pid}\`) ` +
+          `and stop it; the lock goes with it.\n\n`,
       );
       process.exit(1);
     }

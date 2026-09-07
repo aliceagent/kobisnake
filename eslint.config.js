@@ -87,6 +87,11 @@ export default [
         // table — both Node-standard globals, already whitelisted the same way for `src/**/*.js` above.
         performance: 'readonly',
         console: 'readonly',
+        // KI-03-01: `tests/agent/suiteLock.test.js` spawns the Playwright suite runner as a real child
+        // process and checks its exit status, which needs `process.execPath`, `process.env` and
+        // `process.kill`. Same reasoning as the two above — a Vitest file executes in Node, and this is
+        // the Node standard library, not a browser global smuggled in.
+        process: 'readonly',
         // NOT a Node global: this exists so `page.evaluate(() => ... requestAnimationFrame ...)` lints
         // clean. That arrow function's *body* is serialised and runs inside the browser page, not in Node,
         // even though it is written inline in this Node-executed file — the one place in `tests/**` where

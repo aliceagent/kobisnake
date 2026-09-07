@@ -28,7 +28,14 @@ through `scripts/run-playwright-suite.mjs`, which holds one lock in the OS temp 
 **queues** behind the first, saying so while it waits, and gives up after 20 minutes. Queueing rather than
 refusing is deliberate: several agents verify in parallel in one container, and turning every concurrent run
 into a spurious failure would be worse than waiting. Separate CI runners are separate containers and never see
-each other's lock; a lock whose process is gone, or older than 30 minutes, is treated as abandoned.
+each other's lock.
+
+A lock is released **only when its holder's process is gone** — never on age. An earlier version also expired
+a lock after thirty minutes, and when a `tests/e2e` run hung (alive, holding the lock, producing nothing) that
+rule declared it abandoned and let a second suite start beside it: precisely the thing the lock exists to
+prevent. An age threshold cannot tell "wedged" from "slow", and it fails *open*. A holder that never finishes
+is handled at the other end instead — the waiter gives up after 20 minutes and fails loudly, naming the
+process to go and look at.
 
 The suite fails on any of three things (KI-03-01 AC3), each reported with the **seed** so it can be replayed:
 
