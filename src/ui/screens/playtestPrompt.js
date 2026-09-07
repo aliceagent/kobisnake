@@ -4,6 +4,7 @@ import {
   findQuestionById,
   isTriggerDue,
 } from '../../qa/playtestQuestions.js';
+import { buildSessionDocument, renderMarkdownSummary } from '../../qa/playtestSession.js';
 
 /**
  * The `?playtest=1` between-round prompt (Improvement 11 "Playtest capture mode",
@@ -290,16 +291,48 @@ export function createPlaytestPromptState() {
  */
 
 /**
+ * @typedef {object} PlaytestPromptOptions
+ * @property {() => import('../../qa/playtestSession.js').Replay} getReplay - `session.js`'s `getReplay()`.
+ *   Called from inside `offer()`, at the exact moment `session.js` calls it (`enterRoundOver`, before the
+ *   next `startRound()` can reset `roundInputLog`/`roundEventLog`) — KI-11-03 tech-lead note 1 on issue #162:
+ *   "a replay captured a frame too late is empty". This is the only reason `offer()` needs a callback at all;
+ *   everything else this file does with the captured replay is pure (`../../qa/playtestSession.js`).
+ * @property {() => {bestOf: number, powerUpsEnabled: boolean, colors: Record<string, string>}} getMatchSettings
+ *   - `session.js`'s own `getMatchSettings()`. Read fresh on every EXPORT click, not cached, so a session that
+ *   changes its match setup between matches still exports the settings that were actually live.
+ * @property {{writeText: (text: string) => Promise<void>} | null} [clipboard] - defaults to
+ *   `navigator.clipboard` where one exists, exactly like `screens/tuning.js`'s own `TuningScreenOptions`
+ *   (KI-11-03 reuses that file's proven copy pattern — tech-lead note 4 on issue #162).
+ */
+
+/**
  * Build the between-round prompt inside `root` (`#ui`). Constructed by `main.js` only under `?playtest=1`
  * (tech-lead note 1 on issue #161) — this module itself never reads `window.location` or `import.meta`, so
  * the flag's gate stays entirely at the call site, the same discipline `screens/tuning.js` uses for `?tuning=1`.
  *
+ * KI-11-03 adds two things to what was otherwise KI-11-02's file: `offer()` now also snapshots the round that
+ * just ended (`options.getReplay()`) into this module's own `capturedRounds`, and an EXPORT affordance —
+ * reachable at any time, not only while a gap is open (the ticket's own "a session abandoned mid-match must
+ * still hand back its file") — copies/downloads the session document `../../qa/playtestSession.js` builds
+ * from `capturedRounds` and `state.getAnswers()`.
+ *
  * @param {HTMLElement} root
+ * @param {PlaytestPromptOptions} options
  * @returns {PlaytestPromptScreen}
  */
-export function createPlaytestPrompt(root) {
+export function createPlaytestPrompt(root, { getReplay, getMatchSettings, clipboard }) {
   const doc = root.ownerDocument;
   const state = createPlaytestPromptState();
+  const resolvedClipboard =
+    clipboard !== undefined
+      ? clipboard
+      : /** @type {any} */ (globalThis).navigator?.clipboard ?? null;
+
+  /** Every round captured this session, in the order it was played (KI-11-03 tech-lead note 1/2 on #162: the
+   * replay object inside each entry stays KS-07-01's shape verbatim — `../../qa/playtestSession.js` is what
+   * hangs `result`/`endReason`/`laserPhaseSeen` beside it, never inside it).
+   * @type {{roundIndex: number, replay: import('../../qa/playtestSession.js').Replay}[]} */
+  const capturedRounds = [];
 
   const container = doc.createElement('div');
   container.className = 'playtest-prompt';
@@ -311,6 +344,114 @@ export function createPlaytestPrompt(root) {
   container.appendChild(panel);
 
   root.appendChild(container);
+
+  // --- EXPORT (KI-11-03): a separate, always-visible sibling of the gap panel above — never hidden by
+  // `render()`, since the ticket needs this reachable "at any time", including while a gap is open and a
+  // session abandoned with no gap ever open. Reuses `screens/tuning.js`'s "copy replay" pattern verbatim
+  // (tech-lead note 4 on #162): the `<textarea>` is always populated first, *then* the clipboard is
+  // attempted, and both failure branches are visible rather than silent.
+  //
+  // `src/ui/styles.css` is outside this ticket's `Files:` list (declared in the PR), so the handful of rules
+  // this needs to actually be clickable are set inline instead of adding a stylesheet class: `#ui` itself is
+  // `pointer-events: none` (every screen re-enables it on its own root the same way — `.playtest-prompt`,
+  // `.tuning-overlay` — and this is no different), and `.playtest-prompt` is a full-screen `position:
+  // absolute` panel while a gap is open, so this also needs its own stacking context above it. Pinned to the
+  // bottom-left corner — `.tuning-overlay` already owns the bottom-right (its own module doc comment) — so a
+  // dev build with both flags on never overlaps the two.
+  const exportContainer = doc.createElement('div');
+  exportContainer.className = 'playtest-export';
+  exportContainer.dataset.playtestExport = 'true';
+  Object.assign(exportContainer.style, {
+    position: 'fixed',
+    left: '0',
+    bottom: '0',
+    zIndex: '1000',
+    pointerEvents: 'auto',
+    display: 'flex',
+    flexDirection: 'column',
+    gap: '0.25rem',
+    padding: '0.5rem',
+    maxWidth: '20rem',
+    background: 'rgba(10, 12, 16, 0.85)',
+    color: 'rgb(255, 255, 255)',
+    fontFamily: 'system-ui, -apple-system, sans-serif',
+    fontSize: '0.8rem',
+  });
+
+  const exportButton = doc.createElement('button');
+  exportButton.type = 'button';
+  exportButton.className = 'playtest-export-button';
+  exportButton.textContent = 'Export session';
+  exportButton.dataset.playtestExportButton = 'true';
+  exportContainer.appendChild(exportButton);
+
+  const exportStatus = doc.createElement('span');
+  exportStatus.className = 'playtest-export-status';
+  exportStatus.dataset.playtestExportStatus = 'true';
+  exportContainer.appendChild(exportStatus);
+
+  // The JSON document, reachable "another way too" (tuning.js's own phrase) whether or not the clipboard
+  // write succeeds — an e2e spec reads this rather than needing clipboard permissions granted at all.
+  const exportJsonEl = /** @type {HTMLTextAreaElement} */ (doc.createElement('textarea'));
+  exportJsonEl.className = 'playtest-export-json';
+  exportJsonEl.readOnly = true;
+  exportJsonEl.dataset.playtestExportJson = 'true';
+  exportContainer.appendChild(exportJsonEl);
+
+  // The rendered markdown summary, alongside the JSON (the ticket's own "a markdown summary is rendered
+  // alongside"). Also a plain `<textarea>`, for the same select-all-and-copy reason as the JSON one above.
+  const exportMarkdownEl = /** @type {HTMLTextAreaElement} */ (doc.createElement('textarea'));
+  exportMarkdownEl.className = 'playtest-export-markdown';
+  exportMarkdownEl.readOnly = true;
+  exportMarkdownEl.dataset.playtestExportMarkdown = 'true';
+  exportContainer.appendChild(exportMarkdownEl);
+
+  // The download offer (tech-lead note 4): an object-URL `<a download>` built from a `Blob` — same-origin, no
+  // network, so `tests/e2e/offline.spec.js` (AC3) never sees a request from this. A fresh URL replaces the
+  // previous one on every export so a long session never leaks one object URL per click.
+  const exportDownloadLink = /** @type {HTMLAnchorElement} */ (doc.createElement('a'));
+  exportDownloadLink.className = 'playtest-export-download';
+  exportDownloadLink.textContent = 'Download session file';
+  exportDownloadLink.dataset.playtestExportDownload = 'true';
+  exportDownloadLink.download = 'kobisnake-playtest-session.json';
+  exportContainer.appendChild(exportDownloadLink);
+
+  root.appendChild(exportContainer);
+
+  /** The `Blob`/`URL` this export's download link was last built from, revoked before a new one replaces it. */
+  let lastObjectUrl = /** @type {string | null} */ (null);
+
+  exportButton.addEventListener('click', () => {
+    const document_ = buildSessionDocument({
+      rounds: capturedRounds.map((round) => ({ roundIndex: round.roundIndex, replay: round.replay })),
+      answers: state.getAnswers(),
+      matchSettings: getMatchSettings(),
+    });
+    const json = JSON.stringify(document_, null, 2);
+    exportJsonEl.value = json;
+    exportMarkdownEl.value = renderMarkdownSummary(/** @type {any} */ (document_));
+
+    const view = /** @type {any} */ (root.ownerDocument.defaultView ?? globalThis);
+    if (lastObjectUrl !== null) view.URL.revokeObjectURL(lastObjectUrl);
+    const blob = new view.Blob([json], { type: 'application/json' });
+    lastObjectUrl = view.URL.createObjectURL(blob);
+    exportDownloadLink.href = /** @type {string} */ (lastObjectUrl);
+
+    if (resolvedClipboard === null || typeof resolvedClipboard.writeText !== 'function') {
+      exportStatus.textContent = 'Clipboard unavailable — copy the text below';
+      return;
+    }
+    resolvedClipboard.writeText(json).then(
+      () => {
+        exportStatus.textContent = 'Copied!';
+      },
+      () => {
+        // A denied clipboard permission must not fail silently (tuning.js's own tech-lead note 6) — the JSON
+        // is already in `exportJsonEl` regardless of which branch this callback takes.
+        exportStatus.textContent = 'Clipboard blocked — copy the text below';
+      },
+    );
+  });
 
   /** Redraws the whole panel from `state`'s current fields — cheap enough (at most four fields) to rebuild on
    * every action rather than patch, the same choice `screens/scoreboard.js`'s `render` makes. */
@@ -379,6 +520,12 @@ export function createPlaytestPrompt(root) {
   return {
     isOpen: state.isOpen,
     offer(facts, roundIndex) {
+      // KI-11-03 tech-lead note 1 on #162: snapshotted *before* `state.offer` (which only ever reads
+      // `facts`/`roundIndex`, never `session.js`), and unconditionally — a round with nothing due still gets
+      // captured, since AC1's export must contain every round played, not only the ones that carried a
+      // question. `session.js` calls this once per `enterRoundOver`, before its own next `startRound()` can
+      // reset the logs `getReplay()` reads.
+      capturedRounds.push({ roundIndex, replay: getReplay() });
       const opened = state.offer(facts, roundIndex);
       if (opened) render();
       return opened;
@@ -391,6 +538,12 @@ export function createPlaytestPrompt(root) {
     getAnswers: state.getAnswers,
     destroy() {
       container.remove();
+      exportContainer.remove();
+      if (lastObjectUrl !== null) {
+        const view = /** @type {any} */ (root.ownerDocument.defaultView ?? globalThis);
+        view.URL.revokeObjectURL(lastObjectUrl);
+        lastObjectUrl = null;
+      }
     },
   };
 }
