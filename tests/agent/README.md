@@ -49,8 +49,9 @@ The suite fails on any of three things (KI-03-01 AC3), each reported with the **
 |---|---|
 | `driver.js` | Loads the built site at `?test=1&seed=N`, plays a whole match through `__kobi`, returns a plain result object. Also `failureReasons()`, the AC3 gate. |
 | `driver.test.js` | The driver's pure functions, in Node. Runs under `npm run test:unit`. |
-| `playtest.spec.js` | The suite `npm run test:agent` runs. |
-| `policies/` | The play policies (KI-03-02). |
+| `playtest.spec.js` | The suite `npm run test:agent` runs — ten seeded Bo3 matches, greedy vs survivor. |
+| `policies/` | The play policies (KI-03-02): `greedy.js`, `survivor.js`, `idle.js`, unit-tested in `policies.test.js`. |
+| `policies.spec.js` | KI-03-02's own agent-level measurements — AC1's laser-phase rates, AC2's 0:30 survival rate, and the idle/F1 characterisation scenario. Not part of the ten-match run above. |
 | `invariants.js` | The per-frame checks (KI-03-03). |
 | `report.js` | Aggregation into `docs/qa/playtests/agent-run.md` (KI-03-04). |
 

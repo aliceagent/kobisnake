@@ -6,15 +6,21 @@ import {
   failureReasons,
   playMatch,
 } from './driver.js';
+import { greedy } from './policies/greedy.js';
+import { survivor } from './policies/survivor.js';
+import { idle } from './policies/idle.js';
 
 /**
  * KI-03-01 — the driver's own suite: ten seeded Best-of-3 matches of the built site, played end to end.
  *
- * This file is what `npm run test:agent` runs. KI-03-02 replaces {@link smokePolicy} below with the real
- * greedy / survivor / idle policies and adds their own scenarios; KI-03-03 hands the driver its invariants
- * module; KI-03-04 turns a run of this file into the committed report. Until they land, the ten matches are
- * driven by the smallest policy that produces a *finishing* match, because a driver with nothing to drive
- * proves nothing.
+ * This file is what `npm run test:agent` runs. KI-03-02 landed the real greedy / survivor / idle policies
+ * (`tests/agent/policies/`) and this suite now drives its ten matches with **greedy vs survivor** — both
+ * policies terminate, so the ten-match run stays green (the idle characterisation scenario belongs to
+ * `policies.spec.js`, on its own bounded `maxFrames`, precisely because it does not). KI-03-03 hands the
+ * driver its invariants module; KI-03-04 turns a run of this file into the committed report.
+ *
+ * The placeholder `smokePolicy` this file used before KI-03-02 landed is gone — this is the real policies'
+ * own proving ground, not a stand-in for them.
  */
 
 /** The ten seeds AC1 names. Fixed here, and quoted by every report, so a failure is replayable (KI-03-05). */
@@ -24,63 +30,26 @@ export const SEEDS = [1, 2, 3, 5, 8, 13, 21, 34, 55, 89];
 const TEN_MATCH_BUDGET_MS = 60_000;
 
 /**
- * A placeholder policy, and deliberately the smallest one that works: head for the nearest apple, refuse a
- * cell that is off the board, inside the laser dead zone, or occupied by a living snake.
- *
- * **KI-03-02 owns the real policies** (`tests/agent/policies/`) and deletes this. It is here only so
- * KI-03-01's own acceptance criteria — ten matches that finish, deterministically, inside a budget — can be
- * proved by the ticket that adds the driver rather than by the one after it. It is not tuned, not tested and
- * not a design instrument; no statistic should ever be quoted from it.
- *
- * Self-contained by necessity: the driver ships it into the page as source text, so it may not reference
- * anything outside its own body (see `driver.js`'s header).
- *
- * @param {import('./driver.js').PolicyView} view
- * @returns {import('./driver.js').PolicyMove}
+ * KI-03-01 measured 32.9 s for these ten matches at the driver's default {@link RENDER_EVERY_N_FRAMES} (240)
+ * with the placeholder policy. Survivor keeps both snakes alive far longer (KI-03-02 AC2: past 0:30 in
+ * 100 % of its own 20-seed sample) — measured here, greedy vs survivor at the default cadence played 23
+ * rounds over 73 748 frames and **83.4 s**, over budget. Rendering is not what this test is for (`driver.js`'s
+ * header: skipping `renderer.render()` cannot affect simulation state, only wall time), so the fix is a
+ * sparser cadence for *this* run rather than loosening the 60 s budget or touching the driver's own default —
+ * one render every 40 simulated seconds still samples `maxDrawCalls` during PLAYING on every seed, and brings
+ * the same ten matches back to comfortably inside budget (see the PR for the re-measured total).
  */
-export function smokePolicy(view) {
-  const { snapshot, playerIndex, grid } = view;
-  const me = snapshot.snakes[playerIndex];
-  if (me === undefined || !me.alive) return null;
-  const head = me.segments[0];
-  const deltas = {
-    UP: { dx: 0, dy: 1 },
-    DOWN: { dx: 0, dy: -1 },
-    LEFT: { dx: -1, dy: 0 },
-    RIGHT: { dx: 1, dy: 0 },
-  };
-  const inset = snapshot.lasers.inset;
-  const occupied = new Set();
-  for (const snake of snapshot.snakes) {
-    if (!snake.alive) continue;
-    for (const cell of snake.segments) occupied.add(cell.x + ',' + cell.y);
-  }
-  const apples = snapshot.apples.filter((apple) => apple !== null);
-  const distance = (a, b) => Math.abs(a.x - b.x) + Math.abs(a.y - b.y);
-  const target =
-    apples.length === 0
-      ? head
-      : apples.reduce((best, apple) =>
-          distance(apple, head) < distance(best, head) ? apple : best,
-        );
+const TEN_MATCH_RENDER_EVERY_N_FRAMES = 2400;
 
-  let best = null;
-  for (const name of ['UP', 'DOWN', 'LEFT', 'RIGHT']) {
-    const delta = deltas[name];
-    if (delta.dx === -me.direction.dx && delta.dy === -me.direction.dy) continue;
-    const next = { x: head.x + delta.dx, y: head.y + delta.dy };
-    if (next.x < inset || next.y < inset) continue;
-    if (next.x > grid.width - 1 - inset || next.y > grid.height - 1 - inset) continue;
-    if (occupied.has(next.x + ',' + next.y)) continue;
-    const score = -distance(target, next);
-    if (best === null || score > best.score) best = { score, name };
-  }
-  return best === null ? null : best.name;
-}
-
-/** One Best-of-3 on `seed`, both players driven by {@link smokePolicy}. */
-function playSmokeMatch(page, seed) {
-  return playMatch(page, { seed, bestOf: 3, policy1: smokePolicy, policy2: smokePolicy });
+/** One Best-of-3 on `seed`, player one greedy, player two survivor. */
+function playGreedyVsSurvivorMatch(page, seed) {
+  return playMatch(page, {
+    seed,
+    bestOf: 3,
+    policy1: greedy,
+    policy2: survivor,
+    renderEveryNFrames: TEN_MATCH_RENDER_EVERY_N_FRAMES,
+  });
 }
 
 test.describe('KI-03-01 · the agent playtest driver', () => {
@@ -91,7 +60,7 @@ test.describe('KI-03-01 · the agent playtest driver', () => {
     const startedAt = Date.now();
     /** @type {import('./driver.js').MatchResult[]} */
     const results = [];
-    for (const seed of SEEDS) results.push(await playSmokeMatch(page, seed));
+    for (const seed of SEEDS) results.push(await playGreedyVsSurvivorMatch(page, seed));
     const totalMs = Date.now() - startedAt;
 
     // AC3's three clauses in one assertion, so a failure reads as the reason rather than as `false !== true`.
@@ -121,8 +90,8 @@ test.describe('KI-03-01 · the agent playtest driver', () => {
 
   test('KI-03-01 AC1: the same seed replays identically', async ({ page }) => {
     test.setTimeout(120_000);
-    const first = await playSmokeMatch(page, 4242);
-    const second = await playSmokeMatch(page, 4242);
+    const first = await playGreedyVsSurvivorMatch(page, 4242);
+    const second = await playGreedyVsSurvivorMatch(page, 4242);
     expect(second.rounds).toEqual(first.rounds);
     expect(second.match).toEqual(first.match);
     expect(second.frames).toBe(first.frames);
@@ -172,12 +141,14 @@ test.describe('KI-03-01 · the agent playtest driver', () => {
     test.setTimeout(120_000);
     // The frame budget is what makes an unfinishable match a *failure* rather than a hang — which is not
     // hypothetical: two idle players draw every round and the match never ends on this build (#119 F1,
-    // `DESIGN-DECISIONS §1 row 26`, I01/#120). 600 frames is ten simulated seconds: not enough for a match.
+    // `DESIGN-DECISIONS §1 row 26`, I01/#120; KI-03-02's own bounded scenario for this is
+    // `policies.spec.js`, which runs it out to several rounds instead of stopping at the first one). 600
+    // frames is ten simulated seconds: not even one full round-countdown-scoreboard cycle.
     const result = await playMatch(page, {
       seed: 1,
       bestOf: 3,
-      policy1: smokePolicy,
-      policy2: smokePolicy,
+      policy1: idle,
+      policy2: idle,
       maxFrames: 600,
     });
     expect(result.finished).toBe(false);
