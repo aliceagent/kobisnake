@@ -2,6 +2,7 @@
 import * as THREE from 'three';
 import { SETTINGS } from '../core/settings.js';
 import { createLaserMaterial, createPlasticMaterial, COLORS } from './materials.js';
+import { prefersReducedMotion } from './reducedMotion.js';
 
 /**
  * The closing laser arena, drawn grey-box (KS-04-02; `docs/sprints/sprint-04-closing-laser-arena.md`).
@@ -38,7 +39,7 @@ import { createLaserMaterial, createPlasticMaterial, COLORS } from './materials.
  * rather than consuming individual `LASER_STEP` events, is deliberate and harmless: `lasers.js`'s own doc
  * comment notes that a coarse `advance(dt)` can cross several step boundaries in one call and still be
  * correct, and a view that glides from "wherever it last was" to "wherever the sim is now" reproduces that
- * exactly, one step or nine. Under `?reducedFx=1` the tween is skipped outright and `visualInset` snaps to
+ * exactly, one step or nine. Under reduced motion the tween is skipped outright and `visualInset` snaps to
  * the target immediately, the same convention `camera.js`'s shake and zoom pulse use, so a screenshot never
  * catches a half-finished glide.
  */
@@ -79,19 +80,6 @@ const INWARD_DIRECTIONS = [
   { inwardDx: 0, inwardDy: -1 }, // far: world z = inset (the grid-y = height side); inward is grid -y.
   { inwardDx: 0, inwardDy: 1 }, // near: world z = height - inset (the grid-y = 0 side); inward is grid +y.
 ];
-
-/**
- * True when the page asked for reduced effects (`ARCHITECTURE §11`). Mirrors `camera.js`'s own helper
- * (not exported there) so the glide can be a no-op for the same reason the camera's shake and zoom are.
- *
- * @returns {boolean}
- */
-function reducedFxFromLocation() {
-  const search = /** @type {{search?: string} | undefined} */ (
-    /** @type {any} */ (globalThis).location
-  )?.search;
-  return typeof search === 'string' && new URLSearchParams(search).get('reducedFx') === '1';
-}
 
 /**
  * `atan2(dx, -dy)`: the yaw that turns a mesh built pointing local +z toward the grid direction `(dx, dy)`.
@@ -149,7 +137,7 @@ export class LaserView {
    * @param {object} [options]
    * @param {Settings} [options.settings]
    * @param {GridSize} [options.grid]
-   * @param {boolean} [options.reducedFx] - defaults to reading `?reducedFx=1` from the URL
+   * @param {boolean} [options.reducedFx] - defaults to `prefersReducedMotion()`
    */
   constructor({ settings = SETTINGS, grid, reducedFx } = {}) {
     /** @type {Settings} */
@@ -157,7 +145,7 @@ export class LaserView {
     /** @type {GridSize} */
     this.grid = grid ?? settings.grid;
     /** @type {boolean} */
-    this.reducedFx = reducedFx ?? reducedFxFromLocation();
+    this.reducedFx = reducedFx ?? prefersReducedMotion();
 
     /** @type {THREE.Group} */
     this.group = new THREE.Group();

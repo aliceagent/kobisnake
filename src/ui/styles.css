@@ -669,3 +669,29 @@ body {
   font-size: 0.8rem;
   letter-spacing: 0.04em;
 }
+
+/* KI-15-03: CSS transitions and animations on menus are off under `prefers-reduced-motion: reduce` — the
+   media query half of reduced motion (`?reducedFx=1` is the other half, and covers the 3D scene in
+   `src/render`; see `src/render/reducedMotion.js`). Nothing in this stylesheet defines a `transition` or
+   `@keyframes` yet — every screen above is the instant, grey-box UI Sprint 05 built (the toy-panel look
+   `docs/reference/images/14-main-menu.png` asks for, transitions included, is Sprint 11's job) — so this
+   rule is a no-op on the current build, the same way the crash's camera shake is a no-op today (`session.js`
+   never calls `camera.shake()`; see this ticket's PR notes). It is still the correct rule to have now:
+   Sprint 11 (or anything else) can add a transition or animation to any element under `#ui` and it is
+   covered automatically, with no second reduced-motion pass required. Scoped to `#ui` (menus), not the whole
+   page, since the ticket asks for menus specifically and `#game` — the WebGL canvas — carries no CSS
+   transitions to begin with. Near-zero durations rather than `none`: a `transitionend`/`animationend` a
+   script may be listening for still fires, just effectively instantly, which is the standard-practice
+   pattern for this rule (as opposed to `none`, which would leave anything gated on that event waiting
+   forever). */
+@media (prefers-reduced-motion: reduce) {
+  #ui *,
+  #ui *::before,
+  #ui *::after {
+    transition-duration: 0.001ms !important;
+    transition-delay: 0s !important;
+    animation-duration: 0.001ms !important;
+    animation-delay: 0s !important;
+    animation-iteration-count: 1 !important;
+  }
+}

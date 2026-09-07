@@ -325,4 +325,21 @@ describe('LaserView', () => {
       else globals.location = saved;
     }
   });
+
+  it('KI-15-03: also reads an emulated prefers-reduced-motion media query, with no ?reducedFx=1', () => {
+    const globals = /** @type {any} */ (globalThis);
+    const savedMatchMedia = globals.matchMedia;
+    const savedLocation = globals.location;
+    try {
+      globals.location = { search: '?test=1' };
+      globals.matchMedia = (query) => ({ matches: query === '(prefers-reduced-motion: reduce)' });
+
+      expect(createLaserView().reducedFx).toBe(true);
+    } finally {
+      if (savedMatchMedia === undefined) delete globals.matchMedia;
+      else globals.matchMedia = savedMatchMedia;
+      if (savedLocation === undefined) delete globals.location;
+      else globals.location = savedLocation;
+    }
+  });
 });

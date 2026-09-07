@@ -50,6 +50,14 @@ import { STATES } from './gameStateMachine.js';
  * @property {(player: number) => {x: number, y: number, z: number}} getHeadWorldPosition
  * @property {() => number} getDrawCalls - KS-04-02: lets an e2e spec measure the laser phase's draw-call
  *   cost (AC3) against three's own counter, the same one `ARCHITECTURE §12`'s budget is measured from.
+ * @property {{
+ *   reducedFx: boolean,
+ *   shake: (amplitudeUnits: number, seconds: number) => void,
+ *   position: {distanceTo: (v: {x: number, y: number, z: number}) => number},
+ *   basePosition: {x: number, y: number, z: number},
+ * }} [camera] - KI-15-03: the live gameplay camera (`createGameplayRenderer`'s own `camera` property),
+ *   structurally typed to only what {@link createTestHooks}'s new `shakeCameraForTest` reads. Optional, like
+ *   `TestHooksSession`'s own KS-06-02/KI-11-02 additions, so a minimal test renderer stays legal.
  */
 
 /**
@@ -110,6 +118,15 @@ import { STATES } from './gameStateMachine.js';
  * @property {() => number} getDrawCalls - see {@link TestHooksRenderer.getDrawCalls}.
  * @property {() => import('./inputLatency.js').InputLatencyStats} getInputStats - see
  *   {@link TestHooksSession.getInputStats}; forwarded unchanged.
+ * @property {() => boolean} isReducedMotion - KI-15-03 AC1: the live gameplay camera's own `reducedFx`,
+ *   resolved (`src/render/reducedMotion.js`) from whatever the real page's `?reducedFx=1` and
+ *   `prefers-reduced-motion` actually are — `false` when there is no camera to ask (a minimal test renderer).
+ * @property {(amplitudeUnits: number, seconds: number) => number} shakeCameraForTest - KI-15-03 AC1: fires
+ *   the crash shake (`DESIGN-DECISIONS §3`: amplitude 0.15, 0.3 s) directly against the live gameplay camera
+ *   and answers how far it sat from its base pose right after — the numeric proof that reduced motion (either
+ *   half of it) leaves the crash beat with zero camera displacement, without depending on `session.js` ever
+ *   wiring a `camera.shake()` call into a crash itself (see this ticket's PR notes: it does not, today).
+ *   `0` when there is no camera to shake.
  */
 
 /**
@@ -341,6 +358,19 @@ export function createTestHooks({ session, renderer, eventTarget, KeyboardEventC
     },
     getDrawCalls() {
       return renderer.getDrawCalls();
+    },
+    isReducedMotion() {
+      return renderer.camera?.reducedFx ?? false;
+    },
+    shakeCameraForTest(amplitudeUnits, seconds) {
+      const camera = renderer.camera;
+      if (camera === undefined) return 0;
+      camera.shake(amplitudeUnits, seconds);
+      // One frame so `GameplayCamera.update()` actually applies the shake state `shake()` above only set;
+      // `session.renderFrame()` is the same draw `fastForward` ends every call with, so this reads back the
+      // exact number a real crash frame would.
+      session.renderFrame();
+      return camera.position.distanceTo(camera.basePosition);
     },
   };
 }

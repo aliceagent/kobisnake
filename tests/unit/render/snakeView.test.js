@@ -489,6 +489,24 @@ describe('SnakeView', () => {
     });
   });
 
+  it('KI-15-03: freezes the SPEED tint pulse under an emulated prefers-reduced-motion media query too, with no ?reducedFx=1', () => {
+    const globals = /** @type {any} */ (globalThis);
+    const savedMatchMedia = globals.matchMedia;
+    const savedLocation = globals.location;
+    try {
+      globals.location = { search: '?test=1' };
+      globals.matchMedia = (query) => ({ matches: query === '(prefers-reduced-motion: reduce)' });
+
+      const view = createSnakeView();
+      expect(view.reducedFx).toBe(true);
+    } finally {
+      if (savedMatchMedia === undefined) delete globals.matchMedia;
+      else globals.matchMedia = savedMatchMedia;
+      if (savedLocation === undefined) delete globals.location;
+      else globals.location = savedLocation;
+    }
+  });
+
   it('dispose() releases the geometry and materials it owns', () => {
     const view = createSnakeView();
     const disposed = [];

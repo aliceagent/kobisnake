@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it } from 'vitest';
 import * as THREE from 'three';
 import { createGameplayCamera, solveCameraDistance } from '../../../src/render/camera.js';
 import { SETTINGS } from '../../../src/core/settings.js';
@@ -355,6 +355,38 @@ describe('createGameplayCamera', () => {
         if (saved === undefined) delete globals.location;
         else globals.location = saved;
       }
+    });
+  });
+
+  describe('KI-15-03: prefers-reduced-motion', () => {
+    afterEach(() => {
+      const globals = /** @type {any} */ (globalThis);
+      delete globals.location;
+      delete globals.matchMedia;
+    });
+
+    it('KI-15-03 AC1: with the media query emulated (no ?reducedFx=1), the crash shake produces no camera displacement — asserted numerically', () => {
+      const globals = /** @type {any} */ (globalThis);
+      globals.location = { search: '?test=1' };
+      globals.matchMedia = (query) => ({ matches: query === '(prefers-reduced-motion: reduce)' });
+
+      const camera = createGameplayCamera();
+      expect(camera.reducedFx).toBe(true);
+
+      // DESIGN-DECISIONS §3's own crash shake numbers, driven straight through `camera.js` (not through
+      // `session.js`, which never calls `shake()` for a crash today — see this ticket's PR notes).
+      camera.shake(0.15, 0.3);
+      camera.update(0.05);
+
+      expect(camera.position.distanceTo(camera.basePosition)).toBe(0);
+    });
+
+    it('resolves reducedFx to false under the ordinary (non-reduced) media query', () => {
+      const globals = /** @type {any} */ (globalThis);
+      globals.location = { search: '' };
+      globals.matchMedia = () => ({ matches: false });
+
+      expect(createGameplayCamera().reducedFx).toBe(false);
     });
   });
 

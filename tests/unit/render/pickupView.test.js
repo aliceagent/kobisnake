@@ -139,7 +139,9 @@ describe('PickupView', () => {
     expect(`#${view.materials.rim.color.getHexString()}`.toUpperCase()).toBe(
       cssColor(COLORS.appleRim).toUpperCase(),
     );
-    expect(`#${view.materials.body.color.getHexString()}`.toUpperCase()).not.toBe(SETTINGS.colors.red);
+    expect(`#${view.materials.body.color.getHexString()}`.toUpperCase()).not.toBe(
+      SETTINGS.colors.red,
+    );
     expect(`#${view.materials.leaf.color.getHexString()}`.toUpperCase()).toBe(
       SETTINGS.colors.green,
     );
@@ -272,6 +274,24 @@ describe('PickupView — KS-06-02 power-up pedestals', () => {
     view.update({ apples: [], powerUps: { pickups: [{ cell: { x: 5, y: 5 }, type: 'SPEED' }] } });
     // 2 for the pedestal + icon; apples/leaves stay at 0 since none were drawn.
     expect(view.drawCalls).toBe(2);
+  });
+
+  it('KI-15-03: freezes the bob and spin under an emulated prefers-reduced-motion media query too, with no ?reducedFx=1', () => {
+    const globals = /** @type {any} */ (globalThis);
+    const savedMatchMedia = globals.matchMedia;
+    const savedLocation = globals.location;
+    try {
+      globals.location = { search: '?test=1' };
+      globals.matchMedia = (query) => ({ matches: query === '(prefers-reduced-motion: reduce)' });
+
+      const view = createPickupView();
+      expect(view.reducedFx).toBe(true);
+    } finally {
+      if (savedMatchMedia === undefined) delete globals.matchMedia;
+      else globals.matchMedia = savedMatchMedia;
+      if (savedLocation === undefined) delete globals.location;
+      else globals.location = savedLocation;
+    }
   });
 
   it('dispose() releases the power-up geometry, materials and textures too', () => {
