@@ -24,11 +24,20 @@ import { startMatchInPage } from './helpers.js';
  * round-trips from this Node script.** A shared, loaded CI box (this repository runs several agents' suites
  * at once — see this project's own worktree/lock convention) can make a `page.evaluate` round-trip itself
  * take real seconds under contention, while the *browser tab's own* `requestAnimationFrame` clock keeps
- * ticking at real wall-clock speed regardless — P1's opponent is not being steered here and walks itself into
- * the west wall in about 3 simulated seconds, so a slow round-trip loop risks the round ending from under the
+ * ticking at real wall-clock speed regardless — both snakes walk themselves into a wall in a handful of
+ * simulated seconds if nobody steers them, so a slow round-trip loop risks the round ending from under the
  * test before it finishes gathering samples. Polling with the page's own `requestAnimationFrame` instead
  * keeps every wait exactly as short as the game itself needs and immune to how slowly Node happens to be
  * issuing commands.
+ *
+ * **Frame timing is measured on `MAIN_MENU`, before `startMatchInPage` ever runs — deliberately, after this
+ * spec's own first version got it wrong.** Timing `frameSampleCount` real frames takes real, unbounded time
+ * on a slow or contended box, and a round left running unattended for that whole stretch is a round whose
+ * snakes are still travelling in their spawn headings the entire time — long enough, on a slow box, to walk
+ * P1 into the east wall before the steering loop ever presses a key, which is exactly what made this spec
+ * flake in review. Measuring before any round exists costs nothing (the same `requestAnimationFrame` loop
+ * renders the menu every frame too, `ARCHITECTURE §5`) and removes the failure mode entirely rather than
+ * budgeting around it.
  *
  * P1 (WASD, spawns heading RIGHT, `DESIGN-DECISIONS §2.3`) is steered through a UP/RIGHT staircase: each
  * press is a legal 90° turn from the one before it (never a repeat, never the reverse `queueDirection` would
@@ -36,8 +45,15 @@ import { startMatchInPage } from './helpers.js';
  * steps this spec takes.
  */
 
-/** A safe, never-reversing, never-self-colliding turn sequence from P1's spawn heading (RIGHT). */
-const TURN_SEQUENCE = ['UP', 'RIGHT', 'UP', 'RIGHT', 'UP', 'RIGHT'];
+/**
+ * A safe, never-reversing, never-self-colliding turn sequence from P1's spawn heading (RIGHT): 8 full
+ * UP/RIGHT cycles. From spawn (5, 12) (`DESIGN-DECISIONS §2.3`) this walks a diagonal staircase to (13, 20)
+ * at most — comfortably inside the 24×24 arena — while raising the aggregate `stepWaitTicks.median` to 32
+ * samples (`sampleCount` is `2 * TURN_SEQUENCE.length`: P2's own defensive turns, below, are sampled by the
+ * same shared tracker) rather than 12, per the tech lead's own review of CI's numbers ("a median resting on
+ * 12 observations is thin for something asserted on every CI run").
+ */
+const TURN_SEQUENCE = Array(8).fill(['UP', 'RIGHT']).flat();
 
 /**
  * Floor for "1 frame" (AC1's own wording), used only if the live measurement below somehow comes back at or
@@ -45,11 +61,14 @@ const TURN_SEQUENCE = ['UP', 'RIGHT', 'UP', 'RIGHT', 'UP', 'RIGHT'];
  */
 const FRAME_BUDGET_FLOOR_MS = 20;
 
-/** How many consecutive real frames {@link collectInputStats} times, to measure "1 frame" empirically. */
+/** How many consecutive real frames {@link measureFrameMs} times, to measure "1 frame" empirically. */
 const FRAME_SAMPLE_COUNT = 20;
 
 /** DESIGN-DECISIONS §2.1: base speed 6 cells/s at 120 Hz makes a grid step this many milliseconds. */
 const STEP_MS = 1000 / SETTINGS.snakeSpeed;
+
+/** DESIGN-DECISIONS §2.1: base speed 6 cells/s at 120 Hz makes a grid step this many ticks (20). */
+const TICKS_PER_STEP_AT_BASE_SPEED = Math.round(SETTINGS.simHz / SETTINGS.snakeSpeed);
 
 /**
  * `loop.js`'s own `MAX_FRAME_SECONDS` (`ARCHITECTURE §5`), mirrored here in milliseconds — not imported,
@@ -64,18 +83,44 @@ const STEP_MS = 1000 / SETTINGS.snakeSpeed;
 const MAX_FRAME_MS = 100;
 
 /**
- * Runs entirely in the page (see this file's own module comment for why): first times
- * {@link FRAME_SAMPLE_COUNT} consecutive real frames to learn what "1 frame" actually costs on whatever
- * machine is running this (a shared, loaded CI box included — see this file's own module comment on why a
- * hard-coded frame budget would make AC1's bound a claim about the hardware rather than about the pipeline),
- * then presses each direction in `sequence` for player 1 and waits — via the page's own
- * `requestAnimationFrame`, never a fixed sleep — for `getInputStats().sampleCount` to grow by one before
- * pressing the next.
+ * Runs entirely in the page (see this file's own module comment for why), **before any round exists**: times
+ * `frameSampleCount` consecutive real frames on whatever screen is currently up (`MAIN_MENU`, since this is
+ * always called before `startMatchInPage`) to learn what "1 frame" actually costs on this machine — a shared,
+ * loaded CI box included — without any snake anywhere that could walk into a wall while the measurement runs.
  *
- * @param {{sequence: string[], perStepTimeoutMs: number, frameSampleCount: number}} options - a single
- *   object, since `page.evaluate(fn, arg)` passes exactly one serialisable argument through to `fn`.
+ * @param {number} frameSampleCount
+ * @returns {Promise<number>} the median real frame duration, in ms, over `frameSampleCount` frames.
  */
-async function collectInputStats({ sequence, perStepTimeoutMs, frameSampleCount }) {
+function measureFrameMs(frameSampleCount) {
+  return new Promise((resolve) => {
+    const deltas = /** @type {number[]} */ ([]);
+    let last = performance.now();
+    function tick() {
+      const now = performance.now();
+      deltas.push(now - last);
+      last = now;
+      if (deltas.length >= frameSampleCount) {
+        const sorted = [...deltas].sort((a, b) => a - b);
+        resolve(sorted[Math.floor(sorted.length / 2)]);
+        return;
+      }
+      requestAnimationFrame(tick);
+    }
+    requestAnimationFrame(tick);
+  });
+}
+
+/**
+ * Runs entirely in the page (see this file's own module comment for why): presses each direction in
+ * `sequence` for player 1 and waits — via the page's own `requestAnimationFrame`, never a fixed sleep — for
+ * `getInputStats().sampleCount` to grow by one before pressing the next. Call only once a round is already
+ * running (after `startMatchInPage`), never before — see {@link measureFrameMs}'s own doc comment for why
+ * frame timing is measured separately, ahead of this.
+ *
+ * @param {{sequence: string[], perStepTimeoutMs: number}} options - a single object, since
+ *   `page.evaluate(fn, arg)` passes exactly one serialisable argument through to `fn`.
+ */
+async function collectInputStats({ sequence, perStepTimeoutMs }) {
   const kobi = /** @type {any} */ (globalThis).__kobi;
 
   // P2 (arrow keys, spawns heading LEFT, `DESIGN-DECISIONS §2.3`) is otherwise never touched by this spec,
@@ -85,26 +130,6 @@ async function collectInputStats({ sequence, perStepTimeoutMs, frameSampleCount 
   // far more steps than this spec ever takes. This function cannot import `helpers.js`'s constants (it runs
   // inside the page, stripped of this module's closure — same reason `helpers.js` itself is self-contained).
   const defensiveP2Sequence = ['DOWN', 'LEFT'];
-
-  /** @returns {Promise<number>} the median real frame duration, in ms, over `frameSampleCount` frames. */
-  function measureFrameMs() {
-    return new Promise((resolve) => {
-      const deltas = /** @type {number[]} */ ([]);
-      let last = performance.now();
-      function tick() {
-        const now = performance.now();
-        deltas.push(now - last);
-        last = now;
-        if (deltas.length >= frameSampleCount) {
-          const sorted = [...deltas].sort((a, b) => a - b);
-          resolve(sorted[Math.floor(sorted.length / 2)]);
-          return;
-        }
-        requestAnimationFrame(tick);
-      }
-      requestAnimationFrame(tick);
-    });
-  }
 
   /**
    * Waits for player 1 specifically to reach `targetCount` completed samples — not `stats.sampleCount`,
@@ -138,8 +163,6 @@ async function collectInputStats({ sequence, perStepTimeoutMs, frameSampleCount 
     });
   }
 
-  const frameMs = await measureFrameMs();
-
   let stats = kobi.getInputStats();
   for (let i = 0; i < sequence.length; i += 1) {
     // P2 is steered too (see this file's own module comment): a real elapsed-time gap this test cannot
@@ -148,7 +171,7 @@ async function collectInputStats({ sequence, perStepTimeoutMs, frameSampleCount 
     kobi.pressKey(1, sequence[i]);
     stats = await waitForSampleCount(i + 1);
   }
-  return { stats, frameMs };
+  return stats;
 }
 
 test.describe('KS-07-06 input-feel instrumentation', () => {
@@ -158,9 +181,16 @@ test.describe('KS-07-06 input-feel instrumentation', () => {
     // This is the one spec in the suite that must watch several real seconds of live, un-fast-forwarded
     // play, on whatever shared box this repository's worktree convention already warns can be busy with
     // other agents' suites — Playwright's normal per-test budget is tuned for specs that fast-forward.
-    test.setTimeout(90_000);
+    test.setTimeout(120_000);
 
     await page.goto(DEFAULT_QUERY);
+
+    // Measured on `MAIN_MENU`, before any round exists — see `measureFrameMs`'s own doc comment and this
+    // file's module comment for why that is not merely tidier but load-bearing: a round left running
+    // unattended for however long this takes is a round whose snakes are still travelling in their spawn
+    // headings the entire time.
+    const frameMs = /** @type {number} */ (await page.evaluate(measureFrameMs, FRAME_SAMPLE_COUNT));
+
     await page.evaluate(startMatchInPage);
 
     // `enableInputStats` follows the same `?test=1`/DEV gate as `__kobi` itself (`session.js`'s "KS-07-06
@@ -172,14 +202,12 @@ test.describe('KS-07-06 input-feel instrumentation', () => {
     expect(initial.enabled).toBe(true);
     expect(initial.sampleCount).toBe(0);
 
-    const result = /** @type {any} */ (
+    const stats = /** @type {any} */ (
       await page.evaluate(collectInputStats, {
         sequence: TURN_SEQUENCE,
         perStepTimeoutMs: 10_000,
-        frameSampleCount: FRAME_SAMPLE_COUNT,
       })
     );
-    const { stats, frameMs } = result;
 
     // Greppable for CI (and for a human reading the job log): the tech lead's QA-report number, straight
     // from the run that just produced it — median and full distribution, sample count, both units (ms and
@@ -214,6 +242,18 @@ test.describe('KS-07-06 input-feel instrumentation', () => {
     const framesPerStep = Math.ceil(STEP_MS / Math.min(frameBudgetMs, MAX_FRAME_MS));
     const stepBudgetMs = framesPerStep * frameBudgetMs;
 
+    // `stepWaitTicks`'s own bound needs the identical frame-clamp reasoning, not a bare "+1": `observeState`
+    // only ever sees a commit at a frame boundary (`session.js`'s `drawFrame`), and one coarse frame can
+    // advance the sim by up to `MAX_FRAME_MS` worth of ticks in a single jump (`loop.js`'s clamp). A keydown
+    // landing just after a step commits waits the rest of that step — up to `TICKS_PER_STEP_AT_BASE_SPEED`
+    // ticks — *plus* whatever a single coarse frame overshoots by, since the commit that ends the wait is
+    // only visible once that whole chunk has been applied. Tech-lead review of CI's own numbers (`frameMs`
+    // 118.2, `stepWaitTicks` max 24) found the previous flat `+ 1` wrong for exactly this reason.
+    const extraTicksFromOneCoarseFrame = Math.ceil(
+      (Math.min(frameBudgetMs, MAX_FRAME_MS) * SETTINGS.simHz) / 1000,
+    );
+    const stepWaitTicksBudget = TICKS_PER_STEP_AT_BASE_SPEED + extraTicksFromOneCoarseFrame;
+
     expect(stats.enabled).toBe(true);
     expect(stats.sampleCount).toBeGreaterThanOrEqual(TURN_SEQUENCE.length);
     // The tracker is shared by both players (`ARCHITECTURE §4`'s `snakes` array has one entry each) — P2's
@@ -231,7 +271,7 @@ test.describe('KS-07-06 input-feel instrumentation', () => {
     expect(stats.context).toEqual({
       simHz: SETTINGS.simHz,
       snakeSpeed: SETTINGS.snakeSpeed,
-      ticksPerStepAtBaseSpeed: Math.round(SETTINGS.simHz / SETTINGS.snakeSpeed),
+      ticksPerStepAtBaseSpeed: TICKS_PER_STEP_AT_BASE_SPEED,
       stepMsAtBaseSpeed: STEP_MS,
     });
 
@@ -242,17 +282,17 @@ test.describe('KS-07-06 input-feel instrumentation', () => {
 
     // The breakdown that makes the number above trustworthy rather than a coincidence: almost none of it is
     // this game's own code (`overheadMs`/`renderMs`, each one call-stack's width, bounded by the same live
-    // frame budget), and the wait (`stepWaitMs`) never exceeds `stepBudgetMs`. `stepWaitTicks` is the one
-    // bound that needs no frame budget at all: it is a count of `RoundSimulation`'s own fixed-size ticks
-    // (`ARCHITECTURE §4`), which `sim.advance()` processes exactly regardless of how large or small the real
-    // frame that fed it was — so unlike every millisecond figure above, it stays meaningful even on the most
-    // heavily loaded shared box this suite ever runs on.
+    // frame budget), and the wait (`stepWaitMs`) never exceeds `stepBudgetMs`. `stepWaitTicks` needs no *ms*
+    // frame budget, since it is a count of `RoundSimulation`'s own fixed-size ticks (`ARCHITECTURE §4`), which
+    // `sim.advance()` processes exactly regardless of how large or small the real frame that fed it was — but
+    // it still needs the frame-clamp reasoning above (`stepWaitTicksBudget`), because *observing* a commit is
+    // still bound to a frame boundary even though the tick count itself is exact. This is the figure that
+    // stays meaningful across machines: unlike every millisecond bound above, it does not need to be re-read
+    // against whatever `frameMs` a given run happened to measure.
     expect(stats.overheadMs.median).toBeLessThanOrEqual(frameBudgetMs);
     expect(stats.renderMs.median).toBeLessThanOrEqual(frameBudgetMs);
     expect(stats.stepWaitMs.median).toBeLessThanOrEqual(stepBudgetMs);
-    expect(stats.stepWaitTicks.median).toBeLessThanOrEqual(
-      Math.round(SETTINGS.simHz / SETTINGS.snakeSpeed) + 1,
-    );
+    expect(stats.stepWaitTicks.median).toBeLessThanOrEqual(stepWaitTicksBudget);
 
     // A histogram the tuning overlay (KS-07-01) can read directly — proved shaped correctly here since that
     // ticket's own overlay wiring is out of this one's `Files:` list (declared in the PR description).
