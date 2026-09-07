@@ -12,13 +12,21 @@ import { createFocusModel } from '../focus.js';
  * `QUIT_TO_MENU`), so Esc is deliberately wired to nothing here — there is no `onBack` prop in the tech-lead
  * contract for this screen, and inventing one would let this screen attempt an illegal transition the state
  * machine does not have.
+ *
+ * KI-01-02: the draw cap (`DESIGN-DECISIONS §1` row 26) can end a match with a level score, which has no
+ * winner — `winner` is `1 | 2 | null`, and `null` reads `IT'S A TIE` (`DESIGN-DECISIONS §3`'s "A match that
+ * ends level" bullet, approved verbatim, no alternative copy) instead of naming a player. `renderText` must
+ * branch on `winner === null` before it ever reaches `colorNames[winner]` — indexing `colorNames` with `null`
+ * reads `undefined`, and `capitalize(undefined)` would throw rather than silently rendering "UNDEFINED WINS
+ * THE MATCH", but either failure mode is exactly the bug this ticket exists to close.
  */
 
 /** @typedef {import('../focus.js').MenuAction} MenuAction */
 
 /**
  * @typedef {object} MatchOverProps
- * @property {1 | 2} winner
+ * @property {1 | 2 | null} winner - `null` on a tie: the draw cap fired with a level score
+ *   (`DESIGN-DECISIONS §1` row 26). No key is awarded on a tie (`keys` is `0`); `session.js` decides that.
  * @property {{1: string, 2: string}} colorNames
  * @property {{1: number, 2: number}} wins
  * @property {number} bestOf
@@ -121,7 +129,10 @@ export function createMatchOverScreen(root) {
 
   function renderText() {
     const { winner, colorNames, wins, bestOf, keys } = props;
-    winnerLine.textContent = `${capitalize(colorNames[winner]).toUpperCase()} WINS THE MATCH`;
+    // `winner === null` must be checked before `colorNames[winner]` is ever read (module doc comment): a tie
+    // has no player to name, and `IT'S A TIE` is the approved copy (`DESIGN-DECISIONS §3`), not a fallback.
+    winnerLine.textContent =
+      winner === null ? "IT'S A TIE" : `${capitalize(colorNames[winner]).toUpperCase()} WINS THE MATCH`;
     scoreLine.textContent = `BEST OF ${bestOf} — ${wins[1]}-${wins[2]}`;
     keysLine.textContent = `${keys} KEY${keys === 1 ? '' : 'S'} EARNED`;
   }

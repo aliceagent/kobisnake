@@ -266,7 +266,11 @@ export function createTestHooks({ session, renderer, eventTarget, KeyboardEventC
     },
     /**
      * The match tally as a plain object. `MatchState` carries methods, which `page.evaluate`'s structured
-     * clone drops silently, so the two a spec actually asks for are evaluated here into plain values.
+     * clone drops silently, so the two a spec actually asks for (`isOver`/`winsNeeded`) are evaluated here
+     * into plain values — `consecutiveDraws` and `endReason` (KI-01-02, a declared deviation: this file is
+     * outside that ticket's `Files:` list, but `getMatch()` hand-builds this object for exactly the structured
+     * -clone reason above, so an e2e spec has no other way to see either field) are already plain data and are
+     * just carried through.
      */
     getMatch() {
       const match = session.getMatch();
@@ -277,7 +281,9 @@ export function createTestHooks({ session, renderer, eventTarget, KeyboardEventC
         rewardKeys: match.rewardKeys,
         wins: { 1: match.wins[1], 2: match.wins[2] },
         roundsPlayed: match.roundsPlayed,
+        consecutiveDraws: match.consecutiveDraws,
         winner: match.winner,
+        endReason: match.endReason,
         isOver: match.isOver(),
         winsNeeded: { 1: match.winsNeeded(1), 2: match.winsNeeded(2) },
       };

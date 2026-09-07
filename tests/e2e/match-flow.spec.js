@@ -1,6 +1,7 @@
 // @ts-check
 import { expect, test } from '@playwright/test';
 import { SETTINGS } from '../../src/core/settings.js';
+import { DRAW_TEXT, DRAW_WARNING_TEXT } from '../../src/ui/screens/scoreboard.js';
 import { DEFAULT_QUERY } from '../../playwright.config.js';
 import { crashPlayerOneInPage, nextRoundInPage, startMatchInPage } from './helpers.js';
 
@@ -23,6 +24,11 @@ import { crashPlayerOneInPage, nextRoundInPage, startMatchInPage } from './helpe
  * comment sets out at length: the real frame loop is running the whole time, and a frame landing between two
  * halves of a scripted step would advance the round by an uncontrolled few milliseconds. A synchronous
  * callback cannot be interrupted by `requestAnimationFrame`.
+ *
+ * KI-01-02 adds the draw-cap flow: nothing but the golden no-input `DRAW` (`tests/unit/core/__golden__
+ * /no-input-round.json`, reached at tick 380 with neither snake steered) repeated three times in a row, which
+ * is the only way a human or an idle bot ever reaches the third consecutive draw that ends a match without
+ * either player winning it (`DESIGN-DECISIONS §1` row 26).
  */
 
 test.describe('KS-05-03 match flow', () => {
@@ -339,5 +345,113 @@ test.describe('KS-05-03 match flow', () => {
     expect(rematch.match.wins).toEqual({ 1: 0, 2: 0 });
     expect(rematch.match.isOver).toBe(false);
     expect(rematch.match.roundsPlayed).toBe(0);
+  });
+
+  test('KI-01-02 AC1: a match of nothing but draws reaches MATCH_OVER through the real flow', async ({
+    page,
+  }) => {
+    await page.goto(DEFAULT_QUERY);
+    await page.evaluate(startMatchInPage);
+
+    // Draw 1: the ordinary "DRAW — REPLAY" text, no warning yet — one draw away from the cap is two, not one.
+    const first = await page.evaluate(() => {
+      const kobi = /** @type {any} */ (globalThis).__kobi;
+      kobi.fastForward(4);
+      return { state: kobi.getState(), match: kobi.getMatch() };
+    });
+    expect(first.state).toBe('ROUND_OVER');
+    expect(first.match.wins).toEqual({ 1: 0, 2: 0 });
+    expect(first.match.roundsPlayed).toBe(1);
+    expect(first.match.consecutiveDraws).toBe(1);
+    expect(first.match.isOver).toBe(false);
+    await expect(page.locator('[data-screen="ROUND_OVER"]')).toContainText(DRAW_TEXT);
+    // The warning text is `DRAW_TEXT` plus a suffix, so this is the check that actually distinguishes them.
+    await expect(page.locator('[data-screen="ROUND_OVER"]')).not.toContainText(
+      'one more and the match is called',
+    );
+
+    expect(await page.evaluate(nextRoundInPage)).toBe('PLAYING');
+
+    // Draw 2: the last replay before the cap — the warning line (KI-01-02's other half of "the player is
+    // told"; also unit-tested directly in `tests/unit/ui/scoreboard.test.js`).
+    const second = await page.evaluate(() => {
+      const kobi = /** @type {any} */ (globalThis).__kobi;
+      kobi.fastForward(4);
+      return { state: kobi.getState(), match: kobi.getMatch() };
+    });
+    expect(second.state).toBe('ROUND_OVER');
+    expect(second.match.wins).toEqual({ 1: 0, 2: 0 });
+    expect(second.match.roundsPlayed).toBe(2);
+    expect(second.match.consecutiveDraws).toBe(2);
+    expect(second.match.isOver).toBe(false);
+    await expect(page.locator('[data-screen="ROUND_OVER"]')).toContainText(DRAW_WARNING_TEXT);
+
+    expect(await page.evaluate(nextRoundInPage)).toBe('PLAYING');
+
+    // Draw 3: the cap fires. Level score (0-0), so the match ends as a tie — `winner` stays `null`, but
+    // `endReason` is set, which is the whole point of `MatchState.isOver()` checking `endReason` rather than
+    // `winner !== null` (`core/match.js` module comment).
+    const third = await page.evaluate(() => {
+      const kobi = /** @type {any} */ (globalThis).__kobi;
+      kobi.fastForward(4);
+      return { state: kobi.getState(), match: kobi.getMatch() };
+    });
+    expect(third.state).toBe('ROUND_OVER');
+    expect(third.match.wins).toEqual({ 1: 0, 2: 0 });
+    expect(third.match.roundsPlayed).toBe(3);
+    expect(third.match.consecutiveDraws).toBe(3);
+    expect(third.match.isOver).toBe(true);
+    expect(third.match.endReason).toBe('DRAW_CAP');
+    expect(third.match.winner).toBeNull();
+
+    // The scoreboard leaves straight for MATCH_OVER, not another round, once the match it belongs to is over
+    // (`session.js`'s `leaveScoreboard`).
+    const over = await page.evaluate(() => {
+      const kobi = /** @type {any} */ (globalThis).__kobi;
+      kobi.fastForward(3); // scoreboardSeconds is 2.5 (`DESIGN-DECISIONS §2.6`)
+      return { state: kobi.getState(), match: kobi.getMatch() };
+    });
+    expect(over.state).toBe('MATCH_OVER');
+    expect(over.match.winner).toBeNull();
+    expect(over.match.endReason).toBe('DRAW_CAP');
+    expect(over.match.wins).toEqual({ 1: 0, 2: 0 });
+    await expect(page.locator('[data-screen="MATCH_OVER"]')).toBeVisible();
+  });
+
+  test("KI-01-02 AC2: the match-over panel reads IT'S A TIE and names no winner on a level score", async ({
+    page,
+  }) => {
+    await page.goto(DEFAULT_QUERY);
+    await page.evaluate(startMatchInPage);
+
+    // Three golden no-input draws in a row: the only way this state is reached (module doc comment).
+    await page.evaluate(() => {
+      const kobi = /** @type {any} */ (globalThis).__kobi;
+      kobi.fastForward(4);
+    });
+    expect(await page.evaluate(nextRoundInPage)).toBe('PLAYING');
+    await page.evaluate(() => {
+      const kobi = /** @type {any} */ (globalThis).__kobi;
+      kobi.fastForward(4);
+    });
+    expect(await page.evaluate(nextRoundInPage)).toBe('PLAYING');
+    const over = await page.evaluate(() => {
+      const kobi = /** @type {any} */ (globalThis).__kobi;
+      kobi.fastForward(4); // third draw: the cap fires
+      kobi.fastForward(3); // scoreboardSeconds -> MATCH_OVER
+      return { state: kobi.getState(), match: kobi.getMatch() };
+    });
+
+    expect(over.state).toBe('MATCH_OVER');
+    expect(over.match.winner).toBeNull();
+
+    const panel = page.locator('[data-screen="MATCH_OVER"]');
+    // The exact approved copy (`DESIGN-DECISIONS §3`), not an invented alternative.
+    await expect(panel).toContainText("IT'S A TIE");
+    // AC2's own failure mode: `colorNames[null]` used to render "UNDEFINED WINS THE MATCH" instead of erroring
+    // outright, which is what this line exists to catch.
+    await expect(panel).not.toContainText('WINS THE MATCH');
+    // A tie is worth no keys (`DESIGN-DECISIONS §2.6`: "won by nobody and worth no keys").
+    await expect(panel).toContainText('0 KEYS EARNED');
   });
 });
