@@ -10,6 +10,52 @@ checklist (section 9), expanded with a concrete procedure and a pass condition s
 disagree, so they cannot silently drift apart.
 
 ## 1. Setup
+
+### Running a session with no facilitator (Improvement 11)
+
+Two people, one keyboard, thirty minutes, and **nobody taking notes**. Add `?playtest=1` to the URL and the
+game asks these questions itself, between rounds, and hands you back one file at the end. Nothing is uploaded
+anywhere; the file never leaves the machine until you attach it yourself.
+
+1. **Load the preview with the flag**, e.g. `https://kobisnake.vercel.app/?playtest=1`. Everything else is
+   unchanged — without the flag the game is byte-for-byte the game it always was.
+2. **Set up as usual:** 2 Players → Best of 3, power-ups ON, track 1. Then play.
+3. **Answer between rounds.** After a round, at most two questions from §2–§8 appear over the scoreboard, in
+   the words printed in this document. Both of you answer each one:
+   `← → CHOOSE · ENTER ANSWER · ESC SKIP`. P1 uses `A`/`D`, P2 uses the arrow keys; Enter confirms and moves
+   to the next answer. Esc closes the whole prompt and the questions come back later — a skipped question is
+   never lost.
+4. **A question only appears once it could honestly be answered.** Nothing about the lasers is asked until you
+   have actually seen them, and §4's fairness questions wait until five rounds have been played — across the
+   session, not within one match, so keep playing matches rather than stopping after the first.
+5. **Press EXPORT whenever you like** — bottom-left, available at any time, including mid-match if you have to
+   stop early. It copies one JSON file to the clipboard, shows the same text in a box you can select and copy
+   by hand if the clipboard is blocked, and offers it as a download. It also renders a short markdown summary
+   beside it.
+6. **Hand back that one file.** Attach it to the sprint's tracking issue. That is the whole hand-off — there is
+   nothing to transcribe, and every answer already carries the replay of the round it came from.
+
+Every round is recorded whether or not it carried a question, so a "that was unfair" always arrives with the
+replay that proves it.
+
+### Turning the file into issues
+
+The design lead (or anyone with the repository) runs:
+
+```
+node scripts/playtest-to-issues.mjs <the-file-you-were-handed>.json
+```
+
+It prints one ready-to-paste GitHub issue body per failing answer — the question in this document's own words,
+both players' answers, the round's seed, and that round's replay in the exact shape `tests/sim/replays/*.json`
+uses, so the replay can be saved straight into that directory and `tests/sim/replay.test.js` will reproduce the
+round tick for tick with no code change. Answers that met their pass condition, and questions the players
+skipped, are counted in a trailer rather than filed.
+
+What counts as failing is this document's own **Pass condition** cells, never a rule written in the script:
+`no` fails a yes/no question, and a choice answer fails when its question's pass condition does not name it.
+
+### Manual setup notes (both gates)
 - Browser: Chrome latest, 1080p window, sound on. Note laptop/GPU.
 - Load the preview. Note time-to-first-frame from the network tab.
 - Play through the tutorial once (Gate 2 only), then 2 Players → Best of 3, power-ups ON, track 1.
