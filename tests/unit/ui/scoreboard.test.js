@@ -1,6 +1,6 @@
 // @ts-check
 import { describe, expect, it } from 'vitest';
-import { DRAW_TEXT, buildScoreboardLines } from '../../../src/ui/screens/scoreboard.js';
+import { DRAW_TEXT, DRAW_WARNING_TEXT, buildScoreboardLines } from '../../../src/ui/screens/scoreboard.js';
 
 /**
  * The between-round scoreboard's exact text format (`DESIGN-DECISIONS §3`: "BEST OF 5 / Blue: 2 wins /
@@ -8,6 +8,10 @@ import { DRAW_TEXT, buildScoreboardLines } from '../../../src/ui/screens/scorebo
  * PR description, same as `tests/unit/ui/hud.test.js` was for KS-04-03 — because the tech-lead contract asks
  * specifically for the singular/plural wording and the exact draw text to be right, and `buildScoreboardLines`
  * is exported precisely so that can be proven without a DOM.
+ *
+ * KI-01-02 extends this file the same way, and for the same reason: the warning that fires on the last replay
+ * before the draw cap (`DESIGN-DECISIONS §1` row 26) is copy on the exact same pure, DOM-free function, so it
+ * belongs beside the tests already here rather than in a new file.
  */
 
 describe('buildScoreboardLines', () => {
@@ -77,5 +81,49 @@ describe('buildScoreboardLines', () => {
     });
     expect(lines).toHaveLength(4);
     expect(lines[3]).toBe(DRAW_TEXT);
+  });
+
+  it('KI-01-02: the last replay before the draw cap shows the warning, not the plain draw text', () => {
+    // consecutiveDraws === maxConsecutiveDraws - 1: the second consecutive draw against a cap of 3 — one
+    // more draw ends the match (`DESIGN-DECISIONS §1` row 26).
+    const lines = buildScoreboardLines({
+      bestOf: 3,
+      result: 'DRAW',
+      wins: { 1: 1, 2: 1 },
+      winsNeeded: { 1: 1, 2: 1 },
+      colorNames: { 1: 'red', 2: 'blue' },
+      consecutiveDraws: 2,
+      maxConsecutiveDraws: 3,
+    });
+    expect(lines).toEqual(['BEST OF 3', 'Red: 1 win', 'Blue: 1 win', DRAW_WARNING_TEXT]);
+    expect(DRAW_WARNING_TEXT).toBe('DRAW — REPLAY · one more and the match is called');
+  });
+
+  it('KI-01-02: an ordinary (non-final) draw still shows the plain draw text, not the warning', () => {
+    const lines = buildScoreboardLines({
+      bestOf: 3,
+      result: 'DRAW',
+      wins: { 1: 0, 2: 0 },
+      winsNeeded: { 1: 2, 2: 2 },
+      colorNames: { 1: 'red', 2: 'blue' },
+      consecutiveDraws: 1,
+      maxConsecutiveDraws: 3,
+    });
+    expect(lines[3]).toBe(DRAW_TEXT);
+  });
+
+  it('KI-01-02: a decisive round never shows the warning even at the same consecutiveDraws count', () => {
+    // The warning is gated on `result === 'DRAW'` first — a P1/P2 win at consecutiveDraws 2 (carried over
+    // from before this round reset it) must still show the ordinary needs-N-more-wins line.
+    const lines = buildScoreboardLines({
+      bestOf: 3,
+      result: 'P1_WIN',
+      wins: { 1: 1, 2: 0 },
+      winsNeeded: { 1: 1, 2: 2 },
+      colorNames: { 1: 'red', 2: 'blue' },
+      consecutiveDraws: 0,
+      maxConsecutiveDraws: 3,
+    });
+    expect(lines[3]).toBe('Red needs 1 more win');
   });
 });

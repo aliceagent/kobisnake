@@ -492,8 +492,11 @@ export function createSession({
       colorNames: matchSettings.colors,
       wins: current.wins,
       bestOf: current.bestOf,
-      // Display only this sprint: keys are persisted in Sprint 13, and nothing here writes storage.
-      keys: current.rewardKeys,
+      // Display only this sprint: keys are persisted in Sprint 13, and nothing here writes storage. A tie
+      // (the draw cap firing on a level score, `DESIGN-DECISIONS §1` row 26) has no winner to pay
+      // `rewardKeys` to — "won by nobody and worth no keys" — so this reads 0 rather than handing the
+      // match-over screen a reward with nobody to attribute it to.
+      keys: current.winner === null ? 0 : current.rewardKeys,
       onRematch: () => machine.dispatch(GAME_EVENTS.REMATCH),
       onMenu: () => machine.dispatch(GAME_EVENTS.QUIT_TO_MENU),
     });
@@ -520,7 +523,13 @@ export function createSession({
 
   /**
    * The scoreboard's props (`DESIGN-DECISIONS §2.6`, GDD "Between-round scoreboard"). A draw carries no
-   * winner and changes no wins — the screen shows "DRAW — REPLAY" and the match replays the round.
+   * winner and changes no wins — the screen shows "DRAW — REPLAY" and the match replays the round, unless
+   * this is the last replay before the draw cap (`consecutiveDraws`/`maxConsecutiveDraws`, KI-01-02), in which
+   * case the screen warns instead.
+   *
+   * Read *after* `enterRoundOver` has already called `match.recordRound(result)` for this round, so
+   * `current.consecutiveDraws` already reflects the round just played — the warning is decided from the same
+   * number the draw cap itself will fire on.
    *
    * @param {string | null} result
    */
@@ -532,6 +541,8 @@ export function createSession({
       wins: current.wins,
       winsNeeded: { 1: current.winsNeeded(1), 2: current.winsNeeded(2) },
       colorNames: matchSettings.colors,
+      consecutiveDraws: current.consecutiveDraws,
+      maxConsecutiveDraws: settings.maxConsecutiveDraws,
     };
   }
 

@@ -44,6 +44,11 @@ import { startMatchAndPauseInPage } from '../e2e/helpers.js';
  *
  * Every PNG this file adds was opened and checked by hand against the screen it claims to picture before
  * being committed (tech-lead note F) — see the PR description for that confirmation.
+ *
+ * KI-01-02 adds the two new screen *states* the draw cap introduces (`DESIGN-DECISIONS §1` row 26): the
+ * scoreboard carrying the last-replay warning, and the match-over panel on a tie. Both are reached with the
+ * same golden no-input `DRAW` the ROUND_OVER baseline above steers *away* from with `pressKey` — here neither
+ * player is steered at all, repeated (unsteered) rounds in a row.
  */
 
 test.describe('KS-05-05 screen baselines', () => {
@@ -171,5 +176,78 @@ test.describe('KS-05-05 screen baselines', () => {
     await expect(page.locator('[data-screen="PAUSE"]')).toBeVisible();
 
     await expect(page).toHaveScreenshot('screen-pause.png');
+  });
+
+  test('KI-01-02 AC3: ROUND_OVER draw-warning screen matches its baseline', async ({ page }) => {
+    await page.goto(DEFAULT_QUERY);
+
+    const result = await page.evaluate(() => {
+      const doc = /** @type {any} */ (globalThis).document;
+      // Same freeze and reason as the ROUND_OVER baseline above.
+      Object.defineProperty(doc, 'hidden', { configurable: true, get: () => true });
+      doc.dispatchEvent(new /** @type {any} */ (globalThis).Event('visibilitychange'));
+
+      const kobi = /** @type {any} */ (globalThis).__kobi;
+      kobi.startMatch();
+      for (let i = 0; i < 60 && kobi.getState() === 'COUNTDOWN'; i += 1) kobi.advance(0.1);
+      kobi.fastForward(0); // one frame for the whole countdown (KS-06-06)
+
+      // Draw 1: neither snake steered, both reach opposite walls at tick 380 (≈ 3.167 s) — the golden
+      // no-input DRAW `tests/unit/core/__golden__/no-input-round.json` documents.
+      kobi.fastForward(4);
+      // Leave this scoreboard for round 2's countdown, stepped rather than fast-forwarded a fixed duration
+      // for the same reason `nextRoundInPage` is (`tests/e2e/helpers.js`'s own module comment).
+      for (let i = 0; i < 60 && kobi.getState() === 'ROUND_OVER'; i += 1) kobi.advance(0.1);
+      for (let i = 0; i < 60 && kobi.getState() === 'COUNTDOWN'; i += 1) kobi.advance(0.1);
+      kobi.fastForward(0);
+
+      // Draw 2: the last replay before the draw cap (`maxConsecutiveDraws: 3`) — this scoreboard is the one
+      // that carries the warning line (`DRAW_WARNING_TEXT`, `scoreboard.js`).
+      kobi.fastForward(4);
+      return { state: kobi.getState(), match: kobi.getMatch() };
+    });
+
+    expect(result.state).toBe('ROUND_OVER');
+    expect(result.match.consecutiveDraws).toBe(2);
+    expect(result.match.isOver).toBe(false);
+
+    await expect(page).toHaveScreenshot('screen-round-over-draw-warning.png');
+  });
+
+  test('KI-01-02 AC3: MATCH_OVER tie screen matches its baseline', async ({ page }) => {
+    await page.goto(DEFAULT_QUERY);
+
+    const result = await page.evaluate(() => {
+      const doc = /** @type {any} */ (globalThis).document;
+      Object.defineProperty(doc, 'hidden', { configurable: true, get: () => true });
+      doc.dispatchEvent(new /** @type {any} */ (globalThis).Event('visibilitychange'));
+
+      const kobi = /** @type {any} */ (globalThis).__kobi;
+      kobi.startMatch();
+      for (let i = 0; i < 60 && kobi.getState() === 'COUNTDOWN'; i += 1) kobi.advance(0.1);
+      kobi.fastForward(0);
+
+      // Three golden no-input draws in a row: the only way a human or an idle bot reaches a tie
+      // (`DESIGN-DECISIONS §1` row 26, this file's own module comment).
+      kobi.fastForward(4);
+      for (let i = 0; i < 60 && kobi.getState() === 'ROUND_OVER'; i += 1) kobi.advance(0.1);
+      for (let i = 0; i < 60 && kobi.getState() === 'COUNTDOWN'; i += 1) kobi.advance(0.1);
+      kobi.fastForward(0);
+
+      kobi.fastForward(4);
+      for (let i = 0; i < 60 && kobi.getState() === 'ROUND_OVER'; i += 1) kobi.advance(0.1);
+      for (let i = 0; i < 60 && kobi.getState() === 'COUNTDOWN'; i += 1) kobi.advance(0.1);
+      kobi.fastForward(0);
+
+      kobi.fastForward(4); // third draw: the cap fires — level score, so the match ends as a tie
+      kobi.fastForward(3); // scoreboardSeconds (2.5 s) -> MATCH_OVER
+      return { state: kobi.getState(), match: kobi.getMatch() };
+    });
+
+    expect(result.state).toBe('MATCH_OVER');
+    expect(result.match.isOver).toBe(true);
+    expect(result.match.winner).toBeNull();
+
+    await expect(page).toHaveScreenshot('screen-match-over-tie.png');
   });
 });
