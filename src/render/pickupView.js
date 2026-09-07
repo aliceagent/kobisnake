@@ -29,8 +29,23 @@ import { setWorldFromGrid } from './arenaView.js';
 /** @typedef {import('../core/grid.js').Cell} Cell */
 /** @typedef {'SPEED' | 'SLOW'} PowerUpType */
 
-/** Radius of the apple body, in world units — a little under half a cell, so apples never touch. */
-const APPLE_RADIUS = 0.36;
+/**
+ * Radius of the apple body, in world units — under half a cell, so apples never touch. KI-02-02 (issue #134)
+ * raised this from 0.36: a larger sphere leaves more room for the rim outline below to read at gameplay
+ * scale, and 0.40 is still comfortably under the 0.5 ceiling that keeps two apples in adjacent cells from
+ * touching.
+ */
+const APPLE_RADIUS = 0.4;
+
+/**
+ * How much bigger than the body the rim outline is drawn — an inverted-hull outline (KI-02-02, issue #134):
+ * a second `InstancedMesh` of the same sphere geometry, scaled up and drawn `side: THREE.BackSide`, so only
+ * the sliver of it that pokes past the body's own silhouette is visible. Chosen over a floor-plane halo ring
+ * because it separates the apple from *whatever* is behind it at the 78°-below-horizontal gameplay camera
+ * (`DESIGN-DECISIONS §1 row 24`) — floor, a snake body, another apple — not only the floor plane a ring would
+ * sit on.
+ */
+const APPLE_RIM_SCALE = 1.18;
 
 /** The leaf: a flat disc above the apple, tilted so it reads from the gameplay camera. */
 const LEAF_RADIUS = 0.21;
@@ -277,6 +292,17 @@ export class PickupView {
     this.apples.count = 0;
     this.group.add(this.apples);
 
+    // The rim outline (KI-02-02, issue #134): the same sphere geometry as the body, scaled up and drawn from
+    // the inside (`BackSide`), so only the silhouette sliver shows past the body. Shares `appleGeometry`
+    // rather than allocating a second one — the scale lives in the per-instance matrix, not the geometry.
+    this.materials.rim.side = THREE.BackSide;
+    /** @type {THREE.InstancedMesh} */
+    this.appleRim = new THREE.InstancedMesh(this.appleGeometry, this.materials.rim, capacity);
+    this.appleRim.name = 'appleRim';
+    this.appleRim.frustumCulled = false;
+    this.appleRim.count = 0;
+    this.group.add(this.appleRim);
+
     this.leafGeometry = new THREE.CircleGeometry(LEAF_RADIUS, LEAF_SEGMENTS);
     // A disc is a single-sided plane; from a 78° camera a leaf tilted away would otherwise vanish.
     this.materials.leaf.side = THREE.DoubleSide;
@@ -351,6 +377,7 @@ export class PickupView {
       position: new THREE.Vector3(),
       quaternion: new THREE.Quaternion(),
       scale: new THREE.Vector3(1, 1, 1),
+      rimScale: new THREE.Vector3(APPLE_RIM_SCALE, APPLE_RIM_SCALE, APPLE_RIM_SCALE),
       leafRotation: new THREE.Euler(
         -Math.PI / 2 + THREE.MathUtils.degToRad(LEAF_TILT_DEGREES),
         0,
@@ -372,6 +399,7 @@ export class PickupView {
   get drawCalls() {
     return [
       this.apples,
+      this.appleRim,
       this.leaves,
       this.powerUps.SPEED.pedestal,
       this.powerUps.SPEED.icon,
@@ -392,7 +420,7 @@ export class PickupView {
     if (!this.reducedFx) this.elapsed += dt;
 
     const apples = snapshot.apples ?? [];
-    const { matrix, position, quaternion, scale, leafRotation } = this.scratch;
+    const { matrix, position, quaternion, scale, rimScale, leafRotation } = this.scratch;
     // In the shrunken endgame an apple slot can legitimately be empty (`DESIGN-DECISIONS §2.3`: "the slot
     // stays empty and is retried every tick"), so never assume there are exactly `foodCount` of them.
     const count = Math.min(apples.length, this.apples.instanceMatrix.count);
@@ -403,6 +431,10 @@ export class PickupView {
       matrix.compose(position, new THREE.Quaternion(), scale);
       this.apples.setMatrixAt(i, matrix);
 
+      // Same centre as the body, scaled up: the rim outline (KI-02-02, issue #134).
+      matrix.compose(position, new THREE.Quaternion(), rimScale);
+      this.appleRim.setMatrixAt(i, matrix);
+
       // Clear of the sphere altogether: anything lower and the disc is swallowed by the apple it sits on,
       // reading as a dark notch in the fruit rather than as a leaf.
       position.y += APPLE_RADIUS * 1.15;
@@ -411,8 +443,10 @@ export class PickupView {
     }
 
     this.apples.count = count;
+    this.appleRim.count = count;
     this.leaves.count = count;
     this.apples.instanceMatrix.needsUpdate = true;
+    this.appleRim.instanceMatrix.needsUpdate = true;
     this.leaves.instanceMatrix.needsUpdate = true;
 
     this.updatePowerUps(snapshot.powerUps?.pickups ?? []);
@@ -468,8 +502,10 @@ export class PickupView {
     this.appleGeometry.dispose();
     this.leafGeometry.dispose();
     this.materials.body.dispose();
+    this.materials.rim.dispose();
     this.materials.leaf.dispose();
     this.apples.dispose();
+    this.appleRim.dispose();
     this.leaves.dispose();
     for (const view of Object.values(this.powerUps)) {
       view.pedestal.dispose();

@@ -46,12 +46,14 @@ describe('createGameplayScene', () => {
     const sim = new RoundSimulation({ seed: 1, players: [{ id: 'p1' }, { id: 'p2' }] });
     composition.update(runTicks(sim, 60));
 
-    // Two snakes at three each, four apples at two, the floor and the wall ring at one each.
+    // Two snakes at three each, four apples at three (body, rim — KI-02-02, issue #134 — and leaf), the
+    // floor and the wall ring at one each.
     const snakeCalls = composition.snakes.reduce((total, view) => total + view.drawCalls, 0);
     const total = snakeCalls + composition.pickups.drawCalls + 2;
 
     expect(snakeCalls).toBe(6);
-    expect(total).toBe(10);
+    expect(composition.pickups.drawCalls).toBe(3);
+    expect(total).toBe(11);
     expect(total).toBeLessThanOrEqual(120);
   });
 

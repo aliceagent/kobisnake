@@ -82,8 +82,39 @@ describe('KS-07-07 power-up pedestal contrast (DESIGN-DECISIONS §1 row 20, issu
  * @param {import('../../../src/core/settings.js').Settings} settings
  * @returns {{ key: string, a: number | string, b: number | string }[]}
  */
+/**
+ * KI-02-02 (issue #134): the apple separates from a colour if *either* its body or its rim clears
+ * `MIN_LUMINANCE_SEPARATION` — no single red-family hue clears the whole palette on its own (see
+ * `materials.js`'s comment on `COLORS.appleBody`), so `pickupView.js` draws the apple as a dark body inside a
+ * light rim outline and a player only needs to make out one of the two against whatever is behind it. A pair
+ * built with an `altA` is judged by the larger of `luminanceSeparation(a, b)` and `luminanceSeparation(altA,
+ * b)` — both are computed and both are named in the failure message (`pairSeparation` below), so a regression
+ * in the colour that *isn't* carrying a given pair still shows up rather than being silently masked by the
+ * one that is.
+ *
+ * @param {{ key: string, a: number | string, b: number | string, altA?: number | string }} pair
+ * @returns {{ value: number, detail: string }}
+ */
+function pairSeparation(pair) {
+  const primary = luminanceSeparation(pair.a, pair.b);
+  if (pair.altA === undefined) {
+    return { value: primary, detail: `${primary}` };
+  }
+  const alt = luminanceSeparation(pair.altA, pair.b);
+  return {
+    value: Math.max(primary, alt),
+    detail: `body ${primary.toFixed(4)}, rim ${alt.toFixed(4)}`,
+  };
+}
+
+/**
+ * @param {import('../../../src/core/settings.js').Settings} settings
+ * @returns {{ key: string, a: number | string, b: number | string, altA?: number | string }[]}
+ */
 function buildRequiredPairs(settings) {
-  const apple = createAppleMaterials(settings).body.color.getHex();
+  const appleMaterials = createAppleMaterials(settings);
+  const appleBody = appleMaterials.body.color.getHex();
+  const appleRim = appleMaterials.rim.color.getHex();
   const powerUps = createPowerUpMaterials(settings);
   const playerNames = Object.keys(settings.colors);
 
@@ -93,18 +124,23 @@ function buildRequiredPairs(settings) {
     SLOW: powerUps.slowPedestal.color.getHex(),
   };
 
-  /** @type {{ key: string, a: number | string, b: number | string }[]} */
+  /** @type {{ key: string, a: number | string, b: number | string, altA?: number | string }[]} */
   const pairs = [];
 
-  // Apple vs both checker shades of the floor.
+  // Apple vs both checker shades of the floor. `altA: appleRim` is the two-colour apple rule above.
   for (const [floorName, floorHex] of Object.entries(floors)) {
-    pairs.push({ key: `apple vs floor ${floorName}`, a: apple, b: floorHex });
+    pairs.push({ key: `apple vs floor ${floorName}`, a: appleBody, b: floorHex, altA: appleRim });
   }
 
   // Apple vs every player colour — the length of this loop is exactly what makes AC1 automatic: it tracks
   // the catalogue, not a number written down when the catalogue had eight entries.
   for (const name of playerNames) {
-    pairs.push({ key: `apple vs player ${name}`, a: apple, b: snakeColorHex(name, settings) });
+    pairs.push({
+      key: `apple vs player ${name}`,
+      a: appleBody,
+      b: snakeColorHex(name, settings),
+      altA: appleRim,
+    });
   }
 
   // The two shipping players against each other (the sprint doc names this exact pair; every pair among all
@@ -120,7 +156,11 @@ function buildRequiredPairs(settings) {
   // Each power-up pedestal vs each floor shade.
   for (const [pedestalName, pedestalHex] of Object.entries(pedestals)) {
     for (const [floorName, floorHex] of Object.entries(floors)) {
-      pairs.push({ key: `${pedestalName} pedestal vs floor ${floorName}`, a: pedestalHex, b: floorHex });
+      pairs.push({
+        key: `${pedestalName} pedestal vs floor ${floorName}`,
+        a: pedestalHex,
+        b: floorHex,
+      });
     }
   }
 
@@ -157,23 +197,19 @@ function buildRequiredPairs(settings) {
  *   30 % floor tile, so unlike the two pairs above these were never a deliberate choice — this rule is simply
  *   the first thing to have looked. Reported on #121 alongside the two locked pairs, for the design lead to
  *   decide; not this ticket's to repaint either.
- * - **`apple vs floor 30%`** (0.0912), **`apple vs player red`** (0), **`apple vs player blue`** (0.0047)
- *   and **`apple vs player purple`** (0.0423) are today's apple, which is `snakeColorHex('red')` outright
- *   (`createAppleMaterials`) — byte-for-byte player one's colour. KI-02-02 (issue #134) is the ticket that
- *   repaints it; this ticket does not touch the apple's colour. The other four apple-vs-player pairs and
- *   apple-vs-floor-70% already clear the rule even with today's apple, so only these four are waived. Once
- *   KI-02-02 lands, deleting these four entries (and watching the suite fail if it deleted one too many) is
- *   how that ticket proves it met the bar.
+ *
+ * KI-02-02 (issue #134) repainted the apple — a body plus a light rim outline, judged together by
+ * `pairSeparation`'s either-clears rule above — and every apple pair now clears `MIN_LUMINANCE_SEPARATION`
+ * outright. The four `apple vs *` waivers that used to live here (`floor 30%`, `player red`, `player blue`,
+ * `player purple` — today's apple was `snakeColorHex('red')` outright, byte-for-byte player one's colour) are
+ * deleted, not loosened: removing each one and watching the suite fail if one too many was removed is how
+ * that ticket proved it met the bar (its PR captures that failing run).
  */
 const WAIVERS = {
   'player red vs player blue': { measured: 0.0047, blockedBy: '#121' },
   'SLOW pedestal vs floor 70%': { measured: 0.0072, blockedBy: '#121' },
   'SPEED pedestal vs floor 30%': { measured: 0.096, blockedBy: '#121' },
   'SLOW pedestal vs floor 30%': { measured: 0.0833, blockedBy: '#121' },
-  'apple vs floor 30%': { measured: 0.0912, blockedBy: '#134' },
-  'apple vs player red': { measured: 0, blockedBy: '#134' },
-  'apple vs player blue': { measured: 0.0047, blockedBy: '#134' },
-  'apple vs player purple': { measured: 0.0423, blockedBy: '#134' },
 };
 
 /**
@@ -194,29 +230,33 @@ function assertContrastRule(pairs, waivers) {
   const pairsByKey = new Map(pairs.map((pair) => [pair.key, pair]));
 
   for (const key of Object.keys(waivers)) {
-    expect(pairsByKey.has(key), `waiver "${key}" does not match any pair the table builds`).toBe(true);
+    expect(pairsByKey.has(key), `waiver "${key}" does not match any pair the table builds`).toBe(
+      true,
+    );
   }
 
-  for (const { key, a, b } of pairs) {
-    const separation = luminanceSeparation(a, b);
+  for (const pair of pairs) {
+    const { key } = pair;
+    const { value: separation, detail } = pairSeparation(pair);
     const waiver = waivers[key];
 
     if (waiver) {
       // (c): a waiver on a pair that actually passes would be hiding it from scrutiny rather than recording
       // a known failure, so the waived pair must still genuinely fail unwaived.
-      expect(separation, `${key}: waived but clears MIN_LUMINANCE_SEPARATION — drop the waiver`).toBeLessThan(
-        MIN_LUMINANCE_SEPARATION,
-      );
+      expect(
+        separation,
+        `${key}: waived but clears MIN_LUMINANCE_SEPARATION (${detail}) — drop the waiver`,
+      ).toBeLessThan(MIN_LUMINANCE_SEPARATION);
       // (b): the ratchet. May improve, must never worsen.
       expect(
         separation,
-        `${key}: regressed below its recorded measurement of ${waiver.measured} (blocked by ${waiver.blockedBy})`,
+        `${key}: regressed below its recorded measurement of ${waiver.measured} (${detail}, blocked by ${waiver.blockedBy})`,
       ).toBeGreaterThanOrEqual(waiver.measured);
     } else {
       // (a): every pair not named as a waiver must clear the minimum outright.
       expect(
         separation,
-        `${key}: separation ${separation} is below MIN_LUMINANCE_SEPARATION and is not a recorded waiver`,
+        `${key}: separation ${separation} (${detail}) is below MIN_LUMINANCE_SEPARATION and is not a recorded waiver`,
       ).toBeGreaterThanOrEqual(MIN_LUMINANCE_SEPARATION);
     }
   }
@@ -249,46 +289,57 @@ describe('KI-02-01 palette-wide contrast rule (docs/sprints/improvement-02-reada
   });
 
   it('KI-02-01 AC1: a colour added to SETTINGS.colors without a matching entry fails the rule, not passes silently', () => {
-    // Sprint 14 adds six more unlockable player colours. This is the guard that makes that safe. The
-    // synthetic ninth colour is set to *the apple's own current body colour*, read back through
-    // createAppleMaterials rather than hard-coded to today's red — so its separation from the apple is 0 by
-    // construction, whatever the apple's colour is or later becomes. Pinning the synthetic colour to a
-    // literal (e.g. today's red) would make this guard pass for an incidental reason: KI-02-02 (#134)
-    // repaints the apple, and a colour merely equal to red would then separate from the *new* apple by a
-    // real margin, clear the rule, and turn this into a red test protecting nothing. Deriving the collision
-    // from the apple itself is what keeps the guard meaningful across that repaint.
-    const appleHex = createAppleMaterials(SETTINGS).body.color.getHex();
-    const syntheticNinth = `#${appleHex.toString(16).padStart(6, '0')}`;
+    // Sprint 14 adds six more unlockable player colours. This is the guard that makes that safe, proved two
+    // ways.
+    //
+    // (1) Structural: the pair-building loop actually tracks `SETTINGS.colors` rather than a fixed list — a
+    // bug that silently dropped a newly catalogued colour from the table would not be caught by anything
+    // else here.
+    //
+    // (2) Enforcement: `assertContrastRule` genuinely rejects an unwaived failing pair, proved directly
+    // against a synthetic pair rather than through the apple. KI-02-01's original version of this test forced
+    // that failure by colliding a synthetic colour with the apple's own colour — that no longer works, and
+    // deliberately so: KI-02-02 (#134) gave the apple a body (luminance 0.4142) and a rim (0.9469) far enough
+    // apart (0.53, wider than two MIN_LUMINANCE_SEPARATION margins) that no single hex's luminance can sit
+    // within MIN_LUMINANCE_SEPARATION of both at once — the two-colour apple is provably collision-proof
+    // against any one new colour, which is a property of the design in `materials.js`'s comment on
+    // `COLORS.appleBody`, not a hole in this rule.
     const settingsWithExtraColour = withOverrides({
-      colors: { syntheticNinth },
+      colors: { syntheticNinth: '#123456' },
     });
 
+    const basePairs = buildRequiredPairs(SETTINGS);
+    const extendedPairs = buildRequiredPairs(settingsWithExtraColour);
+    expect(extendedPairs.length).toBe(basePairs.length + 1);
+    expect(extendedPairs.some((pair) => pair.key === 'apple vs player syntheticNinth')).toBe(true);
+
     // The unmodified palette must not throw — otherwise the throw below could be some unrelated breakage in
-    // buildRequiredPairs/assertContrastRule rather than evidence that the added colour is what's rejected.
-    expect(() => assertContrastRule(buildRequiredPairs(SETTINGS), WAIVERS)).not.toThrow();
-    expect(() => assertContrastRule(buildRequiredPairs(settingsWithExtraColour), WAIVERS)).toThrow();
+    // buildRequiredPairs/assertContrastRule rather than evidence of the enforcement mechanism itself.
+    expect(() => assertContrastRule(basePairs, WAIVERS)).not.toThrow();
+    expect(() =>
+      assertContrastRule([{ key: 'synthetic vs synthetic', a: 0x000000, b: 0x000001 }], {}),
+    ).toThrow();
   });
 
-  it('KI-02-01 AC2: today\'s apple — snakeColorHex(\'red\') — fails the rule against player red and floor 30% unwaived', () => {
-    // In the KS-07-07 "the ice-white pedestal would fail" spirit: proves the rule can go red, not just that
-    // it currently stays green. KI-02-02 (issue #134) is the ticket that repaints the apple; this one only
-    // records today's failure under the #134 waiver above so the suite stays green until that lands. The PR
-    // additionally captures `npm run test:unit` run with the #134 waivers removed, verbatim, as the real
-    // failing output this assertion predicts.
-    const apple = createAppleMaterials(SETTINGS).body.color.getHex();
+  it("KI-02-01 AC2: the pre-KI-02-02 apple — snakeColorHex('red') outright — would still fail the rule against player red and floor 30% unwaived", () => {
+    // In the KS-07-07 "the ice-white pedestal would fail" spirit: proves the *rule* would have caught the
+    // regression KI-02-02 (issue #134) fixed, not that today's apple happens to be fine. Deliberately does
+    // not call createAppleMaterials — today's apple no longer is player red, so asserting that equality here
+    // would just be wrong; the pre-repaint value is hardcoded the same way the KS-07-07 test above hardcodes
+    // the Sprint 06 ice-white pedestal it superseded.
+    const revertedApple = snakeColorHex('red', SETTINGS); // what createAppleMaterials returned before #134
     const playerRed = snakeColorHex('red', SETTINGS);
     const floor30 = COLORS.floorGreenAlt;
 
-    expect(apple).toBe(hexFromCss(playerRed));
-    expect(luminanceSeparation(apple, playerRed)).toBeLessThan(MIN_LUMINANCE_SEPARATION);
-    expect(luminanceSeparation(apple, floor30)).toBeLessThan(MIN_LUMINANCE_SEPARATION);
+    expect(luminanceSeparation(revertedApple, playerRed)).toBeLessThan(MIN_LUMINANCE_SEPARATION);
+    expect(luminanceSeparation(revertedApple, floor30)).toBeLessThan(MIN_LUMINANCE_SEPARATION);
 
     // And run through the actual rule with no waiver standing in front of it, it does reject both pairs.
     expect(() =>
       assertContrastRule(
         [
-          { key: 'apple vs player red (unwaived)', a: apple, b: playerRed },
-          { key: 'apple vs floor 30% (unwaived)', a: apple, b: floor30 },
+          { key: 'apple vs player red (unwaived)', a: revertedApple, b: playerRed },
+          { key: 'apple vs floor 30% (unwaived)', a: revertedApple, b: floor30 },
         ],
         {},
       ),
@@ -333,15 +384,81 @@ describe('KI-02-01 palette-wide contrast rule (docs/sprints/improvement-02-reada
     const catalogueValues = new Set(Object.values(SETTINGS.colors).map((hex) => hex.toLowerCase()));
     for (const hit of settingsHits) {
       const normalized = hit.match.replace(/['"]/g, '').toLowerCase();
-      expect(catalogueValues.has(normalized), `${hit.match} in settings.js is not a SETTINGS.colors value`).toBe(
-        true,
-      );
+      expect(
+        catalogueValues.has(normalized),
+        `${hit.match} in settings.js is not a SETTINGS.colors value`,
+      ).toBe(true);
     }
     expect(settingsHits.length).toBe(Object.keys(SETTINGS.colors).length);
 
     // Nothing else — any hit outside materials.js and these two named, bounded exceptions is a violation.
-    const unexpected = hits.filter((hit) => hit.file !== 'src/render/snakeView.js' && hit.file !== 'src/core/settings.js');
+    const unexpected = hits.filter(
+      (hit) => hit.file !== 'src/render/snakeView.js' && hit.file !== 'src/core/settings.js',
+    );
     expect(unexpected, JSON.stringify(unexpected)).toEqual([]);
+  });
+});
+
+/**
+ * KI-02-02 (issue #134, tracked on #121): the apple stops being `snakeColorHex('red')` and gets its own two
+ * colours (`COLORS.appleBody`, `COLORS.appleRim`). These tests are this ticket's own — KI-02-01's table above
+ * (AC1) is what actually enforces the pass/fail rule for every apple pair; these pin the specific numbers the
+ * ticket's design section committed to.
+ */
+describe('KI-02-02 the apple reads (docs/sprints/improvement-02-readability-and-contrast.md, issue #134)', () => {
+  it('KI-02-02 AC1: apple vs both floor shades and apple vs all eight player colours clear the rule unwaived', () => {
+    // No `apple vs *` key may appear in WAIVERS any more — the four #134 waivers are gone (see the WAIVERS
+    // comment above), so every one of these ten pairs has to clear MIN_LUMINANCE_SEPARATION outright via
+    // buildRequiredPairs/assertContrastRule (already exercised by the KI-02-01 AC1 test above; this asserts
+    // the narrower claim directly, by name, so a future change that reintroduces just one apple waiver fails
+    // here even if some other pair's waiver budget happened to absorb it).
+    const pairs = buildRequiredPairs(SETTINGS).filter((pair) => pair.key.startsWith('apple vs '));
+    expect(pairs).toHaveLength(10); // 2 floor shades + 8 player colours
+
+    for (const pair of pairs) {
+      expect(Object.keys(WAIVERS)).not.toContain(pair.key);
+      const { value: separation, detail } = pairSeparation(pair);
+      expect(separation, `${pair.key}: ${detail}`).toBeGreaterThanOrEqual(MIN_LUMINANCE_SEPARATION);
+    }
+  });
+
+  it('KI-02-02 AC1: the apple body alone clears the rule against player red — the F2 hue collision, unaided by the rim', () => {
+    // The specific defect (agent QA finding F2): the apple was byte-for-byte player one's colour. The rim
+    // exists to carry every pair the body can't (see `materials.js`'s comment on `COLORS.appleBody`), but
+    // this one — the actual hue collision the ticket names — has to break on the body's own luminance, not
+    // borrow the rim's margin, or a future rim change could silently reopen it.
+    const body = createAppleMaterials(SETTINGS).body.color.getHex();
+    const playerRed = snakeColorHex('red', SETTINGS);
+
+    expect(body).not.toBe(hexFromCss(playerRed));
+    expect(luminanceSeparation(body, playerRed)).toBeGreaterThanOrEqual(MIN_LUMINANCE_SEPARATION);
+  });
+
+  it('KI-02-02 AC1: the apple rim clears the rule against every player colour, both floor shades and both pedestals', () => {
+    // "Whatever KI-02-01's rule demands" (the ticket's own words) turned out to be a light rim: measured here
+    // against the whole set the rim was designed to carry, independent of the body.
+    const { rim } = createAppleMaterials(SETTINGS);
+    const rimHex = rim.color.getHex();
+    const powerUps = createPowerUpMaterials(SETTINGS);
+
+    const targets = {
+      ...Object.fromEntries(
+        Object.keys(SETTINGS.colors).map((name) => [
+          `player ${name}`,
+          snakeColorHex(name, SETTINGS),
+        ]),
+      ),
+      'floor 70%': COLORS.floorGreen,
+      'floor 30%': COLORS.floorGreenAlt,
+      'SPEED pedestal': powerUps.speedPedestal.color.getHex(),
+      'SLOW pedestal': powerUps.slowPedestal.color.getHex(),
+    };
+
+    for (const [name, hex] of Object.entries(targets)) {
+      expect(luminanceSeparation(rimHex, hex), name).toBeGreaterThanOrEqual(
+        MIN_LUMINANCE_SEPARATION,
+      );
+    }
   });
 });
 
@@ -428,13 +545,15 @@ const KI_02_03_WAIVERS = {
 };
 
 describe('KI-02-03 all eight player colours checked against each other (docs/sprints/improvement-02-readability-and-contrast.md, issue #135, tracked on #121)', () => {
-  it('KI-02-03 AC1: the pair count derived from SETTINGS.colors is 28 for today\'s eight colours', () => {
+  it("KI-02-03 AC1: the pair count derived from SETTINGS.colors is 28 for today's eight colours", () => {
     // Pins n·(n−1)/2 for n = 8 so the derivation below is proved combinatorial rather than a disguised
     // hand-written list of 28 — if a colour is ever added or removed this assertion is the first thing that
     // moves, on purpose.
     const names = Object.keys(SETTINGS.colors);
     expect(names.length).toBe(8);
-    expect(buildAllPlayerColourPairs(SETTINGS).length).toBe((names.length * (names.length - 1)) / 2);
+    expect(buildAllPlayerColourPairs(SETTINGS).length).toBe(
+      (names.length * (names.length - 1)) / 2,
+    );
     expect(buildAllPlayerColourPairs(SETTINGS).length).toBe(28);
   });
 
@@ -442,7 +561,9 @@ describe('KI-02-03 all eight player colours checked against each other (docs/spr
     // Reuses KI-02-01's own assertContrastRule rather than a second copy of its three-part rule: (a) every
     // non-waived pair clears the constant, (b) every waived pair still measures at least what is recorded,
     // (c) the waiver list is exactly the set of pairs that fail — none waived that actually passes.
-    expect(() => assertContrastRule(buildAllPlayerColourPairs(SETTINGS), KI_02_03_WAIVERS)).not.toThrow();
+    expect(() =>
+      assertContrastRule(buildAllPlayerColourPairs(SETTINGS), KI_02_03_WAIVERS),
+    ).not.toThrow();
   });
 
   it('KI-02-03: prove the rule can go red — a synthetic ninth colour colliding with an existing one fails unwaived', () => {
@@ -455,7 +576,9 @@ describe('KI-02-03 all eight player colours checked against each other (docs/spr
     const settingsWithExtraColour = withOverrides({ colors: { syntheticNinth: blueHex } });
 
     // The unmodified palette must not throw, so the throw below is evidence of the added colour specifically.
-    expect(() => assertContrastRule(buildAllPlayerColourPairs(SETTINGS), KI_02_03_WAIVERS)).not.toThrow();
+    expect(() =>
+      assertContrastRule(buildAllPlayerColourPairs(SETTINGS), KI_02_03_WAIVERS),
+    ).not.toThrow();
     expect(() =>
       assertContrastRule(buildAllPlayerColourPairs(settingsWithExtraColour), KI_02_03_WAIVERS),
     ).toThrow();

@@ -72,6 +72,39 @@ export const COLORS = {
   powerUpSlowIcon: 0xffffff,
   powerUpSpeedRing: 0x38e0f0,
   powerUpSlowRing: 0xbfe3fb,
+  /**
+   * The apple (KI-02-02, issue #134, tracked on #121): `DESIGN-DECISIONS §1 row 1` fixes "red body, green
+   * leaf" but gives no hex, and the apple used to borrow `snakeColorHex('red')` outright — byte-for-byte
+   * player one's colour (agent QA finding F2). Sprint 14 is about to add six more unlockable player colours,
+   * so the apple needs a colour of its own rather than a player's.
+   *
+   * It cannot get there on the body alone. The whole red family (hue −18°..26°, saturation ≥ 0.40,
+   * value ≥ 0.50) was searched for the shade maximising its *minimum* WCAG relative-luminance separation from
+   * all eight player colours and both floor shades at once; the best attainable is 0.090 (`#800000`, a dark
+   * maroon), and every floor/player pair KI-02-01's rule requires is within `MIN_LUMINANCE_SEPARATION` (0.15)
+   * of some other colour already in the palette. There is no single red dark or light enough to clear
+   * everything on its own — so the apple carries a second colour, a light rim, and `materials.test.js`'s
+   * contrast table judges the pair together: an apple separates from a colour if *either* its body or its rim
+   * does (see that file's `appleSeparation`/`buildRequiredPairs`).
+   *
+   * `appleBody` (`#FF8C7A`, a warm coral-red, luminance 0.4142) still has to break the F2 hue collision on
+   * its own, unaided by the rim: it separates from player red (`#E3261B`, luminance 0.1780) by 0.2363, comfortably
+   * past the 0.15 floor with margin against floating-point noise — `#FF7355` (the other candidate measured,
+   * luminance 0.3418) only clears by 0.0164, too close to the constant to be a confident regression guard.
+   * Body alone does not clear every other required pair (`teal` at 0.0511 is the closest miss) — that is what
+   * the rim is for.
+   *
+   * `appleRim` (`#FFF8F0`, a warm off-white, luminance 0.9469) is the inverted-hull outline
+   * `pickupView.js` draws around the body (`side: THREE.BackSide` on a scaled-up copy of the same sphere).
+   * Deliberately not pure white (`#FFFFFF`): the SLOW pedestal's own icon (`powerUpSlowIcon`, above) already
+   * is pure white on an ice-blue pedestal, and a white apple rim next to it would read as the same glyph.
+   * `#FFF8F0` measures 0.3643 against its closest neighbour in the whole palette (`yellow`, luminance 0.583) —
+   * wider than the SPEED bolt-vs-pedestal gap (0.4094) that KS-07-07 already ships, and it holds against
+   * every floor shade, player colour and pedestal, body included, so it is what actually carries the apple's
+   * readability at gameplay scale.
+   */
+  appleBody: 0xff8c7a,
+  appleRim: 0xfff8f0,
 };
 
 /**
@@ -220,16 +253,19 @@ export function createLaserMaterial() {
 }
 
 /**
- * The apple: a red body and a green leaf. Both colours come from the catalogue rather than being invented —
- * `DESIGN-DECISIONS §1 row 1` fixes the apple as "red body, green leaf" and gives no separate hex, and the
- * catalogue is where the game's reds and greens are defined.
+ * The apple: a red body, a light rim and a green leaf. `DESIGN-DECISIONS §1 row 1` fixes "red body, green
+ * leaf" and gives no separate hex; the leaf still comes from the player catalogue (the game's green is
+ * defined there), but the body and rim are `COLORS.appleBody`/`COLORS.appleRim` (KI-02-02, issue #134) rather
+ * than `snakeColorHex('red')` — see the comment on those two entries for why a single red can't do the job
+ * and what the rim is for.
  *
  * @param {import('../core/settings.js').Settings} [settings]
- * @returns {{ body: THREE.MeshStandardMaterial, leaf: THREE.MeshStandardMaterial }}
+ * @returns {{ body: THREE.MeshStandardMaterial, rim: THREE.MeshStandardMaterial, leaf: THREE.MeshStandardMaterial }}
  */
 export function createAppleMaterials(settings = SETTINGS) {
   return {
-    body: createPlasticMaterial(snakeColorHex('red', settings)),
+    body: createPlasticMaterial(COLORS.appleBody),
+    rim: createPlasticMaterial(COLORS.appleRim),
     leaf: createPlasticMaterial(snakeColorHex('green', settings)),
   };
 }

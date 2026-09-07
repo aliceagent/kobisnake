@@ -2,6 +2,7 @@ import { describe, expect, it, vi } from 'vitest';
 import * as THREE from 'three';
 import { createPickupView } from '../../../src/render/pickupView.js';
 import { cellToWorld } from '../../../src/render/arenaView.js';
+import { COLORS, cssColor } from '../../../src/render/materials.js';
 import { RoundSimulation } from '../../../src/core/round.js';
 import { SETTINGS } from '../../../src/core/settings.js';
 
@@ -61,12 +62,39 @@ describe('PickupView', () => {
     expect(view.materials.leaf.side).toBe(THREE.DoubleSide);
   });
 
-  it('costs two draw calls whatever the apple count', () => {
+  it('costs three draw calls whatever the apple count', () => {
+    // Body, leaf, and (KI-02-02, issue #134) the rim outline.
     const view = createPickupView({ maxApples: 8 });
     for (const count of [1, 4, 8]) {
       view.update({ apples: Array.from({ length: count }, (_, i) => ({ x: i, y: i })) });
-      expect(view.drawCalls).toBe(2);
+      expect(view.drawCalls).toBe(3);
     }
+  });
+
+  it('KI-02-02: draws the rim at the same cell as its apple, scaled up around the same centre', () => {
+    const view = createPickupView();
+    view.update({ apples: [{ x: 7, y: 2 }] });
+
+    const apple = instancePosition(view.apples, 0);
+    const rim = instancePosition(view.appleRim, 0);
+    expect(rim.x).toBeCloseTo(apple.x, 5);
+    expect(rim.y).toBeCloseTo(apple.y, 5);
+    expect(rim.z).toBeCloseTo(apple.z, 5);
+
+    const rimMatrix = new THREE.Matrix4();
+    view.appleRim.getMatrixAt(0, rimMatrix);
+    const rimScale = new THREE.Vector3().setFromMatrixScale(rimMatrix);
+    expect(rimScale.x).toBeGreaterThan(1); // bigger than the body, so it peeks past its silhouette
+  });
+
+  it('KI-02-02: the rim material is drawn from the inside, so only its silhouette shows past the body', () => {
+    const view = createPickupView();
+    expect(view.materials.rim.side).toBe(THREE.BackSide);
+  });
+
+  it('KI-02-02: the apple radius stays under half a cell, so apples never touch', () => {
+    const view = createPickupView();
+    expect(view.appleGeometry.parameters.radius).toBeLessThan(0.5);
   });
 
   it('draws nothing when there are no apples, rather than a stale one', () => {
@@ -100,9 +128,18 @@ describe('PickupView', () => {
     expect(view.apples.count).toBe(0);
   });
 
-  it('takes its red and green from the catalogue', () => {
+  it('takes its leaf from the catalogue, and its body and rim from COLORS (KI-02-02, issue #134)', () => {
+    // The apple stopped being `snakeColorHex('red')` outright (agent QA finding F2 — it was byte-for-byte
+    // player one's colour): body and rim now come from `materials.js`'s own `COLORS.appleBody`/`appleRim`,
+    // not the player catalogue. The leaf still does — the game's green is defined there.
     const view = createPickupView();
-    expect(`#${view.materials.body.color.getHexString()}`.toUpperCase()).toBe(SETTINGS.colors.red);
+    expect(`#${view.materials.body.color.getHexString()}`.toUpperCase()).toBe(
+      cssColor(COLORS.appleBody).toUpperCase(),
+    );
+    expect(`#${view.materials.rim.color.getHexString()}`.toUpperCase()).toBe(
+      cssColor(COLORS.appleRim).toUpperCase(),
+    );
+    expect(`#${view.materials.body.color.getHexString()}`.toUpperCase()).not.toBe(SETTINGS.colors.red);
     expect(`#${view.materials.leaf.color.getHexString()}`.toUpperCase()).toBe(
       SETTINGS.colors.green,
     );
@@ -130,13 +167,14 @@ describe('PickupView', () => {
       view.appleGeometry,
       view.leafGeometry,
       view.materials.body,
+      view.materials.rim,
       view.materials.leaf,
     ]) {
       target.addEventListener('dispose', () => disposed.push(target));
     }
 
     view.dispose();
-    expect(disposed).toHaveLength(4);
+    expect(disposed).toHaveLength(5);
   });
 });
 
