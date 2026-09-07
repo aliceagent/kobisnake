@@ -132,11 +132,19 @@ jobs:
       # through `__kobi` and a detached `RoundSimulation`, never through a rendered frame), so this needs no
       # WebGL of its own. `LIBGL_ALWAYS_SOFTWARE` is set anyway for the same reason the leg above sets it: the
       # page still boots a renderer on load, and these runners have no GPU.
+      # Through `scripts/run-playwright-suite.mjs` like every other Playwright invocation in this repository
+      # (KI-03-05 AC2, #86), and with `--reporter=github` so a failure lands in the check-run annotations —
+      # the only part of a failed run an agent session can read, since the log and artifact endpoints both
+      # redirect to blob storage the egress proxy refuses. This leg is the only suite in its own job, so the
+      # lock never actually makes it wait; the point is that there is no invocation anyone has to remember to
+      # exempt, which is what `tests/agent/workflows.test.js` enforces.
       - name: determinism
         env:
           PLAYWRIGHT_HTML_REPORT: playwright-report/determinism-webkit
           LIBGL_ALWAYS_SOFTWARE: '1'
-        run: npx playwright test tests/e2e/determinism.spec.js --project=webkit
+        run: >-
+          node scripts/run-playwright-suite.mjs determinism-webkit
+          tests/e2e/determinism.spec.js --project=webkit --reporter=github,html
 
       - uses: actions/upload-artifact@v4
         if: failure()
