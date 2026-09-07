@@ -1193,3 +1193,199 @@ describe('KS-07-01 tuning overrides and the replay recorder', () => {
     expect(replay.expectedEvents.every((/** @type {any} */ e) => e.tick === 0)).toBe(true);
   });
 });
+
+/**
+ * A fake `SessionPlaytestPrompt` (`session.js`'s own structural typedef) — enough to prove the three call
+ * sites in isolation from the real, DOM-building `src/ui/screens/playtestPrompt.js`, whose own selection/
+ * re-queue/attribution logic is tested directly in `tests/unit/ui/playtestPrompt.test.js`. `.open` starts
+ * `false`; `offer()` sets it to `opensTo` and returns that; a test can also flip `.open` by hand to simulate
+ * the gap closing partway through, from whichever route.
+ *
+ * @param {{opensTo?: boolean}} [options]
+ */
+function createFakePrompt({ opensTo = true } = {}) {
+  const prompt = {
+    open: false,
+    /** @type {any} */
+    lastFacts: null,
+    offer: vi.fn((/** @type {any} */ facts, /** @type {number} */ roundIndex) => {
+      prompt.lastFacts = facts;
+      prompt.lastRoundIndex = roundIndex;
+      prompt.open = opensTo;
+      return opensTo;
+    }),
+    handleAction: vi.fn(),
+    isOpen: () => prompt.open,
+  };
+  return prompt;
+}
+
+describe('KI-11-02 the playtest prompt seam', () => {
+  /** The same short, nobody-can-lose round `KS-05-03 the laser-warning sub-state` uses, so the laser phase is
+   * seen well within a small number of frames. */
+  const shortRound = withOverrides({ roundDuration: 32, snakeSpeed: 0, godMode: true });
+
+  it('a normal session (setPlaytestPrompt never called) is byte-for-byte unaffected: the scoreboard auto-advances', () => {
+    const { session, target } = buildSession({ seed: 1 });
+    playTo(session, { bestOf: 3 });
+    crashPlayerOne(session, target);
+    expect(session.getState()).toBe(STATES.ROUND_OVER);
+    runFrames(session, SETTINGS.scoreboardSeconds + 0.05, 6);
+    expect(session.getState()).toBe(STATES.COUNTDOWN);
+  });
+
+  it('enterRoundOver offers RoundFacts built from match.roundsPlayed, the laser latch and match.isOver(), keyed by roundIndex', () => {
+    const prompt = createFakePrompt({ opensTo: false });
+    const { session } = buildSession({ settings: shortRound });
+    session.setPlaytestPrompt(prompt);
+    playTo(session);
+    runFrames(session, 2.2, 44); // into LASER_WARNING (matches the laser-warning suite above)
+    expect(session.getState()).toBe(STATES.LASER_WARNING);
+    runFrames(session, 30, 60); // through to the round timing out (godMode: nobody can crash first)
+    expect(session.getState()).toBe(STATES.ROUND_OVER);
+
+    expect(prompt.offer).toHaveBeenCalledTimes(1);
+    expect(prompt.offer).toHaveBeenCalledWith(
+      { roundsPlayed: 1, laserPhaseSeen: true, sessionOver: false },
+      0,
+    );
+  });
+
+  it('laserPhaseSeen stays false when a round ends before the lasers ever arm', () => {
+    const prompt = createFakePrompt({ opensTo: false });
+    const { session, target } = buildSession({ seed: 5 });
+    session.setPlaytestPrompt(prompt);
+    playTo(session, { bestOf: 3 });
+    crashPlayerOne(session, target); // dies at 2.0s; the default laserStartTime never comes due that early
+    expect(prompt.offer).toHaveBeenCalledWith(
+      { roundsPlayed: 1, laserPhaseSeen: false, sessionOver: false },
+      0,
+    );
+  });
+
+  it('laserPhaseSeen is sticky: once true, a later round that never sees the lasers again still reports true', () => {
+    const prompt = createFakePrompt({ opensTo: false });
+    const { session, target } = buildSession({ settings: shortRound });
+    session.setPlaytestPrompt(prompt);
+    playTo(session, { bestOf: 3 });
+    runFrames(session, 2.2, 44); // into LASER_WARNING
+    runFrames(session, 30, 60); // round 1 times out, having armed the lasers
+    expect(session.getState()).toBe(STATES.ROUND_OVER);
+
+    // Revert round 2 to the shipping defaults (`setSettingsOverrides({})` merges onto `SETTINGS` itself, not
+    // onto this session's own `shortRound` base — `core/settings.js`'s `withOverrides` doc) so it can end in
+    // an ordinary crash, nowhere near its own laser phase, and still report the latch from round 1.
+    session.setSettingsOverrides({});
+    runFrames(session, SETTINGS.scoreboardSeconds + 0.05, 6); // through the scoreboard into round 2's countdown
+    expect(session.getState()).toBe(STATES.COUNTDOWN);
+    runFrames(session, SETTINGS.countdownStepSeconds * 4 + 0.01, 8); // into round 2's PLAYING
+    expect(session.getState()).toBe(STATES.PLAYING);
+
+    crashPlayerOne(session, target); // round 2: a short crash, nowhere near this round's own laser phase
+    expect(prompt.offer).toHaveBeenLastCalledWith(
+      { roundsPlayed: 2, laserPhaseSeen: true, sessionOver: false },
+      1,
+    );
+  });
+
+  it('sessionOver is true on the round that ends the match, false on every round before it', () => {
+    const prompt = createFakePrompt({ opensTo: false });
+    const { session, target } = buildSession({ seed: 5 });
+    session.setPlaytestPrompt(prompt);
+    playTo(session, { bestOf: 1 });
+    crashPlayerOne(session, target);
+    expect(prompt.offer).toHaveBeenCalledWith(
+      { roundsPlayed: 1, laserPhaseSeen: false, sessionOver: true },
+      0,
+    );
+  });
+
+  it('PR #176 review: roundsPlayed is counted for the whole session, not reset at a match boundary', () => {
+    const prompt = createFakePrompt({ opensTo: false });
+    const { session, ui, target } = buildSession({ seed: 5 });
+    session.setPlaytestPrompt(prompt);
+
+    // Match 1: Best of 1 — one round is the whole match.
+    playTo(session, { bestOf: 1 });
+    crashPlayerOne(session, target);
+    expect(prompt.offer).toHaveBeenLastCalledWith(
+      { roundsPlayed: 1, laserPhaseSeen: false, sessionOver: true },
+      0,
+    );
+    runFrames(session, SETTINGS.scoreboardSeconds + 0.05, 6);
+    expect(session.getState()).toBe(STATES.MATCH_OVER);
+
+    // REMATCH: a fresh match, same settings (`session.js`'s own KS-05-03 test, reused here). `roundIndex`
+    // resets to 0 for the new match — this is deliberately still about `roundsPlayed`, not that key — but
+    // `match.roundsPlayed` (the wrong source this fix removed) would also reset to 0 here, which is exactly
+    // the bug: a per-match counter can never tell match 2's first round from match 1's.
+    lastShow(ui, STATES.MATCH_OVER).onRematch();
+    runFrames(session, SETTINGS.countdownStepSeconds * 4 + 0.01, 8);
+    expect(session.getState()).toBe(STATES.PLAYING);
+
+    crashPlayerOne(session, target); // match 2's round 1 — the session's *second* round overall
+    expect(prompt.offer).toHaveBeenLastCalledWith(
+      { roundsPlayed: 2, laserPhaseSeen: false, sessionOver: true },
+      0,
+    );
+  });
+
+  it('tech-lead note 3: advanceScoreboard never auto-advances while the prompt is open, and resumes the moment it closes', () => {
+    const prompt = createFakePrompt({ opensTo: true });
+    const { session, target } = buildSession({ seed: 1 });
+    session.setPlaytestPrompt(prompt);
+    playTo(session, { bestOf: 3 });
+    crashPlayerOne(session, target);
+    expect(session.getState()).toBe(STATES.ROUND_OVER);
+
+    // Far longer than scoreboardSeconds — the hold must not budge while the gap is open.
+    runFrames(session, SETTINGS.scoreboardSeconds * 4, 20);
+    expect(session.getState()).toBe(STATES.ROUND_OVER);
+
+    // The gap closes, by whichever route (here: the answered route) — the hold releases immediately.
+    prompt.open = false;
+    runFrames(session, SETTINGS.scoreboardSeconds + 0.05, 6);
+    expect(session.getState()).toBe(STATES.COUNTDOWN);
+  });
+
+  it("tech-lead note 3: handleMenuAction's ROUND_OVER case forwards keys to an open prompt instead of skipping the scoreboard", () => {
+    const prompt = createFakePrompt({ opensTo: true });
+    const { session, target } = buildSession({ seed: 1 });
+    session.setPlaytestPrompt(prompt);
+    playTo(session, { bestOf: 3 });
+    crashPlayerOne(session, target);
+    // Long past the ordinary "Enter after 1s" skip threshold — proving the prompt intercepts Enter rather
+    // than merely delaying past it.
+    runFrames(session, 3, 6);
+
+    fireKeydown(target, 'Enter');
+    expect(prompt.handleAction).toHaveBeenCalledWith('CONFIRM');
+    expect(session.getState()).toBe(STATES.ROUND_OVER);
+
+    fireKeydown(target, 'ArrowLeft');
+    expect(prompt.handleAction).toHaveBeenCalledWith('LEFT');
+
+    fireKeydown(target, 'Escape');
+    expect(prompt.handleAction).toHaveBeenCalledWith('BACK');
+    expect(session.getState()).toBe(STATES.ROUND_OVER);
+  });
+
+  it('AC3: opening the prompt and forwarding keys to it dispatches no GAME_EVENTS — the state stays ROUND_OVER throughout', () => {
+    const prompt = createFakePrompt({ opensTo: true });
+    const { session, target } = buildSession({ seed: 1 });
+    session.setPlaytestPrompt(prompt);
+    playTo(session, { bestOf: 3 });
+    crashPlayerOne(session, target);
+    expect(session.getState()).toBe(STATES.ROUND_OVER);
+
+    const dispatchSpy = vi.spyOn(session.machine, 'dispatch');
+    runFrames(session, SETTINGS.scoreboardSeconds * 4, 20);
+    fireKeydown(target, 'Enter');
+    fireKeydown(target, 'ArrowRight');
+    fireKeydown(target, 'Escape');
+
+    expect(dispatchSpy).not.toHaveBeenCalled();
+    expect(session.getState()).toBe(STATES.ROUND_OVER);
+    dispatchSpy.mockRestore();
+  });
+});

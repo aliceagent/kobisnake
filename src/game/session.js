@@ -72,6 +72,33 @@ import { createLoop } from './loop.js';
  * itself does not already offer (`ARCHITECTURE §4`'s "never poll internal fields" survives intact), and the
  * whole tracker is `null` — costing nothing beyond one extra `if` per keydown and one per frame — unless
  * `enableInputStats` is on, which only `main.js`'s `?test=1`/DEV gate ever turns on.
+ *
+ * ## KI-11-02: the playtest prompt's seam
+ *
+ * Exactly the same shape as `enableInputStats` above, per tech-lead note 2 on issue #161: `setPlaytestPrompt`
+ * assigns a nullable `playtestPrompt` collaborator (`null` on every build without `?playtest=1`, since
+ * `main.js` only ever calls it then), and the three call sites that read it —
+ * {@link enterRoundOver} (offer the round's due questions), {@link advanceScoreboard} (do not auto-advance
+ * while a gap is open) and {@link handleMenuAction}'s `ROUND_OVER` case (Enter answers the prompt, not the
+ * scoreboard) — all short-circuit on `null` first, so a normal load pays for one extra `if` per frame in
+ * `advanceScoreboard` and nothing at all in the other two (they already run at most once per round-over).
+ * `gameStateMachine.js` hears about none of this: opening or closing a gap dispatches no `GAME_EVENTS`, and
+ * the state stays `ROUND_OVER` throughout (AC3; `git diff --stat -- src/game/gameStateMachine.js` stays
+ * empty), the same discipline KI-10-03 (#145) uses for its own local overlay.
+ *
+ * `laserPhaseSeen` and `sessionRoundsPlayed` (`playtestQuestions.js`'s `RoundFacts`) are separate, simpler
+ * additions: two sticky module-scope facts, neither ever reset by a new round or a new match, because both
+ * are read as "this session", not "this match" or "this round". `laserPhaseSeen` latches true once in
+ * {@link handleSimEvents} the first time a round actually emits `LASER_WARNING` or `LASER_STEP`.
+ * `sessionRoundsPlayed` counts up once per {@link enterRoundOver} call, deliberately *not* read off
+ * `MatchState.roundsPlayed` (`core/match.js`) — that counter restarts at `0` on every `createMatch()` call in
+ * {@link startMatchState}, so an `after-round` trigger built from it could only ever see the rounds of
+ * whichever match happens to be in progress (PR #176 review: this stranded every §4 question and `A2` behind
+ * a Best of 3 match boundary they could never cross, since `PLAYTEST-SCRIPT.md` §1 pins the session to Bo3
+ * while §4 needs 5 rounds *played*, which only a session, not a single match, can promise). Both facts cost
+ * at most one extra comparison or increment on a path that already runs at most once per event or once per
+ * round-over, which is cheap enough not to gate behind `playtestPrompt !== null` — neither is a new
+ * collaborator, just one more thing this file already has everything it needs to track.
  */
 
 /** @typedef {import('./input.js').Direction} Direction */
@@ -208,6 +235,18 @@ import { createLoop } from './loop.js';
  *   under `import.meta.env.DEV`/`?test=1`, so a normal production session builds no tracker at all and pays
  *   nothing for it — not the two extra calls a frame, not the `sim.getState().tick` read on an accepted
  *   input, nothing (see this file's own "KS-07-06 deviation" note above).
+ */
+
+/**
+ * The pieces of `src/ui/screens/playtestPrompt.js`'s `PlaytestPromptScreen` this file needs — KI-11-02's
+ * nullable seam (`setPlaytestPrompt`, see this file's own header note). Typed structurally, like
+ * `SessionRenderer`/`SessionHud` above, so a unit test can pass a minimal fake without importing the real
+ * (DOM-building) module.
+ *
+ * @typedef {object} SessionPlaytestPrompt
+ * @property {() => boolean} isOpen
+ * @property {(facts: import('../qa/playtestQuestions.js').RoundFacts, roundIndex: number) => boolean} offer
+ * @property {(action: ScreenAction) => void} handleAction
  */
 
 /** HUD timer text is throttled to 10 Hz (`ARCHITECTURE §8`). */
@@ -377,6 +416,31 @@ export function createSession({
     ? createInputLatencyTracker({ now, simHz: settings.simHz, snakeSpeed: settings.snakeSpeed })
     : null;
 
+  /**
+   * KI-11-02: `null` unless `main.js` calls {@link setPlaytestPrompt} (only under `?playtest=1`). See this
+   * file's own header note for the shape and the three call sites that read it.
+   * @type {SessionPlaytestPrompt | null}
+   */
+  let playtestPrompt = null;
+
+  /**
+   * KI-11-02's `RoundFacts.laserPhaseSeen`: true once any round has actually armed its lasers, for the whole
+   * life of this session (never reset by a new round or a new match) — see this file's header note.
+   */
+  let laserPhaseSeen = false;
+
+  /**
+   * KI-11-02's `RoundFacts.roundsPlayed`, counted across the whole session — every match this
+   * `createSession` call ever plays, never reset at a match boundary. `MatchState.roundsPlayed` (`match.js`)
+   * is the wrong source for this: it starts a fresh `0` every `createMatch()` call in {@link startMatchState},
+   * so an `after-round` trigger read from it can only ever see the rounds of the match currently in progress.
+   * `PLAYTEST-SCRIPT.md` §1 pins the session to Best of 3 while §4 asks for 5 rounds played before `C1`-`C3`
+   * are due — the two only reconcile if "rounds played" spans matches, so this counts every round
+   * `enterRoundOver` ever sees, incremented in the same place `match.recordRound(...)` is called (PR #176
+   * review; per-match `roundsPlayed` stranded §4 and `A2` behind a Bo3 match boundary they can never cross).
+   */
+  let sessionRoundsPlayed = 0;
+
   /** The seed the *next* match is built from; `null` means "draw a fresh one". @type {number | null} */
   let fixedSeed = seed;
   /** The seed the match in progress was built from. */
@@ -482,7 +546,21 @@ export function createSession({
     pendingRoundOver = null;
     scoreboardElapsed = 0;
     match?.recordRound(/** @type {any} */ (result));
+    // KI-11-02 (PR #176 review): counted here, next to `match.recordRound(...)` above, rather than read off
+    // `match.roundsPlayed` — see `sessionRoundsPlayed`'s own doc comment for why the match's own counter is
+    // the wrong source.
+    sessionRoundsPlayed += 1;
     ui.show(STATES.ROUND_OVER, scoreboardProps(result));
+    // Offered after both counters above are updated, so this round is already counted. A no-op call when
+    // there is nothing due (`offer` returns false and opens nothing) — `advanceScoreboard` and
+    // `handleMenuAction` below only ever hold the scoreboard for a gap that actually opened.
+    if (playtestPrompt !== null) {
+      const current = /** @type {MatchState} */ (match);
+      playtestPrompt.offer(
+        { roundsPlayed: sessionRoundsPlayed, laserPhaseSeen, sessionOver: current.isOver() },
+        roundIndex,
+      );
+    }
   }
 
   function enterMatchOver() {
@@ -748,6 +826,10 @@ export function createSession({
 
   /** @param {number} unscaledDt */
   function advanceScoreboard(unscaledDt) {
+    // KI-11-02, tech-lead note 3: never auto-advance while a gap is open. The hold releases the moment the
+    // gap closes, by either route (answered or Esc) — this check runs every frame, so the very next frame
+    // after `playtestPrompt.isOpen()` turns false resumes counting exactly as if the prompt had never opened.
+    if (playtestPrompt !== null && playtestPrompt.isOpen()) return;
     scoreboardElapsed += unscaledDt;
     if (scoreboardElapsed >= settings.scoreboardSeconds) leaveScoreboard();
   }
@@ -765,6 +847,11 @@ export function createSession({
    */
   function handleSimEvents(events) {
     for (const event of events) {
+      // KI-11-02: sticky for this file's whole lifetime, not just this round — see the header note on why
+      // this is not gated behind `playtestPrompt !== null` the way the prompt's own three call sites are.
+      if (event.type === EVENTS.LASER_WARNING || event.type === EVENTS.LASER_STEP) {
+        laserPhaseSeen = true;
+      }
       if (event.type === EVENTS.LASER_WARNING) {
         if (machine.can(GAME_EVENTS.LASER_WARNING)) machine.dispatch(GAME_EVENTS.LASER_WARNING);
       } else if (event.type === EVENTS.SNAKE_DIED) {
@@ -951,6 +1038,12 @@ export function createSession({
       case STATES.COUNTDOWN:
         return;
       case STATES.ROUND_OVER:
+        // KI-11-02, tech-lead note 3: while a gap is open, every menu key belongs to the prompt — Enter
+        // answers its focused field rather than skipping the scoreboard underneath it.
+        if (playtestPrompt !== null && playtestPrompt.isOpen()) {
+          playtestPrompt.handleAction(menuAction);
+          return;
+        }
         if (menuAction === 'CONFIRM' && scoreboardElapsed >= SCOREBOARD_SKIP_AFTER_SECONDS) {
           leaveScoreboard();
         }
@@ -1162,6 +1255,15 @@ export function createSession({
      */
     getSettingsOverrides() {
       return settingsOverrides;
+    },
+    /**
+     * KI-11-02's nullable seam (tech-lead note 2 on issue #161): registers the `?playtest=1` prompt, or
+     * clears it back to `null`. `main.js` is the only caller, and only under its own flag — see this file's
+     * header note for the three call sites that read `playtestPrompt` and why each short-circuits on `null`.
+     * @param {SessionPlaytestPrompt | null} prompt
+     */
+    setPlaytestPrompt(prompt) {
+      playtestPrompt = prompt;
     },
     /**
      * The current round's replay, in exactly the shape `tests/sim/replays/*.json` fixtures use (KS-07-01
