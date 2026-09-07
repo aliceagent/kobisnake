@@ -22,12 +22,36 @@ import { startMatchInPage } from './helpers.js';
  * is 20 ticks at the base speed (`120 simHz / 6 cells-per-second`), so every multiple of 0.05 progress,
  * including 0.25/0.5/0.75, is landed on exactly rather than approximated.
  *
- * `deltaTicks / kobi.sim.settings.simHz` below is a division, not a whole-tick loop — safe here specifically
- * because by the time this script runs, real frames have already left an arbitrary fraction in the browser's
- * own accumulator, so losing a tick to binary-float rounding would need that leftover to be under ~1e-13
- * (essentially never true of a real elapsed-time fraction). `first-playable.spec.js`'s module doc comment
- * explains why the *Node-side* replay in its AC2 test cannot rely on the same safety margin and uses a
- * whole-tick loop instead — the two are not interchangeable.
+ * The step to the target is a **whole-tick loop**, not `fastForward(deltaTicks / simHz)`. It used to be that
+ * division, defended in this comment on the grounds that real frames leave an arbitrary fraction in the
+ * simulation's tick accumulator, so a lost tick would need that leftover to be under ~1e-13. **That was
+ * wrong, and it is issue #117** — the "one unidentified e2e failure in four local runs of `main`" that four
+ * sprints could not attribute. The leftover is not arbitrary: a `fastForward` that asks for a whole number of
+ * ticks leaves the accumulator at (near enough) exactly zero, and from zero **any** duration longer than
+ * `fastForward`'s own 0.1 s chunk loses exactly one tick, because the chunks' tick counts do not sum to the
+ * whole they came from. One tick is 0.05 of `stepProgress`, orders of magnitude outside the assertion below.
+ * Caught in the act under full-suite load:
+ *
+ * ```
+ * target=0.5  beforeProgress=0.8500000000000005  currentTicks=17
+ *             deltaTicks=13  ticksAdvanced=12  afterProgress=0.4500000000000006
+ * ```
+ *
+ * It only ever fires when the live frame loop has pushed the snake *past* the target inside the current step,
+ * which is what makes `deltaTicks` wrap into the 13–20 range that spans two chunks — and that in turn depends
+ * on how fast the machine is, which is why it looked like a flake and why running this spec on its own never
+ * reproduced it.
+ *
+ * Stepping one tick at a time is exact (`1/120 * 120` is exactly `1` in binary float, so every call advances
+ * precisely one tick) and it is the pattern the rest of the suite already uses for the same reason:
+ * `helpers.js` steps to every state boundary rather than fast-forwarding a fixed duration (KS-06-00, #84),
+ * and `first-playable.spec.js`'s AC2 replay steps whole ticks (KS-06-07, #100). `advance` is used rather
+ * than `fastForward` so a loop of twenty steps costs one render instead of twenty (KS-06-06, #96); the render
+ * that `getHeadWorldPosition` needs is taken once, at the end.
+ *
+ * The underlying sharp edge — `__kobi.advance(seconds)` silently delivering one tick fewer than `seconds`
+ * asks for, whenever it spans more than one chunk and the accumulator is empty — is filed separately; this
+ * spec stops relying on it rather than papering over it.
  */
 
 test.describe('KS-03-07 interpolation', () => {
@@ -47,16 +71,34 @@ test.describe('KS-03-07 interpolation', () => {
 
         // How many *more* ticks, from wherever the live snake's progress happens to be right now, land it
         // exactly on `targetProgress` within its current step. `+= ticksPerStep` when the target has already
-        // been passed this step handles the general case; for this test's three ascending targets in one
-        // straight step it never triggers, but it keeps the helper honest for any starting phase.
+        // been passed this step handles the general case — and it is the case that fires in practice, because
+        // the live frame loop advances the snake in the gap between this script and the previous one.
         const currentTicks = Math.round(snake.stepProgress * ticksPerStep);
         const targetTicks = Math.round(targetProgress * ticksPerStep);
         let deltaTicks = targetTicks - currentTicks;
         if (deltaTicks <= 0) deltaTicks += ticksPerStep;
 
-        kobi.fastForward(deltaTicks / kobi.sim.settings.simHz);
-        return { snapshot: kobi.getSnapshot(), worldPos: kobi.getHeadWorldPosition(1) };
+        // One tick at a time, to an absolute target tick (see this file's module comment and #117): a single
+        // `fastForward(deltaTicks / simHz)` loses exactly one tick whenever it spans more than one 0.1 s
+        // chunk and the accumulator is empty, which silently turns 0.5 into 0.45.
+        const tickSeconds = 1 / kobi.sim.settings.simHz;
+        const targetTick = kobi.sim.tick + deltaTicks;
+        while (kobi.sim.tick < targetTick) kobi.advance(tickSeconds);
+        kobi.fastForward(0); // one render for the whole loop, not one per tick (KS-06-06)
+
+        return {
+          snapshot: kobi.getSnapshot(),
+          worldPos: kobi.getHeadWorldPosition(1),
+          // Asserted outside: the loop must have delivered exactly the ticks it asked for. This is the
+          // assertion #117 never had, and the one that would have named the cause four sprints ago.
+          deltaTicks,
+          ticksAdvanced: kobi.sim.tick - (targetTick - deltaTicks),
+        };
       }, target);
+
+      // #117: the step landed on the tick it aimed for. Checked before `stepProgress`, because when this
+      // fails the progress assertion below fails too and only this one says why.
+      expect(result.ticksAdvanced).toBe(result.deltaTicks);
 
       const p1 = /** @type {any} */ (result.snapshot).snakes[0];
       expect(p1.stepProgress).toBeCloseTo(target, 9);
