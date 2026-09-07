@@ -89,6 +89,23 @@ Acceptance criteria:
 - [ ] AC2 The job creates no deployment.
 QA: the workflow.
 
+### KI-19-06 · Test infrastructure, second pass (#209, #205, #194, #200)
+Owner: Opus · Size: M · Depends on: KI-19-05
+Files: `playwright.config.js`, `tests/visual/**`, `tests/sim/stats.test.js` and every wall-clock assertion under `tests/`, `.github/workflows/ci.yml`, `package.json`
+Spec: The design-lead ruling on #209. (1) Measure the visual noise floor by recording every baseline twice on
+CI and locally, commit it, set the global `maxDiffPixelRatio` to what the floor justifies, add per-screenshot
+overrides for screens with a small load-bearing element, and add a guard test that deletes one element and
+requires the suite to go red. (2) #205 and a survey: every wall-clock assertion in `tests/` either gates on
+work done (ticks, rounds) with milliseconds printed as information, or is annotated with the machine it
+assumes. (3) #194: one pure-whitespace `npm run format` commit and nothing else, then `prettier --check` in
+CI. (4) #200: split `e2e` and `visual` into two jobs and drop `continue-on-error`.
+Acceptance criteria:
+- [ ] AC1 A committed noise-floor measurement and a ratio justified by it; the deleted-element guard goes red.
+- [ ] AC2 No wall-clock assertion under `tests/` can fail on machine speed alone; the survey is committed.
+- [ ] AC3 `prettier --check` is a CI step and `main` passes it.
+- [ ] AC4 A failing e2e and a failing visual suite are two distinct red check runs.
+QA: the workflows, visual, unit.
+
 ## QA plan
 Each ticket's gate is demonstrated red on a deliberately bad PR and green on `main`.
 

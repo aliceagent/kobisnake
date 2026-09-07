@@ -135,13 +135,19 @@ head entering or being inside the dead zone when the laser steps onto it dies.
   under simulated protanopia and deuteranopia** (`src/render/colourVision.js`, which cites its two published
   sources). A pair is judged by its *worst* showing of the three, because a pair of colours has to work for
   whoever is holding the keyboard rather than on average. The threshold is `MIN_COLOUR_DIFFERENCE`.
-- **`MIN_COLOUR_DIFFERENCE = 15` is proposed, not yet ruled on (KI-15-01, issue #191, tracked on #184) —
-  awaiting Fable's sign-off.** The evidence is on #184: the palette's 28 pairs leave a 7-wide empty band
-  between 11.7 and 18.7, so every threshold from 12 through 18 fails exactly the same nine pairs and the
-  number was not fitted to the palette. Nine of the 28 fail today and are recorded as ratcheted waivers; the
-  numbers live in the test and on #184 rather than here, so this document cannot go stale the moment a colour
-  is repainted. `red` and `blue` are the only two owned from the start, and that pair clears the rule three
-  times over.
+- **`MIN_COLOUR_DIFFERENCE = 15` — ruled by Fable, 2026-09-07 (#184).** The palette's 28 pairs leave a
+  7-wide empty band between 11.7 and 18.7, so every threshold from 12 through 18 fails exactly the same nine
+  pairs: the palette decides which pairs fail and the constant only has to land in the band, which a test
+  asserts. Nine of the 28 fail today and are recorded as ratcheted waivers; the numbers live in the test and
+  on #184 rather than here, so this document cannot go stale the moment a colour is repainted. `red` and
+  `blue` are the only two owned from the start, and that pair clears the rule three times over.
+- **The shop's gate (Sprint 14, #213): no colour may be sold while it fails this rule against a default colour
+  or against any colour already owned.** On the shipping catalogue that means `purple` (3.1 against the free
+  blue) and `gold` (fails three of seven partners) are repainted before they go on sale, and `green` (9.9
+  against player one's red) is not the cheapest first unlock without a repaint or a different price order.
+- Pedestal-vs-player differences are measured and reported but **not bound** by this rule: SPEED's pedestal
+  *is* player blue by `§1` row 20, and the two power-ups are told apart by silhouette, icon and pedestal, not
+  colour alone.
 
 ### 2.8 Pause and focus
 - `Esc` **or `Space`** during PLAYING opens PAUSE (Resume / Restart match / Quit to menu). **`Esc` or `Space` on the pause screen resumes** (Esc
@@ -177,6 +183,11 @@ eleven-year-old: short words, no jargon, and no exclamation mark doing the work 
 - **The scoreboard on the third consecutive draw** (#150): that round is not replayed, so it must not say REPLAY.
   It reads **"THIRD DRAW — MATCH OVER"**, then the match-over screen follows as usual. The ordinary draw keeps
   "DRAW — REPLAY" and the second keeps its "one more and the match is called" warning.
+- **The colour-safe pairing note on match setup** (Improvement 15, KI-15-02): two lines, verbatim, next to
+  the colour rows — "These two colours look alike to some players." and "Try TEAL for PLAYER 2." The colour
+  word and the player number are computed, never literals; PLAYER is capitalised because the controls card
+  on the same screen spells it so. The note informs and never blocks, and it wraps inside a fixed-width
+  panel so the preview apple stays visible (#214).
 - **The playtest prompt's key hint** (#182, Improvement 11): one line under the answers, verbatim:
   "← → CHOOSE · ENTER ANSWER · ESC SKIP". The questions themselves are `PLAYTEST-SCRIPT.md`'s own words.
 - **The match-setup miniature arena shows one apple** (#157), at a fixed cell, so a player choosing a colour sees

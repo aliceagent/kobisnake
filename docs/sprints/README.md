@@ -45,7 +45,7 @@ reports does not need them.
 |---|---|---|---|---|
 | [I01](improvement-01-match-termination-and-draws.md) | Match termination & draws | Opus | **F1**: a match of draws never ends — 12 rounds played, 0–0, forever. **Complete 2026-09-07** (#120): `maxConsecutiveDraws: 3`, property-tested over 10 000 sequences, IT'S A TIE on screen; #150 follow-up ruled | — |
 | [I02](improvement-02-readability-and-contrast.md) | Readability & contrast | Sonnet | **F2**: apples are low-contrast and share player one's hue. **Complete 2026-09-07** (#121): one luminance rule over the palette, coral apple with a light rim, 28 player pairs measured; player pairs re-scoped to a colour-vision check (#152 → I15) | S08–S10, S14 |
-| [I03](improvement-03-agent-playtest-harness.md) | Agent playtest harness | Opus | Nothing plays whole matches through the whole stack; F1 and F2 survived 643 green tests | I04, I06, I08 |
+| [I03](improvement-03-agent-playtest-harness.md) | Agent playtest harness | Opus | Nothing plays whole matches through the whole stack; F1 and F2 survived 643 green tests. **Complete 2026-09-07** (#122): `npm run test:agent`, three policies (greedy 12 % / survivor 100 % reach the lasers), invariants tied to design rules, a reproducible committed report, a nightly job, the suite lock, and #117 found to be a real defect | I04, I06, I08 |
 | [I04](improvement-04-round-pacing-and-the-climax.md) | Round pacing & the climax | Fable | **F3**: only 4 of 27 rounds lasted long enough to see a laser | — |
 | [I05](improvement-05-replay-capture-and-playback.md) | Replays you can watch | Sonnet | KS-07-01 records replays with nowhere to play them back | — |
 | [I06](improvement-06-resilience-and-recovery.md) | Resilience & recovery | Opus | Nothing handles WebGL context loss; a sleeping laptop kills the match | — |
@@ -74,11 +74,11 @@ dropped.
 
 | # | Sprint | Lead | Why it exists | Needs |
 |---|---|---|---|---|
-| [I11](improvement-11-playtest-capture-mode.md) | Playtest capture mode | Opus | Gate 1 has waited on a facilitator since Sprint 07; two people should be able to run a session alone and hand back one file | — |
+| [I11](improvement-11-playtest-capture-mode.md) | Playtest capture mode | Opus | Gate 1 has waited on a facilitator since Sprint 07; two people should be able to run a session alone and hand back one file. **Complete 2026-09-07** (#158): `?playtest=1`, the script's own questions between rounds, every round's replay in the export, a script that turns the file into issues; KI-11-05 (dynamic import) follows | — |
 | [I12](improvement-12-cpu-opponent.md) | A CPU opponent | Opus | One child cannot play the game that exists; the bots already can (row 27, vetoable) | I03 policies |
 | [I13](improvement-13-fair-play.md) | Fair play: names, handicaps, swap sides | Sonnet | A child and a parent are not evenly matched (row 28, vetoable) | — |
 | [I14](improvement-14-match-history-and-stats.md) | Match history & STATS | Sonnet | Nothing is remembered when a match ends (row 29, vetoable) | I13 names |
-| [I15](improvement-15-colour-vision-and-motion.md) | Colour vision & motion | Opus | #152: player pairs need an instrument that models colour blindness; #157; reduced motion | I02 |
+| [I15](improvement-15-colour-vision-and-motion.md) | Colour vision & motion | Opus | #152: player pairs need an instrument that models colour blindness; #157; reduced motion. **Complete 2026-09-07** (#184): CIEDE2000 under normal, protanope and deuteranope vision over all 28 pairs, `MIN_COLOUR_DIFFERENCE = 15` ruled, the pairing note and the preview apple on match setup, `prefers-reduced-motion` honoured; Sprint 14 gate #213 | I02 |
 | [I16](improvement-16-viewport-and-resize.md) | Viewport & resize | Opus | Everything is proven at 1280×720 and nowhere else | I03 driver |
 | [I17](improvement-17-mutation-testing.md) | Mutation testing on the core | Opus | Six green-but-empty tests have reached `main`; 100 % coverage did not stop them | dependency approval |
 | [I18](improvement-18-session-fuzzing.md) | Session fuzzing | Opus | The simulation is fuzzed; the game around it is only ever scripted | I03 |
