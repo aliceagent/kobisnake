@@ -102,6 +102,20 @@ Acceptance criteria:
 - [ ] AC1 Median keydown-to-render latency ≤ 1 frame + the remaining step time; documented number in the QA report.
 QA: —
 
+### KS-07-07 · SLOW pedestal mid ice-blue (#105)
+Owner: Opus (or Sonnet) · Size: S · Depends on: KS-07-00
+Files: `src/render/materials.js`, `tests/unit/render/materials.test.js` (or the existing materials/pickupView
+test), `tests/visual/__baselines__/powerups-slow-pedestal.png`
+Spec: Apply `DESIGN-DECISIONS §1 row 20` as ruled in the Sprint 06 review: the SLOW pedestal is mid ice-blue
+`#4FA9DD` under the white snowflake, inside the existing pale-blue ring. Added after the sprint started because
+Gate 1's P5 ("could you tell who got slowed?") must be played against the ruled palette, not the white-on-white
+grey-box one. No `settings.js` change; hex lives only in `materials.js`.
+Acceptance criteria:
+- [ ] AC1 `materials.js` builds the SLOW pedestal at `#4FA9DD`; icon white, ring pale blue, unchanged.
+- [ ] AC2 A unit test asserts snowflake-vs-pedestal luminance contrast ≥ bolt-vs-SPEED-pedestal contrast.
+- [ ] AC3 `powerups-slow-pedestal.png` deleted and re-recorded; PR shows the before/after crop; `needs-design-review`.
+QA: visual suite green; no other baseline changes (or each one explained in the PR).
+
 ## QA plan (sprint pass)
 This sprint is the QA plan. The gate passes when the Movement, Collision, Arena Closing, Round Length, Growth
 and Power-up sections of the playtest script all pass in session 3 and the bot matrix meets its targets with
