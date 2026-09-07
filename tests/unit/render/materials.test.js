@@ -1,3 +1,6 @@
+import { readdirSync, readFileSync } from 'node:fs';
+import { dirname, join, relative, sep } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
 import {
   COLORS,
@@ -219,21 +222,50 @@ function assertContrastRule(pairs, waivers) {
   }
 }
 
+/**
+ * Every `.js` file under a directory, recursively. Used only by the AC3 hex-literal scan below — a plain
+ * `node:fs` walk rather than a glob dependency, since this is the only place in the suite that needs one.
+ *
+ * @param {string} dir
+ * @returns {string[]} absolute paths
+ */
+function listJsFiles(dir) {
+  /** @type {string[]} */
+  const files = [];
+  for (const entry of readdirSync(dir, { withFileTypes: true })) {
+    const full = join(dir, entry.name);
+    if (entry.isDirectory()) {
+      files.push(...listJsFiles(full));
+    } else if (entry.isFile() && entry.name.endsWith('.js')) {
+      files.push(full);
+    }
+  }
+  return files;
+}
+
 describe('KI-02-01 palette-wide contrast rule (docs/sprints/improvement-02-readability-and-contrast.md, issue #133)', () => {
   it('KI-02-01 AC1: every required pair clears the rule or is an exact, ratcheted waiver', () => {
     expect(() => assertContrastRule(buildRequiredPairs(SETTINGS), WAIVERS)).not.toThrow();
   });
 
   it('KI-02-01 AC1: a colour added to SETTINGS.colors without a matching entry fails the rule, not passes silently', () => {
-    // Sprint 14 adds six more unlockable player colours. This is the guard that makes that safe: a ninth
-    // colour that happens to collide with the apple (reusing red's hex, so its separation from the apple is
-    // 0) produces an "apple vs player syntheticNinth" pair that neither clears MIN_LUMINANCE_SEPARATION nor
-    // has a matching entry in WAIVERS, so buildRequiredPairs + assertContrastRule together must reject it —
-    // the same machinery the green test above runs, not a hand-copied inequality that could drift from it.
+    // Sprint 14 adds six more unlockable player colours. This is the guard that makes that safe. The
+    // synthetic ninth colour is set to *the apple's own current body colour*, read back through
+    // createAppleMaterials rather than hard-coded to today's red — so its separation from the apple is 0 by
+    // construction, whatever the apple's colour is or later becomes. Pinning the synthetic colour to a
+    // literal (e.g. today's red) would make this guard pass for an incidental reason: KI-02-02 (#134)
+    // repaints the apple, and a colour merely equal to red would then separate from the *new* apple by a
+    // real margin, clear the rule, and turn this into a red test protecting nothing. Deriving the collision
+    // from the apple itself is what keeps the guard meaningful across that repaint.
+    const appleHex = createAppleMaterials(SETTINGS).body.color.getHex();
+    const syntheticNinth = `#${appleHex.toString(16).padStart(6, '0')}`;
     const settingsWithExtraColour = withOverrides({
-      colors: { syntheticNinth: snakeColorHex('red', SETTINGS) },
+      colors: { syntheticNinth },
     });
 
+    // The unmodified palette must not throw — otherwise the throw below could be some unrelated breakage in
+    // buildRequiredPairs/assertContrastRule rather than evidence that the added colour is what's rejected.
+    expect(() => assertContrastRule(buildRequiredPairs(SETTINGS), WAIVERS)).not.toThrow();
     expect(() => assertContrastRule(buildRequiredPairs(settingsWithExtraColour), WAIVERS)).toThrow();
   });
 
@@ -261,5 +293,54 @@ describe('KI-02-01 palette-wide contrast rule (docs/sprints/improvement-02-reada
         {},
       ),
     ).toThrow();
+  });
+
+  it('KI-02-01 AC3: no hex colour outside materials.js', () => {
+    // CLAUDE.md's "never" list: "never write a hex colour outside src/render/materials.js (3D) or the UI
+    // stylesheet src/ui/styles.css (DOM)." This walks every `.js` file under `src/` and checks it by regex
+    // rather than by review, so a stray hex literal (e.g. one landing in KI-02-02's pickupView.js edits)
+    // fails the suite instead of waiting for a human to spot it.
+    const HEX_NUMERIC = /0x[0-9a-fA-F]{6}(?![0-9a-fA-F])/g;
+    const HEX_STRING = /['"]#[0-9a-fA-F]{6}['"]/g;
+
+    const srcRoot = join(dirname(fileURLToPath(import.meta.url)), '../../../src');
+    const repoRoot = join(srcRoot, '..');
+
+    /** @type {{ file: string, match: string }[]} */
+    const hits = [];
+    for (const absPath of listJsFiles(srcRoot)) {
+      const file = relative(repoRoot, absPath).split(sep).join('/');
+      if (file === 'src/render/materials.js') continue; // the one place a hex colour is allowed to live
+
+      const content = readFileSync(absPath, 'utf8');
+      for (const match of content.matchAll(HEX_NUMERIC)) hits.push({ file, match: match[0] });
+      for (const match of content.matchAll(HEX_STRING)) hits.push({ file, match: match[0] });
+    }
+
+    // Exception 1: src/render/snakeView.js resets emissive to black — 0x000000 is clearing a highlight, not
+    // choosing a colour, and it is the only hit this file may have.
+    const snakeViewMisses = hits.filter(
+      (hit) => hit.file === 'src/render/snakeView.js' && hit.match.toLowerCase() !== '0x000000',
+    );
+    expect(snakeViewMisses, JSON.stringify(snakeViewMisses)).toEqual([]);
+
+    // Exception 2: src/core/settings.js's own colour catalogue (DESIGN-DECISIONS §4; materials.js's header
+    // comment explains why the catalogue lives in settings rather than here). Checked by shape against the
+    // live SETTINGS.colors rather than a second hardcoded list of hexes: every literal found in settings.js
+    // must be a current catalogue value, and there must be exactly as many literals as catalogue entries —
+    // so this exception tracks the catalogue automatically instead of becoming a second place it is written.
+    const settingsHits = hits.filter((hit) => hit.file === 'src/core/settings.js');
+    const catalogueValues = new Set(Object.values(SETTINGS.colors).map((hex) => hex.toLowerCase()));
+    for (const hit of settingsHits) {
+      const normalized = hit.match.replace(/['"]/g, '').toLowerCase();
+      expect(catalogueValues.has(normalized), `${hit.match} in settings.js is not a SETTINGS.colors value`).toBe(
+        true,
+      );
+    }
+    expect(settingsHits.length).toBe(Object.keys(SETTINGS.colors).length);
+
+    // Nothing else — any hit outside materials.js and these two named, bounded exceptions is a violation.
+    const unexpected = hits.filter((hit) => hit.file !== 'src/render/snakeView.js' && hit.file !== 'src/core/settings.js');
+    expect(unexpected, JSON.stringify(unexpected)).toEqual([]);
   });
 });
