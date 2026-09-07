@@ -53,7 +53,8 @@ The suite fails on any of three things (KI-03-01 AC3), each reported with the **
 | `policies/` | The play policies (KI-03-02): `greedy.js`, `survivor.js`, `idle.js`, unit-tested in `policies.test.js`. |
 | `policies.spec.js` | KI-03-02's own agent-level measurements — AC1's laser-phase rates, AC2's 0:30 survival rate, and the idle/F1 characterisation scenario. Not part of the ten-match run above. |
 | `invariants.js` | The per-frame checks (KI-03-03). |
-| `report.js` | Aggregation into `docs/qa/playtests/agent-run.md` (KI-03-04). |
+| `report.js` | Pure aggregation of a run's `MatchResult[]` into the numbers a design lead uses, and the markdown renderer for `docs/qa/playtests/agent-run.md` (KI-03-04). Node-side only — never shipped into the page, so it imports normally and is unit-tested in `report.test.js`. |
+| `report.spec.js` | Plays the seeded matches `report.js` aggregates and writes `docs/qa/playtests/agent-run.md`. Gated behind `KI_AGENT_REPORT=1` (unset, it is discovered and instantly skipped) so it does not add to the ten-match gate's runtime. Run it with `npm run test:agent:report` — see that document's own "What actually ran" section for the exact regenerating command. |
 
 ## Two things to know before you write anything here
 

@@ -17,7 +17,8 @@
     "test:unit": "vitest run",
     "test:e2e": "node scripts/run-playwright-suite.mjs e2e tests/e2e --project=chromium",
     "test:visual": "node scripts/run-playwright-suite.mjs visual tests/visual --project=chromium",
-    "test:agent": "node scripts/run-playwright-suite.mjs agent tests/agent --project=chromium"
+    "test:agent": "node scripts/run-playwright-suite.mjs agent tests/agent --project=chromium",
+    "test:agent:report": "node scripts/run-playwright-suite.mjs agent-report tests/agent/report.spec.js --project=chromium"
   },
   "dependencies": {
     "three": "0.185.1"
