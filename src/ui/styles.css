@@ -659,3 +659,13 @@ body {
   opacity: 1;
   font-weight: 800;
 }
+
+/* #182: the approved key-hint line, "under the answers, small". Deliberately the quietest thing in the
+   panel — it is instruction, not content, and the script's own question above it is what the players are
+   meant to read. */
+.playtest-prompt-hint {
+  margin-top: 0.25rem;
+  opacity: 0.6;
+  font-size: 0.8rem;
+  letter-spacing: 0.04em;
+}

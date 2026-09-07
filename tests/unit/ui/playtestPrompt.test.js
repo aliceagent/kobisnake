@@ -2,6 +2,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   MAX_QUESTIONS_PER_GAP,
+  PROMPT_HINT_LINE,
   YES_NO_CHOICES,
   createPlaytestPromptState,
   selectDueQuestions,
@@ -279,5 +280,21 @@ describe('PR #176 review: every question becomes due at some point across a plau
       );
       expect(dueSomewhere).toBe(true);
     }
+  });
+});
+
+describe('#182: the approved key-hint line', () => {
+  // The design lead's ruling on #182, quoted as a literal rather than imported, so that editing
+  // `PROMPT_HINT_LINE` cannot quietly edit the assertion along with it. This is the one string on this
+  // screen that is not `PLAYTEST-SCRIPT.md`'s own words, which is exactly why it is pinned here character
+  // for character. Where it is *rendered* ("under the answers, small, on every prompt") is asserted in
+  // `tests/e2e/playtest-prompt.spec.js`, since this file is deliberately DOM-free.
+  it('#182: the constant is the approved string, character for character', () => {
+    expect(PROMPT_HINT_LINE).toBe('\u2190 \u2192 CHOOSE \u00b7 ENTER ANSWER \u00b7 ESC SKIP');
+  });
+
+  it('#182: it is a single line with no leading or trailing whitespace', () => {
+    expect(PROMPT_HINT_LINE).toBe(PROMPT_HINT_LINE.trim());
+    expect(PROMPT_HINT_LINE).not.toContain('\n');
   });
 });
