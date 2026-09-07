@@ -9,7 +9,7 @@ the laser phase" — by hand, on an unseeded run nobody could replay. This docum
 `tests/agent/driver.js`'s real `MatchResult[]` from real seeded matches of the built site into the numbers a
 design lead actually uses, exactly the way `docs/qa/playtests/gate1-bot-matrix.md` does for the tuning
 matrix: it is a design instrument, not a pass/fail gate — nothing below is asserted against a threshold in
-code, except that a pairing named as "does not finish" (idle vs idle) is expected not to, and every other
+code, except that a pairing named as "does not finish" is expected not to, and every other
 pairing is expected to.
 
 ## What actually ran
@@ -19,12 +19,12 @@ pairing is expected to.
   different day** — every number below comes from fixed seeds through a deterministic simulation
   (`ARCHITECTURE §11`), so re-running the command above should reproduce every other line byte for byte.
   Treat any other line changing as a real discrepancy to investigate, not a maintenance chore to reconcile.
-- **Wall time:** ~101s. Real wall-clock time, reported because it is a fair sense of "how long
+- **Wall time:** ~102s. Real wall-clock time, reported because it is a fair sense of "how long
   does this take to regenerate" — but it is **not** reproducible (a busier machine, a different render
   cadence, a different container all move it) the way the date above is not, and unlike every other number in
   this document, which is a simulated quantity computed from the deterministic seeds. Do not expect this
   figure to match on a re-run.
-- **Total:** 53 matches, 152 rounds, across 4 pairings.
+- **Total:** 53 matches, 131 rounds, across 4 pairings.
 - **Seeds, by pairing:**
   - **greedy vs greedy:** 1, 2, 3, 5, 8, 13, 21, 34, 55, 89, 144, 233, 377, 610, 987, 1597, 2584, 4181, 6765, 10946 (20 seeds)
   - **survivor vs survivor:** 1, 2, 3, 5, 8, 13, 21, 34, 55, 89, 144, 233, 377, 610, 987, 1597, 2584, 4181, 6765, 10946 (20 seeds)
@@ -65,7 +65,7 @@ pairing is expected to.
 | greedy vs greedy | 20 | 20 | 2.5 | 83.4 | 144.7 |
 | survivor vs survivor | 20 | 20 | 2.5 | 199.2 | 249.3 |
 | greedy vs survivor | 10 | 10 | 2.3 | 108.4 | 157.0 |
-| idle vs idle | 3 | 0 *(did not finish — see below)* | — | — | — |
+| idle vs idle | 3 | 3 | 3.0 | 9.5 | 9.5 |
 
 ## Round-level statistics
 
@@ -74,13 +74,13 @@ pairing is expected to.
 | greedy vs greedy | 50 | 24/26/0 | 0.0% | 100.0% / 0.0% | 6/50 (12.0%) | 33.4 | 59.3 |
 | survivor vs survivor | 49 | 22/27/0 | 0.0% | 100.0% / 0.0% | 49/49 (100.0%) | 81.3 | 85.3 |
 | greedy vs survivor | 23 | 3/20/0 | 0.0% | 100.0% / 0.0% | 11/23 (47.8%) | 47.1 | 75.0 |
-| idle vs idle | 30 | 0/0/30 | 100.0% | 100.0% / 0.0% | 0/30 (0.0%) | 3.2 | 3.2 |
+| idle vs idle | 9 | 0/0/9 | 100.0% | 100.0% / 0.0% | 0/9 (0.0%) | 3.2 | 3.2 |
 
-## Pairings that do not finish
+## Notes on individual pairings
 
 ### idle vs idle
 
-This pairing does not reach `MATCH_OVER` on this build — #119 F1: a match made entirely of draws never ends, because `DESIGN-DECISIONS §1 row 26`'s third-consecutive-draw rule is ruled but not yet implemented (I01/#120). Every seed above was bounded to 6000 frames so the run reports the defect instead of hanging on it, and every one of its 30 recorded rounds ended in a `DRAW` (see the round-level table above).
+Two players who put the keyboard down draw every round — the state that found **#119 F1**, where a match made only of draws could never end (12 rounds, 0-0, forever). It ends after 3 rounds now: I01 (#120) implemented `DESIGN-DECISIONS §1 row 26`'s consecutive-draw cap while Improvement 03 was in review. Wins are level, so the match is a tie won by nobody and worth no keys. This pairing is kept in the run precisely because it is the one that found F1: if the cap regressed, these matches would run past 3 rounds to the frame budget instead.
 
 ## Reading it against F3 and KI-03-02
 
@@ -242,29 +242,30 @@ reason).
         3
       ],
       "matches": 3,
-      "matchesFinished": 0,
-      "rounds": 30,
+      "matchesFinished": 3,
+      "rounds": 9,
       "p1Wins": 0,
       "p2Wins": 0,
-      "draws": 30,
+      "draws": 9,
       "drawRatePct": 100,
-      "deathCount": 30,
+      "deathCount": 9,
       "timeoutCount": 0,
       "deathRatePct": 100,
       "timeoutRatePct": 0,
       "laserPhaseReachedCount": 0,
       "laserPhaseReachedRatePct": 0,
       "roundLength": {
-        "meanSeconds": 3.1666666666666674,
+        "meanSeconds": 3.166666666666667,
         "p90Seconds": 3.1666666666666665,
         "minSeconds": 3.1666666666666665,
         "maxSeconds": 3.1666666666666665
       },
-      "meanRoundsPerMatch": null,
-      "meanMatchSeconds": null,
-      "p90MatchSeconds": null,
-      "expectFinish": false,
-      "maxFrames": 6000
+      "meanRoundsPerMatch": 3,
+      "meanMatchSeconds": 9.5,
+      "p90MatchSeconds": 9.5,
+      "expectFinish": true,
+      "maxFrames": 6000,
+      "note": "Two players who put the keyboard down draw every round — the state that found **#119 F1**, where a match made only of draws could never end (12 rounds, 0-0, forever). It ends after 3 rounds now: I01 (#120) implemented `DESIGN-DECISIONS §1 row 26`'s consecutive-draw cap while Improvement 03 was in review. Wins are level, so the match is a tie won by nobody and worth no keys. This pairing is kept in the run precisely because it is the one that found F1: if the cap regressed, these matches would run past 3 rounds to the frame budget instead."
     }
   ]
 }

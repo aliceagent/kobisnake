@@ -3,6 +3,7 @@ import { writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { expect, test } from '@playwright/test';
+import { SETTINGS } from '../../src/core/settings.js';
 import { failureReasons, playMatch } from './driver.js';
 import { greedy } from './policies/greedy.js';
 import { survivor } from './policies/survivor.js';
@@ -98,7 +99,7 @@ test.describe('KI-03-04 · statistics report generation', () => {
     test.skip(
       !FULL_RUN,
       'set KI_AGENT_REPORT=1 (via `npm run test:agent:report`) to regenerate the committed report — ' +
-        'this is deliberately not part of the fast npm run test:agent gate (see this file\'s module doc)',
+        "this is deliberately not part of the fast npm run test:agent gate (see this file's module doc)",
     );
     test.setTimeout(15 * 60_000);
 
@@ -118,12 +119,21 @@ test.describe('KI-03-04 · statistics report generation', () => {
     expect(failureReasons(terminating).join('\n')).toBe('');
     expect(terminating.every((result) => result.finished)).toBe(true);
 
+    // Idle vs idle is checked on its own terms. It used to be checked as a pairing that *never* finishes —
+    // #119 F1, a match made only of draws running forever — and this is the one pairing whose expected
+    // behaviour changed during this sprint: I01 (#120) landed `DESIGN-DECISIONS §1 row 26` on `main` while
+    // Improvement 03 was in review, so an all-draw match now ends on the third consecutive draw, with level
+    // wins and therefore no winner. That is what it must show now, and it is still the pairing that would
+    // catch F1 returning: without the cap these matches would run past three rounds to the frame budget.
     expect(idleVsIdle.every((result) => result.pageErrors.length === 0)).toBe(true);
-    expect(idleVsIdle.every((result) => !result.finished)).toBe(true);
-    expect(idleVsIdle.every((result) => result.rounds.length > 0)).toBe(true);
-    expect(idleVsIdle.every((result) => result.rounds.every((round) => round.result === 'DRAW'))).toBe(
-      true,
-    );
+    expect(idleVsIdle.every((result) => result.finished)).toBe(true);
+    expect(
+      idleVsIdle.every((result) => result.rounds.length === SETTINGS.maxConsecutiveDraws),
+    ).toBe(true);
+    expect(
+      idleVsIdle.every((result) => result.rounds.every((round) => round.result === 'DRAW')),
+    ).toBe(true);
+    expect(idleVsIdle.every((result) => result.match?.winner === null)).toBe(true);
 
     const aggregated = aggregateRun({
       meta: {
@@ -154,8 +164,16 @@ test.describe('KI-03-04 · statistics report generation', () => {
           label: 'idle vs idle',
           seeds: IDLE_SEEDS,
           results: idleVsIdle,
-          expectFinish: false,
+          expectFinish: true,
           maxFrames: IDLE_MAX_FRAMES,
+          note:
+            'Two players who put the keyboard down draw every round — the state that found **#119 F1**, ' +
+            'where a match made only of draws could never end (12 rounds, 0-0, forever). It ends after ' +
+            `${SETTINGS.maxConsecutiveDraws} rounds now: I01 (#120) implemented ` +
+            "`DESIGN-DECISIONS §1 row 26`'s consecutive-draw cap while Improvement 03 was in review. Wins " +
+            'are level, so the match is a tie won by nobody and worth no keys. This pairing is kept in the ' +
+            'run precisely because it is the one that found F1: if the cap regressed, these matches would ' +
+            `run past ${SETTINGS.maxConsecutiveDraws} rounds to the frame budget instead.`,
         },
       ],
     });

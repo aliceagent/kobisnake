@@ -245,6 +245,7 @@ describe('KI-03-04 · renderReport', () => {
           ],
           expectFinish: false,
           maxFrames: 6000,
+          note: 'A pairing that never terminates would be reported here — #119 F1 was one, until I01/#120.',
         },
       ],
       ...overrides,
@@ -264,13 +265,35 @@ describe('KI-03-04 · renderReport', () => {
     expect(markdown).toMatch(/greedy vs greedy \|.*\|.*\|.*\|.*\| 0\/2 \(0\.0%\) \|/);
   });
 
-  it('KI-03-04 ruling 4: the unfinished pairing is called out by name, with its bounded frame count', () => {
+  it('KI-03-04 ruling 4: a pairing that does not finish is called out by name, with its bounded frame count', () => {
     const markdown = renderReport(sampleRun());
     expect(markdown).toContain('## Pairings that do not finish');
     expect(markdown).toContain('### idle vs idle');
     expect(markdown).toContain('bounded to 6000 frames');
-    expect(markdown).toContain('#119 F1');
-    expect(markdown).toContain('I01/#120');
+    // The *specific* story belongs to the pairing, not to the renderer: which pairing fails to terminate,
+    // and why, is a fact about a build rather than a property of this module. Baking "#119 F1 / I01/#120"
+    // into the renderer is exactly what had to be unpicked when I01 landed row 26 mid-sprint and idle vs
+    // idle started finishing.
+    expect(markdown).toContain('#119 F1 was one, until I01/#120');
+  });
+
+  it('KI-03-04 ruling 4: a pairing that finishes can still carry a note, and it is rendered', () => {
+    const run = sampleRun({
+      pairings: [
+        {
+          label: 'idle vs idle',
+          seeds: [1],
+          results: [match([round({ result: 'DRAW' })], { finished: true })],
+          expectFinish: true,
+          note: 'It ends after three rounds now — `DESIGN-DECISIONS §1 row 26`.',
+        },
+      ],
+    });
+    const markdown = renderReport(run);
+    expect(markdown).toContain('## Notes on individual pairings');
+    expect(markdown).toContain('It ends after three rounds now');
+    // …and it is not mislabelled as a pairing that never terminates.
+    expect(markdown).not.toContain('## Pairings that do not finish');
   });
 
   it('KI-03-04 ruling 5: states what the numbers are not a verdict on', () => {

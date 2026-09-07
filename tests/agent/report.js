@@ -390,15 +390,23 @@ export function renderReport(run) {
           .map(
             (stats) =>
               `### ${stats.label}\n\n` +
-              `This pairing does not reach \`MATCH_OVER\` on this build — #119 F1: a match made entirely of ` +
-              `draws never ends, because \`DESIGN-DECISIONS §1 row 26\`'s third-consecutive-draw rule is ` +
-              `ruled but not yet implemented (I01/#120). Every seed above was bounded to ` +
-              `${stats.maxFrames ?? '?'} frames so the run reports the defect instead of hanging on it, and ` +
-              `every one of its ${stats.rounds} recorded rounds ended in a \`DRAW\` (see the round-level table ` +
-              `above). ${stats.note ?? ''}`.trim() +
+              `This pairing does not reach \`MATCH_OVER\`. Every seed above was bounded to ` +
+              `${stats.maxFrames ?? '?'} frames so the run reports that instead of hanging on it, and ` +
+              `${stats.matchesFinished} of its ${stats.matches} matches finished. ${stats.note ?? ''}`.trim() +
               '\n',
           )
           .join('\n');
+
+  // Notes on pairings that *do* finish. Kept separate from the section above because "here is something you
+  // should know about this row" and "this row never terminates" are different statements, and idle vs idle
+  // moved from the second to the first when I01 landed row 26 mid-sprint — the note is how that history
+  // survives the move instead of being deleted with the section that used to carry it.
+  const noted = pairings.filter((stats) => stats.expectFinish && stats.note !== undefined);
+  const notesSection =
+    noted.length === 0
+      ? ''
+      : '\n## Notes on individual pairings\n\n' +
+        noted.map((stats) => `### ${stats.label}\n\n${stats.note}\n`).join('\n');
 
   const comparisonLines = pairings.map(referenceComparisonLine).filter((line) => line !== null);
   const comparisonSection =
@@ -436,7 +444,7 @@ the laser phase" — by hand, on an unseeded run nobody could replay. This docum
 \`tests/agent/driver.js\`'s real \`MatchResult[]\` from real seeded matches of the built site into the numbers a
 design lead actually uses, exactly the way \`docs/qa/playtests/gate1-bot-matrix.md\` does for the tuning
 matrix: it is a design instrument, not a pass/fail gate — nothing below is asserted against a threshold in
-code, except that a pairing named as "does not finish" (idle vs idle) is expected not to, and every other
+code, except that a pairing named as "does not finish" is expected not to, and every other
 pairing is expected to.
 
 ## What actually ran
@@ -489,7 +497,7 @@ ${matchTable}
 ## Round-level statistics
 
 ${roundTable}
-${unfinishedSection}${comparisonSection}
+${unfinishedSection}${notesSection}${comparisonSection}
 ## Machine-readable data
 
 The exact numbers tabulated above, one object per pairing. Everything here is a pure function of the seeds
