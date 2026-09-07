@@ -65,6 +65,16 @@ import { buildSessionDocument, renderMarkdownSummary } from '../../qa/playtestSe
 export const MAX_QUESTIONS_PER_GAP = 2;
 
 /**
+ * The one line on this screen that is not the playtest script's own words. `?playtest=1` exists so that two
+ * people can run a Gate session with no facilitator, which means nothing is there to tell them which keys
+ * answer a question — and `PLAYTEST-SCRIPT.md` has no such sentence to lift, so KI-11-02 shipped without one
+ * rather than invent it (`CLAUDE.md`: copy is the design lead's). This is the design lead's ruling on #182,
+ * verbatim and character for character; `DESIGN-DECISIONS §3` carries it with the rest of the approved
+ * first-minute copy. A named constant, and asserted against a literal in the unit test, so it cannot drift.
+ */
+export const PROMPT_HINT_LINE = '← → CHOOSE · ENTER ANSWER · ESC SKIP';
+
+/**
  * The two answers almost every question in the bank is written against — "answer yes", "Majority yes",
  * "Nobody says…" (`ANSWER_TYPES.YES_NO`). Not invented copy: the tech-lead kickoff comment on issue #158
  * ruled "yes/no by default" for exactly this answer type, and every pass condition that type is used for
@@ -515,6 +525,14 @@ export function createPlaytestPrompt(root, { getReplay, getMatchSettings, clipbo
 
       questionEl.appendChild(fieldEl);
     });
+
+    // #182, the design lead's ruling: "under the answers, small, on every prompt". Appended to the panel
+    // rather than to a question block, so one gap showing two questions still carries exactly one hint.
+    const hintEl = doc.createElement('div');
+    hintEl.className = 'playtest-prompt-hint';
+    hintEl.dataset.playtestHint = 'true';
+    hintEl.textContent = PROMPT_HINT_LINE;
+    panel.appendChild(hintEl);
   }
 
   return {

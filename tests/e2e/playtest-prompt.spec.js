@@ -173,4 +173,46 @@ test.describe('KI-11-02 the between-round prompt', () => {
     });
     expect(state).not.toBe('ROUND_OVER');
   });
+
+  test('#182: the approved hint line renders under the answers, once per prompt', async ({ page }) => {
+    // The design lead's ruling on #182: "Placed under the answers, small, on every prompt." Quoted here as a
+    // literal, not imported from the module under test, so a drifting constant fails rather than agreeing
+    // with itself.
+    const APPROVED = '\u2190 \u2192 CHOOSE \u00b7 ENTER ANSWER \u00b7 ESC SKIP';
+
+    await page.goto(PLAYTEST_QUERY);
+    await page.evaluate(startBo5MatchInPage);
+    await page.evaluate(crashPlayerOneInPage);
+    await page.evaluate(nextRoundInPage);
+    await page.evaluate(crashPlayerOneInPage);
+    await page.evaluate(nextRoundInPage);
+    await page.evaluate(crashPlayerOneInPage); // round 3 — M1 and M2 become due
+
+    await expect(page.locator('[data-playtest-prompt]')).toBeVisible();
+    const hint = page.locator('[data-playtest-hint]');
+
+    // Exactly one, even though this gap is showing two questions.
+    await expect(hint).toHaveCount(1);
+    await expect(hint).toHaveText(APPROVED);
+    expect(await page.locator('[data-playtest-question]').count()).toBeGreaterThan(1);
+
+    // "Under the answers": the hint is the panel's last child, after every question block.
+    expect(
+      await page.evaluate(() => {
+        const panel = /** @type {any} */ (globalThis).document.querySelector(
+          '.playtest-prompt-panel',
+        );
+        return panel?.lastElementChild?.getAttribute('data-playtest-hint');
+      }),
+    ).toBe('true');
+  });
+
+  test('#182: a plain load still has no hint node — the line is inside the flag, not beside it', async ({
+    page,
+  }) => {
+    await page.goto('/');
+    expect(await page.locator('[data-playtest-hint]').count()).toBe(0);
+    await page.goto('?test=1&seed=1&reducedFx=1');
+    expect(await page.locator('[data-playtest-hint]').count()).toBe(0);
+  });
 });
