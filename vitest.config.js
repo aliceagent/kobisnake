@@ -22,7 +22,13 @@ export default defineConfig({
   test: {
     // `tests/sim` (ARCHITECTURE §3) is headless whole-round simulation and shares Vitest with `tests/unit`;
     // there is no separate runner for it, so both live under `npm run test:unit`.
-    include: ['tests/unit/**/*.test.js', 'tests/sim/**/*.test.js'],
+    //
+    // `tests/agent` (KI-03-01) is the browser playtest layer, and its *suite* is Playwright's — Playwright
+    // takes only `*.spec.js`, Vitest only `*.test.js`, so the two runners split that directory cleanly. The
+    // `.test.js` half is the pure functions the browser layer is built from: the driver's own failure gate,
+    // KI-03-02's policies and KI-03-03's invariants, each provable in Node against a hand-built snapshot.
+    // Without this line those tests would exist and never run.
+    include: ['tests/unit/**/*.test.js', 'tests/sim/**/*.test.js', 'tests/agent/**/*.test.js'],
     environment: 'node',
     coverage: {
       enabled: true,
