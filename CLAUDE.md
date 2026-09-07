@@ -45,6 +45,13 @@ There is no `test:sim` script: simulation tests live in `tests/sim/` but run und
   this — the contention #86 is about is one GPU-less browser stack, which every worktree shares.
 - **`tests/e2e/inputLatency.spec.js` gates on simulated ticks, not milliseconds** (#175, #151). Its
   `KS-07-06 WALL CLOCK` lines are information; only `stepWaitTicks` can fail the job.
+- **A red CI `browser` job whose `e2e` and `visual` steps both say `success` is not a contradiction.** Both
+  carry `continue-on-error: true` in `ci.yml`, and GitHub reports a step's *conclusion* after that override
+  while only its *outcome* records the truth — the API exposes the first and not the second, so the job's own
+  "Fail the job if either suite failed" step is the only thing that changes. It tells you a suite failed and
+  not which one. Job logs and artifacts are unreadable from an agent session and re-running a job is `403`
+  (#172), so the way to find out is to reproduce locally: `npm run test:e2e`, then `npm run test:visual`,
+  one after the other, never together.
 
 ## The never list
 - Never load anything from a CDN or external URL. three.js comes from npm and is bundled. The built site makes
