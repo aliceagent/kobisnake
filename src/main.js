@@ -2,6 +2,7 @@
 import { createSession } from './game/session.js';
 import { createTestHooks } from './game/testHooks.js';
 import { createGameplayRenderer } from './render/renderer.js';
+import { createPlaytestPrompt } from './ui/screens/playtestPrompt.js';
 import { createTuningScreen } from './ui/screens/tuning.js';
 import { createUi } from './ui/ui.js';
 
@@ -79,6 +80,26 @@ if (isTuningEnabled) {
   // below fires the first `ui.show()`.
   ui.setTuningScreen(tuningScreen);
   tuningScreen.show();
+}
+
+// KI-11-02: the between-round playtest prompt, gated the same way as `__kobi` and the tuning overlay above —
+// `?playtest=1` (a human running a Gate session on a real deploy can add it) or a dev server, never a plain
+// production load. AC1 needs the prompt's DOM node genuinely absent otherwise, not merely hidden, so — like
+// the other two — the gate has to guard the `createPlaytestPrompt` call itself; `playtestPrompt.js` never
+// reads `window.location` or `import.meta` itself. `session.setPlaytestPrompt` is KI-11-02's own nullable
+// seam (`session.js`'s header note): a normal load never calls it, so `session.js` never has a prompt to ask.
+// @ts-expect-error import.meta.env is Vite's own addition; not present in this project's jsconfig types.
+const isPlaytestEnabled = import.meta.env.DEV || window.location.search.includes('playtest=1');
+if (isPlaytestEnabled) {
+  const playtestPrompt = createPlaytestPrompt(uiRoot);
+  session.setPlaytestPrompt(playtestPrompt);
+  // Test-only: `getAnswers()` is plain data (KI-11-02's own contract), so it survives `page.evaluate`'s
+  // structured clone with nothing to adapt — extending the already-gated `__kobi` here, rather than touching
+  // `testHooks.js` (outside this ticket's `Files:` list), is what lets `tests/e2e/playtest-prompt.spec.js`
+  // read collected answers without this file reaching into the prompt's DOM.
+  if (isDevOrTest) {
+    /** @type {any} */ (window).__kobi.getPlaytestAnswers = () => playtestPrompt.getAnswers();
+  }
 }
 
 session.start();

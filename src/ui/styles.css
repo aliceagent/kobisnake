@@ -544,3 +544,89 @@ body {
   font-family: monospace;
   font-size: 0.65rem;
 }
+
+/* KI-11-02: the `?playtest=1` between-round prompt (`src/ui/screens/playtestPrompt.js`). Full-screen like
+   `.menu-screen` — it is the only thing worth touching during the gap it appears in, same as the scoreboard
+   it sits over — but built and gated independently of `ui.js` (KI-10-03's local-overlay pattern), the same
+   way `.tuning-overlay` is. Grey-box only, matching every other screen in this file; no reference image
+   exists for it and none of its copy is invented (see the module's own doc comment). */
+.playtest-prompt {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 2rem;
+  background: rgba(10, 12, 16, 0.7);
+  pointer-events: auto;
+}
+
+.playtest-prompt[hidden] {
+  display: none;
+}
+
+.playtest-prompt-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 1.25rem;
+  min-width: 24rem;
+  max-width: 32rem;
+  padding: 1.75rem;
+  border-radius: 1rem;
+  background: rgba(20, 22, 28, 0.92);
+}
+
+.playtest-prompt-question {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.playtest-prompt-question-text {
+  font-size: 1.15rem;
+  font-weight: 700;
+}
+
+.playtest-prompt-field {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  padding: 0.5rem 0.75rem;
+  border-radius: 0.6rem;
+  background: rgba(255, 255, 255, 0.06);
+}
+
+/* The same focus-ring treatment `.menu-item--focused` uses (AC4's "one visible focus ring every screen
+   shares"), on the field whose choice ←/→ and Enter currently act on. */
+.playtest-prompt-field--focused {
+  outline: 0.2rem solid #ffffff;
+  outline-offset: 0.15rem;
+  background: rgba(255, 255, 255, 0.18);
+}
+
+.playtest-prompt-field--answered {
+  opacity: 0.55;
+}
+
+.playtest-prompt-field-player {
+  min-width: 2rem;
+  font-weight: 800;
+  letter-spacing: 0.04em;
+}
+
+.playtest-prompt-field-choices {
+  display: flex;
+  gap: 0.75rem;
+}
+
+.playtest-prompt-choice {
+  opacity: 0.5;
+  text-transform: uppercase;
+  font-size: 0.85rem;
+  letter-spacing: 0.03em;
+}
+
+.playtest-prompt-choice--selected {
+  opacity: 1;
+  font-weight: 800;
+}
