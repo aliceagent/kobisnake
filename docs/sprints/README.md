@@ -1,8 +1,9 @@
 # KOBI Snake — Roadmap
 
 Twenty numbered sprints take the repository from empty to a released, Vercel-hosted, two-player 3D Snake game,
-then into post-1.0 single-player and arena variants. Alongside them runs an **improvement track of ten
-sprints (I01–I10)**, added on 2026-09-07 from an agent QA pass of the shipping build; see below. Sprints 01–18 are Version 1. Each sprint file is self-contained: goal,
+then into post-1.0 single-player and arena variants. Alongside them runs an **improvement track of twenty
+sprints (I01–I20)**, added on 2026-09-07 from an agent QA pass of the shipping build and what the first wave
+found; see below. Sprints 01–18 are Version 1. Each sprint file is self-contained: goal,
 scope, prerequisites, tickets with owners and acceptance criteria, QA plan, references, risks and exit criteria.
 Read `docs/process/AGENT-ROLES-AND-WORKFLOW.md` for how a sprint runs and who does what, and
 `docs/process/HANDOFF.md` for the kick-off prompt of each sprint.
@@ -42,8 +43,8 @@ reports does not need them.
 
 | # | Sprint | Lead | Why it exists | Blocks |
 |---|---|---|---|---|
-| [I01](improvement-01-match-termination-and-draws.md) | Match termination & draws | Opus | **F1**: a match of draws never ends — 12 rounds played, 0–0, forever | — |
-| [I02](improvement-02-readability-and-contrast.md) | Readability & contrast | Sonnet | **F2**: apples are low-contrast and share player one's hue | S08–S10, S14 |
+| [I01](improvement-01-match-termination-and-draws.md) | Match termination & draws | Opus | **F1**: a match of draws never ends — 12 rounds played, 0–0, forever. **Complete 2026-09-07** (#120): `maxConsecutiveDraws: 3`, property-tested over 10 000 sequences, IT'S A TIE on screen; #150 follow-up ruled | — |
+| [I02](improvement-02-readability-and-contrast.md) | Readability & contrast | Sonnet | **F2**: apples are low-contrast and share player one's hue. **Complete 2026-09-07** (#121): one luminance rule over the palette, coral apple with a light rim, 28 player pairs measured; player pairs re-scoped to a colour-vision check (#152 → I15) | S08–S10, S14 |
 | [I03](improvement-03-agent-playtest-harness.md) | Agent playtest harness | Opus | Nothing plays whole matches through the whole stack; F1 and F2 survived 643 green tests | I04, I06, I08 |
 | [I04](improvement-04-round-pacing-and-the-climax.md) | Round pacing & the climax | Fable | **F3**: only 4 of 27 rounds lasted long enough to see a laser | — |
 | [I05](improvement-05-replay-capture-and-playback.md) | Replays you can watch | Sonnet | KS-07-01 records replays with nowhere to play them back | — |
@@ -62,6 +63,32 @@ I03 ─┬─► I04
      ├─► I06 (KI-06-04)
      └─► I08 (KI-08-02)
 ```
+
+### Second improvement wave (I11–I20)
+
+Planned by the design lead on 2026-09-07 after the first wave's opening hour, from what it found (#150, #152,
+#156, #157) and from the gaps the first ten left. Three of them change the shape of the game — a CPU opponent,
+handicaps and names, a stats screen — and are recorded as design-lead rulings in `DESIGN-DECISIONS §1` rows
+27–29 **that the owner may veto**; if vetoed, their simulation-side tickets still stand and the screens are
+dropped.
+
+| # | Sprint | Lead | Why it exists | Needs |
+|---|---|---|---|---|
+| [I11](improvement-11-playtest-capture-mode.md) | Playtest capture mode | Opus | Gate 1 has waited on a facilitator since Sprint 07; two people should be able to run a session alone and hand back one file | — |
+| [I12](improvement-12-cpu-opponent.md) | A CPU opponent | Opus | One child cannot play the game that exists; the bots already can (row 27, vetoable) | I03 policies |
+| [I13](improvement-13-fair-play.md) | Fair play: names, handicaps, swap sides | Sonnet | A child and a parent are not evenly matched (row 28, vetoable) | — |
+| [I14](improvement-14-match-history-and-stats.md) | Match history & STATS | Sonnet | Nothing is remembered when a match ends (row 29, vetoable) | I13 names |
+| [I15](improvement-15-colour-vision-and-motion.md) | Colour vision & motion | Opus | #152: player pairs need an instrument that models colour blindness; #157; reduced motion | I02 |
+| [I16](improvement-16-viewport-and-resize.md) | Viewport & resize | Opus | Everything is proven at 1280×720 and nowhere else | I03 driver |
+| [I17](improvement-17-mutation-testing.md) | Mutation testing on the core | Opus | Six green-but-empty tests have reached `main`; 100 % coverage did not stop them | dependency approval |
+| [I18](improvement-18-session-fuzzing.md) | Session fuzzing | Opus | The simulation is fuzzed; the game around it is only ever scripted | I03 |
+| [I19](improvement-19-supply-chain-and-release-engineering.md) | Supply chain & release engineering | Opus | Sprint 18 will need lockfile, audit, stamp, changelog and preview smoke on release day | I03 for smoke |
+| [I20](improvement-20-string-catalogue.md) | The string catalogue | Sonnet | Approved copy lives as literals in five files; #150 stalled on a missing string | — |
+
+Launch order, never more than four sessions at once: **I11 and I09 first** (the capture mode needs the
+replay format proven in a browser), then **I15, I16, I17, I19, I20** as slots free (independent), then
+**I12 and I18** once I03 has merged its policies, then **I13 → I14**. I04, I05, I06, I07 and I08 from the
+first wave keep their places in the same queue.
 
 Ticket IDs are `KI-NN-TT`; branches `iNN/ki-NN-TT-slug`; PR titles `KI-NN-TT: description`. Everything else —
 one ticket per PR, squash merge, `needs-design-review` on anything visual, the never list in `CLAUDE.md` —
