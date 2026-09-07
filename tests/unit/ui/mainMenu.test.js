@@ -134,9 +134,21 @@ function findByClass(node, className) {
   return found;
 }
 
-/** The six labels in `MENU_ITEMS` order. */
-const ALL_LABELS = ['1 PLAYER', '2 PLAYERS', 'PRACTICE', 'TUTORIAL', 'SHOP', 'SETTINGS'];
-/** Every label except the one playable row. */
+/**
+ * The seven labels in `MENU_ITEMS` order. KI-10-03 added HOW TO PLAY directly after `2 PLAYERS` (design-lead
+ * review on #145: it belongs with the available actions, not below five locked ones), so this list and the
+ * "only one enabled row" assumption the tests below were first written against both had to grow by one.
+ */
+const ALL_LABELS = [
+  '1 PLAYER',
+  '2 PLAYERS',
+  'HOW TO PLAY',
+  'PRACTICE',
+  'TUTORIAL',
+  'SHOP',
+  'SETTINGS',
+];
+/** Every label that is not a playable action — unchanged by KI-10-03, which added an enabled row. */
 const UNAVAILABLE_LABELS = ['1 PLAYER', 'PRACTICE', 'TUTORIAL', 'SHOP', 'SETTINGS'];
 
 describe('createMainMenuScreen — KI-10-01', () => {
@@ -144,7 +156,7 @@ describe('createMainMenuScreen — KI-10-01', () => {
     const root = createFakeRoot();
     createMainMenuScreen(/** @type {any} */ (root));
 
-    // All six labels are on screen. Document order is no longer `MENU_ITEMS` order — KI-10-01 moves the one
+    // All seven labels are on screen. Document order is no longer `MENU_ITEMS` order — KI-10-01 moves the one
     // playable row above the grouped-away unavailable ones — so this checks the *set*, not the sequence; the
     // sequence within the unavailable group is checked separately below, and `MENU_ITEMS` itself (asserted
     // via `focus.js`'s untouched behaviour in the tests around this one) never changed.
@@ -182,16 +194,22 @@ describe('createMainMenuScreen — KI-10-01', () => {
     // called through to onSelect.
     expect(onSelect).not.toHaveBeenCalled();
 
-    // ↓/↑ from the one enabled row cannot land on a disabled row either — it just stays put (only one
-    // focusable slot exists this sprint).
-    screen.handleMenuAction('DOWN');
-    const focusedAfterDown = findAllByClass(/** @type {any} */ (root), 'menu-item--focused');
-    expect(focusedAfterDown.map((row) => findByClass(row, 'menu-item-label').textContent)).toEqual([
-      '2 PLAYERS',
-    ]);
+    // ↓/↑ can never land on a disabled row. There are two enabled rows since KI-10-03 (2 PLAYERS and
+    // HOW TO PLAY), so this walks the cursor all the way round the list and asserts it only ever rests on
+    // one of those two — a stronger check than the original "it stays put", which only held while a single
+    // focusable slot existed.
+    const visited = [];
+    for (let i = 0; i < ALL_LABELS.length; i += 1) {
+      screen.handleMenuAction('DOWN');
+      const focusedRows = findAllByClass(/** @type {any} */ (root), 'menu-item--focused');
+      expect(focusedRows).toHaveLength(1);
+      visited.push(findByClass(focusedRows[0], 'menu-item-label').textContent);
+    }
+    expect([...new Set(visited)].sort()).toEqual(['2 PLAYERS', 'HOW TO PLAY']);
+    for (const label of visited) expect(UNAVAILABLE_LABELS).not.toContain(label);
   });
 
-  it('KI-10-01 AC1/regression: 2 PLAYERS stays the only enabled row and stays default-focused', () => {
+  it('KI-10-01 AC1/regression: 2 PLAYERS stays the default-focused row and still fires SELECT_2P', () => {
     const root = createFakeRoot();
     const onSelect = vi.fn();
     const screen = createMainMenuScreen(/** @type {any} */ (root));
