@@ -7,6 +7,41 @@ import { startMatchInPage } from './helpers.js';
 /**
  * KS-07-06 AC1: "Median keydown-to-render latency <= 1 frame + the remaining step time."
  *
+ * **KI-19-00 (#175, #151): the gate is `stepWaitTicks`. The milliseconds are printed, and cannot fail this
+ * job.** Both halves of AC1 are still measured and still reported in full; only the tick half is asserted.
+ *
+ * That is the design lead's ruling on #170, and KS-07-06's own evidence is what it rests on. PR #116 recorded
+ * three runs of this spec, and what moved between them was the instrument, not the game:
+ *
+ * | Run | measured `frameMs` | `totalMs` median | `stepWaitTicks` median (range) |
+ * |---|---|---|---|
+ * | 1 | 157.1 ms | 256.35 ms | 18 (12–24) |
+ * | 2 | 193.7 ms | 310.05 ms | 18 (12–24) |
+ * | 3 | 215.5 ms | 283.35 ms | 18 (12–24) |
+ *
+ * A 37 % spread in frame time and a 54 ms spread in the median, against a tick median that did not move at
+ * all — because `stepWaitTicks` counts `RoundSimulation`'s own fixed-size ticks (`ARCHITECTURE §4`), which
+ * `sim.advance()` processes exactly however large or small the real frame that fed them was. The same PR's
+ * CI row (`frameMs` 118.2, `stepWaitTicks` median 23, max 24) is a fourth environment: the tick figure moved
+ * by 5 there while the frame time moved by ~100 ms, and it moved for a reason the bound below already models
+ * — `loop.js`'s 100 ms frame clamp, which is why `stepWaitTicksBudget` is "one step plus one coarse frame's
+ * worth of ticks" rather than a flat `+ 1`.
+ *
+ * The millisecond bound, by contrast, is a claim about the machine. On this repository's own four-core
+ * containers it ran with about 6 % headroom and failed **from load alone** — #151 reproduced it with nothing
+ * else running (`fullyParallel: true` makes the suite its own noisy neighbour) and on `fafb474`, before the
+ * sprint it was first blamed on; #175 showed `frameMs` being sampled once, up front, so the bound goes stale
+ * the moment load rises afterwards. A gate that fails 2–8 % over budget for reasons no change to this game
+ * can cause is not measuring this game.
+ *
+ * **This does not weaken AC1.** Nothing that was asserted about the *game* is now unasserted: the tick bound
+ * is the half that can only fail for a real reason, and it is unchanged, on the same figure, with the same
+ * budget. The millisecond figures are neither deleted nor loosened — they are computed exactly as before,
+ * compared against exactly the budgets they used to gate on, and printed with the verdict, so a regression in
+ * them is still visible to anyone reading the run. What changed is that a busy container can no longer turn
+ * that reading into a red job. Nothing here makes the suite ignore unhandled errors, and no other assertion
+ * in this file was touched.
+ *
  * **This is deliberately the one e2e spec in this repository that does not fast-forward its own subject.**
  * `window.__kobi.fastForward`/`advance` (`ARCHITECTURE §11`) drive the update path in bulk chunks with a
  * single render at the end (`testHooks.js`'s own comment on `fastForward`) — exactly right for a spec that
@@ -275,23 +310,47 @@ test.describe('KS-07-06 input-feel instrumentation', () => {
       stepMsAtBaseSpeed: STEP_MS,
     });
 
-    // AC1 itself. The median keydown-to-render pipeline must fit inside one frame of overhead plus the
-    // longest a player can ever wait for the grid's own next step.
+    // The measurement still has to have happened: a null median is an empty instrument, and that is a real
+    // failure however fast or slow the box is.
     expect(stats.totalMs.median).not.toBeNull();
-    expect(stats.totalMs.median).toBeLessThanOrEqual(frameBudgetMs + stepBudgetMs);
+    expect(stats.stepWaitTicks.median).not.toBeNull();
 
-    // The breakdown that makes the number above trustworthy rather than a coincidence: almost none of it is
-    // this game's own code (`overheadMs`/`renderMs`, each one call-stack's width, bounded by the same live
-    // frame budget), and the wait (`stepWaitMs`) never exceeds `stepBudgetMs`. `stepWaitTicks` needs no *ms*
-    // frame budget, since it is a count of `RoundSimulation`'s own fixed-size ticks (`ARCHITECTURE §4`), which
-    // `sim.advance()` processes exactly regardless of how large or small the real frame that fed it was — but
-    // it still needs the frame-clamp reasoning above (`stepWaitTicksBudget`), because *observing* a commit is
-    // still bound to a frame boundary even though the tick count itself is exact. This is the figure that
-    // stays meaningful across machines: unlike every millisecond bound above, it does not need to be re-read
-    // against whatever `frameMs` a given run happened to measure.
-    expect(stats.overheadMs.median).toBeLessThanOrEqual(frameBudgetMs);
-    expect(stats.renderMs.median).toBeLessThanOrEqual(frameBudgetMs);
-    expect(stats.stepWaitMs.median).toBeLessThanOrEqual(stepBudgetMs);
+    // The millisecond half of AC1 — every figure computed exactly as it was when it gated, compared against
+    // exactly the budget it was compared against, and reported rather than asserted (see this file's module
+    // comment for why, and for KS-07-06's own three-run table). Deleting these would lose a real signal; the
+    // only thing given up here is a busy container's power to turn that signal red.
+    const advisory = [
+      {
+        name: 'totalMs.median',
+        measured: stats.totalMs.median,
+        budget: frameBudgetMs + stepBudgetMs,
+      },
+      { name: 'overheadMs.median', measured: stats.overheadMs.median, budget: frameBudgetMs },
+      { name: 'renderMs.median', measured: stats.renderMs.median, budget: frameBudgetMs },
+      { name: 'stepWaitMs.median', measured: stats.stepWaitMs.median, budget: stepBudgetMs },
+    ].map((row) => ({ ...row, within: row.measured !== null && row.measured <= row.budget }));
+    console.log(
+      'KS-07-06 WALL CLOCK (ADVISORY — reported, never a gate; the gate is stepWaitTicks below):',
+      JSON.stringify({ frameMs, frameBudgetMs, framesPerStep, stepBudgetMs, rows: advisory }),
+    );
+    for (const row of advisory.filter((r) => !r.within)) {
+      // Loud enough to read in a job log without opening a report, and phrased so nobody mistakes it for the
+      // thing that decided this test's result.
+      console.log(
+        `KS-07-06 WALL CLOCK OVER BUDGET (not a failure): ${row.name} was ${row.measured} ms against ` +
+          `${row.budget} ms, on a run whose measured frame time was ${frameMs} ms. On this repository's ` +
+          `four-core containers that is normally the box, not the game (#151, #175). It is worth a look if ` +
+          `it persists on an idle machine, and worth nothing if it does not.`,
+      );
+    }
+
+    // AC1's gate. `stepWaitTicks` is a count of `RoundSimulation`'s own fixed-size ticks (`ARCHITECTURE §4`),
+    // which `sim.advance()` processes exactly regardless of how large or small the real frame that fed it
+    // was — the figure that stays meaningful across machines, unlike every millisecond figure above, which
+    // has to be re-read against whatever `frameMs` a given run happened to measure. It still needs the
+    // frame-clamp reasoning above (`stepWaitTicksBudget`), because *observing* a commit is bound to a frame
+    // boundary even though the tick count itself is exact. Unchanged by KI-19-00: same figure, same budget,
+    // same comparison KS-07-06 shipped.
     expect(stats.stepWaitTicks.median).toBeLessThanOrEqual(stepWaitTicksBudget);
 
     // A histogram the tuning overlay (KS-07-01) can read directly — proved shaped correctly here since that

@@ -1,3 +1,5 @@
+import { cpus } from 'node:os';
+
 import { defineConfig } from 'vitest/config';
 
 /**
@@ -18,8 +20,43 @@ const GAME_THRESHOLD = STRICT ? 75 : 0;
  */
 const RENDER_THRESHOLD = STRICT ? 75 : 0;
 
+/**
+ * KI-19-00 (#181): **local runs use half this machine's cores; CI uses Vitest's own default.**
+ *
+ * The failure this fixes is `npm run test:unit` exiting **non-zero with every test passing**:
+ *
+ * ```
+ *  Test Files  41 passed (41)  ·  Tests  718 passed (718)  ·  Errors  1 error
+ *  Error: [vitest-worker]: Timeout calling "onTaskUpdate"
+ * ```
+ *
+ * That is Vitest's own worker→main progress RPC missing its window, not a test — and it is the worst possible
+ * pair of signals: an agent trusting the exit code hunts through 718 green tests for a failure that is not
+ * there, and an agent trusting the summary learns to wave a red `test:unit` through, which is how a real
+ * failure gets missed later. `CLAUDE.md`'s setup section now says what to do when it happens; this is the
+ * half that makes it happen less.
+ *
+ * Vitest's default fans out to every core. `HANDOFF.md` gives every ticket its own worktree and several of
+ * them share one four-core container, so "every core" is a fiction — the cores are already taken, and the
+ * fan-out is what starves the RPC. Half the cores leaves room for the neighbours that are the reason this is
+ * contended in the first place, and it is `maxWorkers` (a pool-agnostic option) rather than
+ * `poolOptions.threads.maxThreads` so it holds whichever pool Vitest defaults to.
+ *
+ * **CI is deliberately untouched.** A GitHub Actions runner is one container running one job with nothing
+ * else on it: there is no contention to relieve, and halving its workers would buy nothing and cost wall
+ * clock on the gate every PR waits for.
+ *
+ * What is *not* done here, per the ruling on #170: `dangerouslyIgnoreUnhandledErrors` is not set. Muting
+ * unhandled errors would give a clean exit by hiding real ones, which is the same disease this is treating,
+ * from the other direction.
+ */
+const LOCAL_MAX_WORKERS = Math.max(1, Math.floor(cpus().length / 2));
+
 export default defineConfig({
   test: {
+    // See LOCAL_MAX_WORKERS above. `undefined` on CI leaves Vitest's own default in place rather than
+    // restating it here, so a future Vitest that changes that default changes CI too.
+    maxWorkers: process.env.CI ? undefined : LOCAL_MAX_WORKERS,
     // `tests/sim` (ARCHITECTURE §3) is headless whole-round simulation and shares Vitest with `tests/unit`;
     // there is no separate runner for it, so both live under `npm run test:unit`.
     //

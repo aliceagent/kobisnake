@@ -1,5 +1,7 @@
 import { defineConfig } from 'vite';
 
+import { previewPort } from './scripts/preview-port.mjs';
+
 // The whole game is a single static page. Everything (three.js included) is bundled from npm so the built
 // site never asks the network for anything after it loads.
 export default defineConfig({
@@ -19,6 +21,9 @@ export default defineConfig({
     port: 5173,
   },
   preview: {
-    port: 4173,
+    // KI-19-00 (#170): derived from this checkout's path rather than fixed at 4173, so two worktrees in one
+    // container never contend for one preview port and `playwright.config.js` — which reads the same module
+    // — always dials the server this one binds. `scripts/preview-port.mjs` has the full reasoning.
+    port: previewPort(),
   },
 });

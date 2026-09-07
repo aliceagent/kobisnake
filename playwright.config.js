@@ -1,5 +1,7 @@
 import { defineConfig, devices } from '@playwright/test';
 
+import { previewBaseUrl, previewPort } from './scripts/preview-port.mjs';
+
 /**
  * Every spec navigates with this query string (ARCHITECTURE §11: `?test=1` exposes `window.__kobi`,
  * `?seed=1` fixes the RNG, `?reducedFx=1` freezes anything that animates so screenshots are stable). The
@@ -8,7 +10,16 @@ import { defineConfig, devices } from '@playwright/test';
  */
 export const DEFAULT_QUERY = '?test=1&seed=1&reducedFx=1';
 
-const PORT = 4173;
+/**
+ * KI-19-00 (#170): the preview port is derived from **this checkout's path**, not fixed at 4173, so a
+ * `vite preview` left behind by another worktree in the same container is on another port entirely — it can
+ * neither be adopted by `reuseExistingServer` below (a suite green about a different branch's `dist/`) nor
+ * block this checkout's `--strictPort` as an orphan. `scripts/preview-port.mjs` holds the reasoning and is
+ * also what `vite.config.js` binds, so a hand-started `npm run preview` in this worktree lands on the same
+ * port this config dials — which is what keeps `reuseExistingServer`'s convenience working *within* a
+ * checkout while removing it *between* checkouts.
+ */
+const PORT = previewPort();
 
 export default defineConfig({
   testDir: './tests',
@@ -32,7 +43,9 @@ export default defineConfig({
   // per-test-file nested snapshot folders.
   snapshotPathTemplate: 'tests/visual/__baselines__/{arg}{ext}',
   use: {
-    baseURL: `http://localhost:${PORT}`,
+    // From the same module as `webServer.port` below, so the URL the tests dial can never drift from the
+    // port the server was told to bind (#170's ruling: "make `baseURL` follow").
+    baseURL: previewBaseUrl(),
     viewport: { width: 1280, height: 720 },
     deviceScaleFactor: 1,
     // Retries are off, so 'on-first-retry' would never capture anything; keep the trace from the one and
