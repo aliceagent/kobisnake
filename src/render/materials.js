@@ -53,15 +53,22 @@ export const COLORS = {
   laserRed: 0xff2a2a,
   /**
    * The power-up pedestals and their floating icons (`DESIGN-DECISIONS §1 row 20`, `§3` "Power-up sheet",
-   * `docs/reference/README.md` note 5). Both rows lock the *language* — "blue... pedestal inside a cyan
-   * ring" for SPEED, "ice-white pedestal... pale-blue ring" and a white snowflake for SLOW — but neither
-   * gives a hex for the ring or the ice-white shade the way the player catalogue and materials bible do for
-   * everything else here. SPEED's pedestal and bolt are not invented at all: they are `snakeColorHex('blue')`
-   * and `snakeColorHex('yellow')` outright (see {@link createPowerUpMaterials}). The two below are this
-   * ticket's own grey-box choice for the parts nothing else locks, flagged in the PR; Sprint 09/10 replaces
-   * the whole pedestal with real art and can pick differently.
+   * `docs/reference/README.md` note 5). SPEED's pedestal and bolt are not invented here at all: they are
+   * `snakeColorHex('blue')` and `snakeColorHex('yellow')` outright (see {@link createPowerUpMaterials}).
+   *
+   * **The SLOW pedestal is no longer a grey-box choice (KS-07-07, issue #105).** Sprint 06 shipped it as
+   * ice-white `#EAF4FB`, which row 20's language allowed at the time and which the design review then found
+   * unreadable: a white snowflake on a near-white box is discernible only enlarged, while SPEED's yellow
+   * bolt on blue reads at gameplay scale. Row 20 was rewritten to lock a hex — "white snowflake over a
+   * **mid ice-blue pedestal (`#4FA9DD`)** inside a pale-blue ring; the icon must contrast with its pedestal
+   * as strongly as the bolt does" — so this value is now quoted from the design document rather than chosen
+   * here, and `tests/unit/render/materials.test.js` asserts the contrast rule rather than leaving it to the
+   * eye. Row 20's whole point is that the two power-ups are distinguishable without relying on colour.
+   *
+   * The ring shades below remain this file's own grey-box choice for the parts nothing locks; Sprint 09/10
+   * replaces the whole pedestal with real art and may pick differently.
    */
-  powerUpSlowPedestal: 0xeaf4fb,
+  powerUpSlowPedestal: 0x4fa9dd,
   powerUpSlowIcon: 0xffffff,
   powerUpSpeedRing: 0x38e0f0,
   powerUpSlowRing: 0xbfe3fb,
@@ -186,8 +193,9 @@ export function cssColor(color) {
 
 /**
  * The power-up pedestals and their floating icons (`DESIGN-DECISIONS §1 row 20`, `§3` "Power-up sheet"):
- * SPEED reuses the player-blue pedestal and the player-yellow bolt outright; SLOW's ice-white pedestal and
- * white snowflake, and both rings, are `COLORS`'s own grey-box choice (see the comment there).
+ * SPEED reuses the player-blue pedestal and the player-yellow bolt outright; SLOW's mid ice-blue pedestal
+ * and white snowflake come from `DESIGN-DECISIONS §1 row 20` (KS-07-07), and both rings are `COLORS`'s own
+ * grey-box choice (see the comment there).
  *
  * @param {import('../core/settings.js').Settings} [settings]
  * @returns {{
