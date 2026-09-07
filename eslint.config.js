@@ -122,6 +122,33 @@ export default [
     },
   },
   {
+    // KI-12-01 (`docs/sprints/improvement-12-cpu-opponent.md` AC3): `src/game/bots` holds the play policies
+    // the CPU opponent and both test layers share. It has to run in three places — a plain Node unit test,
+    // the headless `tests/sim` harness, and *inside a browser page as source text*, because
+    // `tests/agent/driver.js` ships a policy in with `Function.prototype.toString()`. A renderer, a
+    // stylesheet or a test helper on the import graph breaks at least one of the three, and an import back
+    // into `tests/` would invert the dependency the ticket just spent its whole scope straightening out.
+    //
+    // This rule matches the specifier written in the file in front of it, which is the common case and the
+    // one worth catching at every save. It cannot follow the graph one hop further —
+    // `tests/unit/game/bots/boundaries.test.js` is the backstop that does.
+    files: ['src/game/bots/**/*.js'],
+    rules: {
+      'no-restricted-imports': [
+        'error',
+        {
+          patterns: [
+            {
+              group: ['**/render/**', '**/ui/**', '**/tests/**'],
+              message:
+                'src/game/bots must stay importable from Node, from the sim harness and as source text inside a browser page: no src/render, no src/ui, nothing from tests/ (KI-12-01 AC3).',
+            },
+          ],
+        },
+      ],
+    },
+  },
+  {
     files: ['*.config.js'],
     languageOptions: {
       ecmaVersion: 2022,
