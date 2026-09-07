@@ -91,7 +91,15 @@ if (isTuningEnabled) {
 // @ts-expect-error import.meta.env is Vite's own addition; not present in this project's jsconfig types.
 const isPlaytestEnabled = import.meta.env.DEV || window.location.search.includes('playtest=1');
 if (isPlaytestEnabled) {
-  const playtestPrompt = createPlaytestPrompt(uiRoot);
+  // KI-11-03 (declared outside its own `Files:` list; see the PR description): `getReplay` is what lets
+  // `offer()` snapshot the round that just ended at the exact moment `session.js` calls it, before the next
+  // `startRound()` can reset the logs `getReplay()` reads (tech-lead note 1 on issue #162) — the same
+  // `session.getReplay()` the tuning overlay above is already wired to. `getMatchSettings` is read fresh on
+  // every EXPORT click rather than captured once here.
+  const playtestPrompt = createPlaytestPrompt(uiRoot, {
+    getReplay: () => session.getReplay(),
+    getMatchSettings: () => session.getMatchSettings(),
+  });
   session.setPlaytestPrompt(playtestPrompt);
   // Test-only: `getAnswers()` is plain data (KI-11-02's own contract), so it survives `page.evaluate`'s
   // structured clone with nothing to adapt — extending the already-gated `__kobi` here, rather than touching
