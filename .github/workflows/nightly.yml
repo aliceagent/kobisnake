@@ -74,6 +74,68 @@ jobs:
             test-results/
           retention-days: 14
 
+  # KI-09-02 (`docs/sprints/improvement-09-determinism-across-browsers.md`). The determinism spec already
+  # runs under WebKit as part of the `e2e (webkit)` leg above — `tests/e2e` is the whole directory — so this
+  # job adds no new coverage. What it adds is a **name**.
+  #
+  # Improvement 09's exit criterion is "the browser reproduces the committed goldens tick for tick, and WebKit
+  # runs the same check nightly". Buried among ~65 specs, a determinism failure reports as `e2e (webkit)`
+  # failing, which is the same thing a HUD assertion or a rendering gap reports as, and someone has to open the
+  # HTML report to tell them apart. Determinism is not that kind of failure: if WebKit and Node ever disagree
+  # on the same seed, every replay a player saved is silently wrong, and that deserves to be legible from the
+  # run list rather than found. #23's own lesson is on this workflow already — "a leg that is red every night
+  # for fifteen sprints teaches everyone to ignore this workflow" — and a leg that is red for *unclear* reasons
+  # teaches the same thing faster.
+  #
+  # `fail-fast` does not apply across jobs, so this reports independently of `e2e (webkit)`: when that leg is
+  # red for an unrelated reason (it was on the 2026-09-07 nightly, run 34104157611), this one still answers the
+  # only question Improvement 09 asks.
+  #
+  # The cost is one extra runner and a second WebKit install; the spec itself is five tests and runs in about
+  # seven seconds on Chromium. It deliberately runs *only* `determinism.spec.js` (KI-09-02 AC2: no other spec
+  # is added to the WebKit leg).
+  determinism-webkit:
+    name: determinism (webkit)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+      - run: npm ci
+
+      - name: Read installed Playwright version
+        id: playwright-version
+        run: |
+          version=$(node -p "require('./package-lock.json').packages['node_modules/@playwright/test'].version")
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+
+      - uses: actions/cache@v4
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-webkit-${{ runner.os }}-${{ steps.playwright-version.outputs.version }}
+      - run: npx playwright install --with-deps webkit
+
+      # The comparison is driven through the simulation rather than the renderer (the spec builds its rounds
+      # through `__kobi` and a detached `RoundSimulation`, never through a rendered frame), so this needs no
+      # WebGL of its own. `LIBGL_ALWAYS_SOFTWARE` is set anyway for the same reason the leg above sets it: the
+      # page still boots a renderer on load, and these runners have no GPU.
+      - name: determinism
+        env:
+          PLAYWRIGHT_HTML_REPORT: playwright-report/determinism-webkit
+          LIBGL_ALWAYS_SOFTWARE: '1'
+        run: npx playwright test tests/e2e/determinism.spec.js --project=webkit
+
+      - uses: actions/upload-artifact@v4
+        if: failure()
+        with:
+          name: playwright-report-determinism-webkit
+          path: |
+            playwright-report/
+            test-results/
+          retention-days: 14
+
   perf:
     name: perf
     runs-on: ubuntu-latest

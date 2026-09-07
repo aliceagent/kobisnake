@@ -77,6 +77,13 @@ export default defineConfig({
       },
     },
     {
+      // Also the engine Improvement 09's determinism check runs on (KI-09-02). `nightly.yml` gives that one
+      // spec its own `determinism (webkit)` job on top of the whole-directory `e2e (webkit)` leg, because
+      // "WebKit and Node disagree on the same seed" is a different order of failure from a rendering gap and
+      // has to be readable without opening a report. The spec drives its rounds through `__kobi` and a
+      // detached `RoundSimulation` rather than through a rendered frame, so it does not depend on this
+      // engine's WebGL — which is what lets it be trusted here while #23's Firefox context problem is still
+      // open.
       name: 'webkit',
       use: { ...devices['Desktop Safari'] },
     },
