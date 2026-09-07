@@ -1,6 +1,7 @@
 // @ts-check
 import * as THREE from 'three';
 import { SETTINGS } from '../core/settings.js';
+import { prefersReducedMotion } from './reducedMotion.js';
 
 /**
  * The gameplay camera, which the design locked and this file only solves for (`DESIGN-DECISIONS §1 row 24`):
@@ -12,7 +13,9 @@ import { SETTINGS } from '../core/settings.js';
  *
  * The two effects the design allows on this camera also live here: a small shake on a crash and a ≤ 2 % zoom
  * pulse on the laser warning. Neither rotates the camera — row 24 says "no rotation" — and both are no-ops
- * under `?reducedFx=1` so screenshot baselines compare identical frames (`ARCHITECTURE §11`).
+ * under `?reducedFx=1` so screenshot baselines compare identical frames (`ARCHITECTURE §11`), and,
+ * since KI-15-03, under an OS/browser `prefers-reduced-motion: reduce` preference too
+ * (`reducedMotion.js`).
  */
 
 /** @typedef {import('../core/settings.js').Settings} Settings */
@@ -79,19 +82,6 @@ export function solveCameraDistance({ halfWidth, halfDepth, fovDegrees, pitchDeg
 }
 
 /**
- * True when the page asked for reduced effects (`ARCHITECTURE §11`). Reads the URL where there is one and
- * says "no" everywhere else, so importing this module in Node never throws.
- *
- * @returns {boolean}
- */
-function reducedFxFromLocation() {
-  const search = /** @type {{search?: string} | undefined} */ (
-    /** @type {any} */ (globalThis).location
-  )?.search;
-  return typeof search === 'string' && new URLSearchParams(search).get('reducedFx') === '1';
-}
-
-/**
  * The gameplay camera. A `THREE.PerspectiveCamera` — the ticket's return type, and what
  * `renderer.render(scene, camera)` wants — with the four things the game needs to drive it: re-frame on
  * resize, advance the effects each frame, shake, and pulse.
@@ -102,7 +92,8 @@ export class GameplayCamera extends THREE.PerspectiveCamera {
    * @param {Settings} [options.settings] - defaults to the shipping `SETTINGS`
    * @param {GridSettings} [options.grid] - defaults to `settings.grid`
    * @param {number} [options.aspect] - viewport width / height; defaults to 16:9
-   * @param {boolean} [options.reducedFx] - defaults to reading `?reducedFx=1` from the URL
+   * @param {boolean} [options.reducedFx] - defaults to `prefersReducedMotion()`: `?reducedFx=1` in the URL,
+   *   or (KI-15-03) an OS/browser `prefers-reduced-motion: reduce` preference
    */
   constructor({ settings = SETTINGS, grid, aspect = 16 / 9, reducedFx } = {}) {
     super(settings.camera.fov, aspect, NEAR_PLANE, FAR_PLANE);
@@ -113,8 +104,8 @@ export class GameplayCamera extends THREE.PerspectiveCamera {
     this.settings = settings;
     /** @type {GridSettings} */
     this.grid = resolvedGrid;
-    /** Effects are off entirely under `?reducedFx=1` (`ARCHITECTURE §11`). @type {boolean} */
-    this.reducedFx = reducedFx ?? reducedFxFromLocation();
+    /** Effects are off entirely under reduced motion (`ARCHITECTURE §11`; KI-15-03). @type {boolean} */
+    this.reducedFx = reducedFx ?? prefersReducedMotion();
 
     /**
      * The FOV the framing was solved for. `zoomPulse` moves `this.fov` away from it and back, so the base has

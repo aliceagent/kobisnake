@@ -135,6 +135,36 @@ describe('createGameplayScene', () => {
     expect(composition.camera.position.distanceTo(composition.camera.basePosition)).toBe(0);
   });
 
+  it('KI-15-03 AC1: with the media query emulated, a crash produces no camera displacement — asserted numerically through the renderer', () => {
+    const globals = /** @type {any} */ (globalThis);
+    const savedMatchMedia = globals.matchMedia;
+    const savedLocation = globals.location;
+    try {
+      // No `?reducedFx=1` here: this is the media query's own path (`src/render/reducedMotion.js`), a real
+      // browser's `prefers-reduced-motion: reduce` emulated the same way `page.emulateMedia` does.
+      globals.location = { search: '?test=1' };
+      globals.matchMedia = (query) => ({ matches: query === '(prefers-reduced-motion: reduce)' });
+
+      // `reducedFx` deliberately not passed, so this exercises the same default `createGameplayCamera` itself
+      // uses in production (`main.js` never passes `reducedFx` either).
+      const composition = createGameplayScene();
+      const sim = new RoundSimulation({ seed: 1, players: [{ id: 'p1' }, { id: 'p2' }] });
+
+      // DESIGN-DECISIONS §3's own crash-shake numbers (0.15 units, 0.3 s) — `session.js` never calls
+      // `camera.shake()` for a crash today (see this ticket's PR notes), so this drives the renderer's own
+      // reaction directly, proving the gate holds regardless of whether or when a crash ever wires it up.
+      composition.camera.shake(0.15, 0.3);
+      composition.update(sim.getState(), 0.05);
+
+      expect(composition.camera.position.distanceTo(composition.camera.basePosition)).toBe(0);
+    } finally {
+      if (savedMatchMedia === undefined) delete globals.matchMedia;
+      else globals.matchMedia = savedMatchMedia;
+      if (savedLocation === undefined) delete globals.location;
+      else globals.location = savedLocation;
+    }
+  });
+
   it('adds every view to the scene, and dispose() empties it', () => {
     const composition = createGameplayScene({ reducedFx: true });
     const groups = composition.scene.children.filter((child) => child instanceof THREE.Group);

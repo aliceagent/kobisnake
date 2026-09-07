@@ -4,6 +4,7 @@ import { RoundedBoxGeometry } from 'three/examples/jsm/geometries/RoundedBoxGeom
 import { SETTINGS } from '../core/settings.js';
 import { createEffectTintColors, createEyeMaterials, createSnakeMaterial } from './materials.js';
 import { setWorldFromGrid, yawFromGridDirection } from './arenaView.js';
+import { prefersReducedMotion } from './reducedMotion.js';
 
 /**
  * One snake, drawn from a `RoundSimulation` snapshot.
@@ -36,7 +37,7 @@ import { setWorldFromGrid, yawFromGridDirection } from './arenaView.js';
  * tint while affected" (the ticket's own words) asks for anyway. `updateEffectTint` reads the snapshot's own
  * `effects` (the same field the HUD tag already reads, `core/snake.js`'s own contract) and sets the shared
  * material's `emissive`/`emissiveIntensity` from it: SPEED pulses (a sine wave in time, frozen at its peak
- * under `?reducedFx=1` the same way `pickupView.js` freezes the pedestal's bob/spin — a screenshot of a
+ * under reduced motion the same way `pickupView.js` freezes the pedestal's bob/spin — a screenshot of a
  * moving pulse is a screenshot of whatever phase it happened to land on, never twice the same), SLOW is a
  * flat, unanimated tint (the ticket asks for a "tint", not a pulse, on the victim). A snake can hold one
  * `SPEED` entry and one `SLOW` entry at once (`core/snake.js`'s own doc comment on `effects`); SPEED wins
@@ -132,21 +133,6 @@ const SPEED_PULSE_PEAK_INTENSITY = 2;
 const SLOW_TINT_INTENSITY = 0.55;
 
 /**
- * True when the page asked for reduced effects (`ARCHITECTURE §11`). Mirrors `camera.js`'s own
- * `reducedFxFromLocation` and `pickupView.js`'s copy of it rather than importing either — the function is
- * module-private in `camera.js`, and duplicating four lines a third time is cheaper than widening that
- * module's exports for a call site neither of those two tickets touched.
- *
- * @returns {boolean}
- */
-function reducedFxFromLocation() {
-  const search = /** @type {{search?: string} | undefined} */ (
-    /** @type {any} */ (globalThis).location
-  )?.search;
-  return typeof search === 'string' && new URLSearchParams(search).get('reducedFx') === '1';
-}
-
-/**
  * Signed shortest angle from `from` to `to`, in radians — i.e. the turn that gets you there the short way
  * round rather than the long way.
  *
@@ -167,8 +153,8 @@ export class SnakeView {
    * @param {string} [options.colorName] - a key of `SETTINGS.colors`; defaults to red
    * @param {Settings} [options.settings]
    * @param {GridSize} [options.grid]
-   * @param {boolean} [options.reducedFx] - freezes the SPEED tint's pulse at its peak; defaults to reading
-   *   `?reducedFx=1` from the URL, same as `camera.js` and `pickupView.js`
+   * @param {boolean} [options.reducedFx] - freezes the SPEED tint's pulse at its peak; defaults to
+   *   `prefersReducedMotion()`, same as `camera.js` and `pickupView.js`
    */
   constructor({ colorName = 'red', settings = SETTINGS, grid, reducedFx } = {}) {
     /** @type {Settings} */
@@ -178,7 +164,7 @@ export class SnakeView {
     /** @type {string} */
     this.colorName = colorName;
     /** @type {boolean} */
-    this.reducedFx = reducedFx ?? reducedFxFromLocation();
+    this.reducedFx = reducedFx ?? prefersReducedMotion();
     /** Seconds of tint-pulse time accumulated so far; frozen at 0 under `reducedFx`. @type {number} */
     this.elapsed = 0;
     /** @type {{ SPEED: string, SLOW: string }} */

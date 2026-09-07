@@ -521,4 +521,78 @@ describe('KS-03-06 createTestHooks', () => {
       expect(renderer.getDrawCalls).toHaveBeenCalled();
     });
   });
+
+  /**
+   * A minimal stand-in for `GameplayCamera` — only the members `TestHooksRenderer.camera` (KI-15-03) reads:
+   * `reducedFx`, `shake()` and the two `{x,y,z}`-ish points `getCameraDisplacement`'s distance is measured
+   * between. `displacement` is mutable so `shake` can move it and `update` can pull it back.
+   *
+   * @param {{reducedFx?: boolean, displacement?: number}} [options]
+   */
+  function createFakeCamera({ reducedFx = false, displacement = 0 } = {}) {
+    const basePosition = { x: 0, y: 0, z: 0 };
+    let currentDisplacement = displacement;
+    return {
+      reducedFx,
+      shake: vi.fn((/** @type {number} */ amplitude) => {
+        // No real oscillation to model — a fake stand-in only needs "reducedFx suppresses it", the same
+        // contract the real `GameplayCamera.shake` has (`camera.js`'s own doc comment).
+        currentDisplacement = reducedFx ? 0 : amplitude;
+      }),
+      get position() {
+        return {
+          x: currentDisplacement,
+          y: 0,
+          z: 0,
+          distanceTo: (/** @type {{x: number, y: number, z: number}} */ other) =>
+            Math.hypot(currentDisplacement - other.x, 0 - other.y, 0 - other.z),
+        };
+      },
+      basePosition,
+    };
+  }
+
+  describe('KI-15-03: isReducedMotion', () => {
+    it("reads the live gameplay camera's own reducedFx", () => {
+      const renderer = createFakeRenderer();
+      renderer.camera = createFakeCamera({ reducedFx: true });
+      const { hooks } = buildHooks({ renderer });
+
+      expect(hooks.isReducedMotion()).toBe(true);
+    });
+
+    it('answers false when there is no camera to ask (a minimal test renderer)', () => {
+      const { hooks } = buildHooks();
+      expect(hooks.isReducedMotion()).toBe(false);
+    });
+  });
+
+  describe('KI-15-03: shakeCameraForTest', () => {
+    it('KI-15-03 AC1: reports zero displacement when the camera is under reduced motion', () => {
+      const renderer = createFakeRenderer();
+      renderer.camera = createFakeCamera({ reducedFx: true });
+      const { hooks, session } = buildHooks({ renderer });
+
+      const displacement = hooks.shakeCameraForTest(0.15, 0.3);
+
+      expect(displacement).toBe(0);
+      expect(renderer.camera.shake).toHaveBeenCalledWith(0.15, 0.3);
+      expect(session.renderFrame).toHaveBeenCalled();
+    });
+
+    it('reports nonzero displacement when the camera is not reduced (the case AC1 rules out)', () => {
+      const renderer = createFakeRenderer();
+      renderer.camera = createFakeCamera({ reducedFx: false });
+      const { hooks } = buildHooks({ renderer });
+
+      expect(hooks.shakeCameraForTest(0.15, 0.3)).toBeGreaterThan(0);
+    });
+
+    it('answers 0 when there is no camera to shake (a minimal test renderer)', () => {
+      const { hooks, session } = buildHooks();
+
+      expect(hooks.shakeCameraForTest(0.15, 0.3)).toBe(0);
+      expect(session.renderFrame).not.toHaveBeenCalled();
+    });
+  });
 });

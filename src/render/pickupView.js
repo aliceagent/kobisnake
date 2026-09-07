@@ -3,6 +3,7 @@ import * as THREE from 'three';
 import { SETTINGS } from '../core/settings.js';
 import { createAppleMaterials, createPowerUpMaterials } from './materials.js';
 import { setWorldFromGrid } from './arenaView.js';
+import { prefersReducedMotion } from './reducedMotion.js';
 
 /**
  * The things lying on the arena waiting to be picked up: apples (Sprint 03) and, since KS-06-02, power-up
@@ -20,8 +21,8 @@ import { setWorldFromGrid } from './arenaView.js';
  * CDN). `createIconCanvas` below works from a real `document.createElement('canvas')` in a browser and from
  * a tiny no-op stand-in under Vitest's `environment: 'node'` (`ARCHITECTURE §2`'s render coverage floor —
  * every view here has to stay testable in plain Node, and Node has no DOM at all), the same way
- * `camera.js`'s `reducedFxFromLocation` reads a browser-only global and answers something sane where there
- * is none.
+ * `reducedMotion.js`'s `prefersReducedMotion` reads browser-only globals and answers something sane where
+ * there are none.
  */
 
 /** @typedef {import('../core/settings.js').Settings} Settings */
@@ -105,21 +106,6 @@ const SPIN_DEGREES_PER_SECOND = 30;
 
 /** Canvas resolution the icon textures are painted at. Small: these are flat, few-colour glyphs. */
 const ICON_CANVAS_SIZE = 128;
-
-/**
- * True when the page asked for reduced effects (`ARCHITECTURE §11`). Mirrors `camera.js`'s own
- * `reducedFxFromLocation` rather than importing it — that function is module-private there, and duplicating
- * four lines is cheaper than widening `camera.js`'s exports for a `renderer.js` call site this ticket may not
- * touch beyond the one line the tech lead already authorised (see `renderer.js`'s own comment on that line).
- *
- * @returns {boolean}
- */
-function reducedFxFromLocation() {
-  const search = /** @type {{search?: string} | undefined} */ (
-    /** @type {any} */ (globalThis).location
-  )?.search;
-  return typeof search === 'string' && new URLSearchParams(search).get('reducedFx') === '1';
-}
 
 /**
  * A `document.createElement('canvas')` where there is a `document`, and a minimal stand-in where there is
@@ -256,18 +242,18 @@ export class PickupView {
    * @param {Settings} [options.settings]
    * @param {GridSize} [options.grid]
    * @param {number} [options.maxApples] - buffer size; defaults to `settings.foodCount`
-   * @param {boolean} [options.reducedFx] - freezes the pedestal's bob and spin; defaults to reading
-   *   `?reducedFx=1` from the URL, same as `camera.js` and `laserView.js`
+   * @param {boolean} [options.reducedFx] - freezes the pedestal's bob and spin; defaults to
+   *   `prefersReducedMotion()`, same as `camera.js`, `snakeView.js` and `laserView.js`
    */
   constructor({ settings = SETTINGS, grid, maxApples, reducedFx } = {}) {
     /** @type {Settings} */
     this.settings = settings;
     /** @type {GridSize} */
     this.grid = grid ?? settings.grid;
-    /** Bob and spin are no-ops under `?reducedFx=1`, same as the camera's own effects (`ARCHITECTURE §11`) —
-     * a frozen frame (`__kobi.pause()`) is otherwise still one `dt` away from a slightly different bob/spin
-     * phase, which is exactly what a screenshot baseline cannot tolerate. @type {boolean} */
-    this.reducedFx = reducedFx ?? reducedFxFromLocation();
+    /** Bob and spin are no-ops under reduced motion, same as the camera's own effects (`ARCHITECTURE §11`;
+     * KI-15-03) — a frozen frame (`__kobi.pause()`) is otherwise still one `dt` away from a slightly
+     * different bob/spin phase, which is exactly what a screenshot baseline cannot tolerate. @type {boolean} */
+    this.reducedFx = reducedFx ?? prefersReducedMotion();
     /** Seconds of animation time accumulated so far; frozen at 0 under `reducedFx`. @type {number} */
     this.elapsed = 0;
 
