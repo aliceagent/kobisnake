@@ -74,6 +74,64 @@ export const COLORS = {
   powerUpSlowRing: 0xbfe3fb,
 };
 
+/**
+ * WCAG relative luminance of an sRGB colour: `0.2126R + 0.7152G + 0.0722B`, each channel linearised
+ * individually before the weights are applied. KS-07-07 (issue #105) introduced this to judge the SLOW
+ * pedestal's contrast against its icon, and KI-02-01 (issue #133) lifts it here so every pair the player has
+ * to tell apart — not just that one — is judged by the same number.
+ *
+ * The linearisation is *why* this exists rather than a naive `(R+G+B)/3` channel average: sRGB channel
+ * bytes are gamma-encoded, not linear brightness, and a naive average of the gamma-encoded bytes tracks how
+ * far apart two colours' bytes are, not how far apart they look. That is precisely the mistake KS-07-07 was
+ * correcting — Sprint 06's ice-white pedestal (`#EAF4FB`) under a white snowflake (`#FFFFFF`) has channel
+ * bytes only about 15 apart out of 255 either way you average them, so a naive average calls it roughly as
+ * readable as it is unreadable. WCAG's gamma-aware weighting reports what the eye actually reports: the two
+ * are nearly indistinguishable (`materials.test.js` asserts the naive-average failure mode directly).
+ *
+ * @param {number | string} color - a `COLORS` entry (`0xRRGGBB`) or a `SETTINGS.colors` entry (`'#rrggbb'`)
+ * @returns {number} 0 (black) to 1 (white)
+ */
+export function relativeLuminance(color) {
+  const hex = typeof color === 'string' ? Number.parseInt(color.replace('#', ''), 16) : color;
+  const channels = [(hex >> 16) & 0xff, (hex >> 8) & 0xff, hex & 0xff].map((byte) => {
+    const c = byte / 255;
+    return c <= 0.04045 ? c / 12.92 : ((c + 0.055) / 1.055) ** 2.4;
+  });
+  return 0.2126 * channels[0] + 0.7152 * channels[1] + 0.0722 * channels[2];
+}
+
+/**
+ * How far apart two colours' WCAG relative luminances are — the one number every contrast rule in this
+ * codebase is judged by (KS-07-07 introduced the comparison, KI-02-01 names it). Accepts either representation
+ * `COLORS` or `SETTINGS.colors` uses, so a pedestal read back through {@link createPowerUpMaterials} and a
+ * player colour read back through {@link snakeColorHex} can be compared without either side converting first.
+ *
+ * @param {number | string} a - `0xRRGGBB` or `'#rrggbb'`
+ * @param {number | string} b - `0xRRGGBB` or `'#rrggbb'`
+ * @returns {number} 0 (identical luminance) to 1 (black against white)
+ */
+export function luminanceSeparation(a, b) {
+  return Math.abs(relativeLuminance(a) - relativeLuminance(b));
+}
+
+/**
+ * Minimum WCAG relative-luminance separation required between any two colours a player has to tell apart at
+ * a glance (KI-02-01, issue #133, tracked on #121): apple against the floor, apple against every player
+ * colour, the two shipping players against each other, a power-up pedestal against the floor, and an icon
+ * against its own pedestal. Measured against the real arena palette rather than picked in the abstract:
+ *  - both pairs KS-07-07 already shipped clear it with room to spare (SPEED's bolt against its pedestal
+ *    separates by 0.4094, SLOW's snowflake against its pedestal by 0.6474);
+ *  - the one pedestal-vs-floor pairing that already reads fine at gameplay scale — SPEED's blue pedestal
+ *    against the 70 % floor tile — clears it, but only just, at 0.1722;
+ *  - it is the *largest* round value the shipping arena palette supports for that reason: 0.4 (either
+ *    KS-07-07 margin) fails every pedestal-vs-floor pair there is, including the one line above that already
+ *    reads fine, so a bound taken from KS-07-07's own margin would be unusable everywhere else.
+ * Pairs the current palette cannot clear are not silently exempted from this constant: they are recorded as
+ * waivers under a live ratchet in `materials.test.js`, at their measured separation, never hidden by loosening
+ * this number to fit them.
+ */
+export const MIN_LUMINANCE_SEPARATION = 0.15;
+
 /** Plastic look shared by every brick in the game: matte, not metal (DESIGN-DECISIONS §3). */
 const PLASTIC_ROUGHNESS = 0.35;
 const PLASTIC_METALNESS = 0.0;
