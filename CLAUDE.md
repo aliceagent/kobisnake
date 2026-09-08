@@ -20,7 +20,7 @@ Node 20 (`.nvmrc`). Run `npm install` once per worktree — `node_modules` is no
 | `npm run build` | Vite build → `dist/` |
 | `npm run preview` | Serves the built `dist/` |
 | `npm run lint` | ESLint (flat config) |
-| `npm run format` | Prettier `--write .` — always safe; `.prettierignore` excludes `docs/**` and `*.md` |
+| `npm run format` | Prettier `--write .` — **scope it to your own files** until #194 lands: `main` has 27 files Prettier would rewrite, so a bare `--write .` sweeps them into your diff. Use `npx prettier --write <your files>`. `.prettierignore` excludes `docs/**` and `*.md` |
 | `npm run typecheck` | `tsc --noEmit -p jsconfig.json` |
 | `npm run test:unit` | Vitest — every test (`tests/unit/**`, `tests/sim/**`, `tests/agent/**/*.test.js`, `tests/perf/**/*.test.js`), **coverage off** |
 | `npm run test:coverage` | Vitest — the per-file coverage thresholds over `tests/unit` + `tests/agent`; sets `COVERAGE_STRICT` itself |
@@ -54,16 +54,26 @@ There is no `test:sim` script: simulation tests live in `tests/sim/` but run und
   this — the contention #86 is about is one GPU-less browser stack, which every worktree shares.
 - **`tests/e2e/inputLatency.spec.js` gates on simulated ticks, not milliseconds** (#175, #151). Its
   `KS-07-06 WALL CLOCK` lines are information; only `stepWaitTicks` can fail the job.
-- **A red CI `browser` job whose `e2e` and `visual` steps both say `success` is not a contradiction.** Both
-  carry `continue-on-error: true` in `ci.yml`, and GitHub reports a step's *conclusion* after that override
-  while only its *outcome* records the truth — and the API exposes the first, not the second. Two things tell
-  you which suite actually failed: the **`e2e failed` / `visual failed` steps** (KI-19-01), which are
-  `skipped` when their suite passed and `failure` when it did not and so name the suite in the jobs API; and
-  the **check-run annotations** (KI-03-05's `--reporter=github`), which name the failing test and its seed.
-  Prefer the annotations when they exist — a suite that dies during `webServer` start-up produces none, and
-  then the step list is all there is. Job logs and artifacts are unreadable from an agent session and
-  re-running a job is `403` (#172), so to go further, reproduce locally: `npm run test:e2e`, then
-  `npm run test:visual`, one after the other, never together.
+- **What you can and cannot read about a CI failure from an agent session.** Retested 2026-09-08, because
+  reports disagree and the difference matters:
+  - **Check-run annotations: readable.** `GET /repos/:o/:r/check-runs/:id/annotations`. Playwright's
+    `github` reporter (KI-03-05) writes the failing test, file, line and message into them, so a red
+    `browser` job can usually be attributed without leaving the terminal. This is the first thing to try.
+  - **Job logs: not readable.** `GET /actions/jobs/:id/logs` answers **302** to
+    `productionresultssaN.blob.core.windows.net`, and this container's egress proxy refuses that CONNECT.
+    The 302 looks like success if you do not follow it, which is probably why it gets reported as working.
+  - **Re-running a job: refused.** Both `POST /actions/jobs/:id/rerun` and
+    `POST /actions/runs/:id/rerun-failed-jobs` return **403 "Resource not accessible by integration"**.
+    To re-run, push a commit.
+  - A session with a different egress policy — the design lead's, for one — *can* read job logs, so "read
+    the log" in a review comment may be advice from somewhere this does not apply. Ask for the quote rather
+    than assuming the endpoint changed.
+- **Which suite failed is in the step list, not just the annotations.** `ci.yml`'s two suite steps carry
+  `continue-on-error: true`, so both report `conclusion: success` whatever happened and the jobs API exposes
+  only that. KI-19-01 added a named gate step per suite: `e2e failed` and `visual failed` are `skipped` when
+  their suite passed and `failure` when it did not, so `GET /actions/runs/:id/jobs` names the suite on its
+  own. Prefer the annotations for *which test*; use the steps when a suite died before Playwright could
+  report (a `webServer` that never came up emits no annotations at all).
 
 ## The never list
 - Never load anything from a CDN or external URL. three.js comes from npm and is bundled. The built site makes

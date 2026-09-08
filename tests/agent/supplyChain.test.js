@@ -71,13 +71,21 @@ describe('KI-19-01 integrity gates', () => {
     expect(ciYml.match(/- run: npm ci/g)?.length ?? 0).toBeGreaterThanOrEqual(6);
   });
 
-  it('KI-19-01 AC1: the lockfile check regenerates the lockfile and fails on any diff', () => {
+  it('KI-19-01 AC1: `npm ci` is the lockfile gate, and says what to do when it refuses', () => {
     const ciYml = readFileSync(join(WORKFLOW_DIR, 'ci.yml'), 'utf8');
-    expect(ciYml).toContain('npm install --package-lock-only --ignore-scripts');
-    expect(ciYml).toContain('git diff --exit-code package-lock.json');
-    // Every gate fails with a message that says what to do (the sprint file's Risks section).
-    expect(ciYml).toContain('npm install --package-lock-only');
+    // KI-19-06: this used to assert a second step that regenerated the lockfile and failed on any diff.
+    // That step asked whether a fresh resolve on the runner would be byte-identical, which is not the same
+    // question as whether the lockfile satisfies package.json, and it failed 7 of 8 Dependabot PRs on
+    // `libc` metadata that one npm writes and another prunes. `npm ci` asks the right question and refuses
+    // with EUSAGE when they genuinely disagree.
     expect(ciYml).toContain('Lockfile out of date');
+    expect(ciYml).toContain('npm install --package-lock-only');
+    // And the regenerate-and-diff check must not come back: it is the specific thing that was wrong.
+    expect(
+      ciYml,
+      'the byte-identical lockfile check was removed in KI-19-06 because it false-positives across npm ' +
+        'versions and platforms; `npm ci` is the gate',
+    ).not.toContain('git diff --exit-code package-lock.json');
   });
 
   it('KI-19-01 AC2: the blocking audit covers what ships, at high and above', () => {
