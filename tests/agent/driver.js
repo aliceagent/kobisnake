@@ -149,6 +149,7 @@ function runMatchInPage(args) {
   const {
     bestOf,
     powerUpsEnabled,
+    settingsOverrides,
     frameSeconds,
     renderEveryNFrames,
     maxFrames,
@@ -164,6 +165,10 @@ function runMatchInPage(args) {
   const compile = (src) => (src === null ? null : new Function('return (' + src + ')')());
   const policies = [compile(policySources[0]), compile(policySources[1])];
   const checkInvariants = compile(invariantsSource);
+
+  // Settings first, match second: `session.js` reads `settings` when it constructs each round, so a tree
+  // applied here reaches every round of this match including the first (KI-04-01).
+  if (settingsOverrides !== null) kobi.setSettingsOverrides(settingsOverrides);
 
   const overrides = { bestOf };
   if (powerUpsEnabled !== null) overrides.powerUps = powerUpsEnabled;
@@ -304,6 +309,12 @@ function runMatchInPage(args) {
  * @param {(view: PolicyView) => PolicyMove} options.policy2
  * @param {number} [options.bestOf]
  * @param {boolean | null} [options.powerUpsEnabled] - `null` leaves the match-setup default alone.
+ * @param {object | null} [options.settingsOverrides] - KI-04-01: a `withOverrides()`-shaped tree applied
+ *   through `__kobi.setSettingsOverrides` **before** the match starts, so it reaches every round including
+ *   the first. `null` (the default) does not call it at all, which is why every caller written before this
+ *   option existed measures exactly what it always did — the property `docs/qa/playtests/round-pacing.md`'s
+ *   reconciliation against `docs/qa/playtests/agent-run.md` depends on. `src/core/settings.js` is never
+ *   edited to sweep a value; this is the supported route.
  * @param {((input: object) => {rule: string, detail: string}[]) | null} [options.invariants]
  * @param {object} [options.invariantConfig] - passed through to `invariants` untouched; this is how a value
  *   derived on the Node side (KI-03-03's HUD tolerance) reaches a function that may not import it.
@@ -318,6 +329,7 @@ export async function playMatch(page, options) {
     policy2,
     bestOf = 3,
     powerUpsEnabled = null,
+    settingsOverrides = null,
     invariants = null,
     invariantConfig = {},
     maxFrames = DEFAULT_MAX_FRAMES,
@@ -341,6 +353,7 @@ export async function playMatch(page, options) {
     const raw = await page.evaluate(runMatchInPage, {
       bestOf,
       powerUpsEnabled,
+      settingsOverrides,
       frameSeconds: FRAME_SECONDS,
       renderEveryNFrames,
       maxFrames,

@@ -45,6 +45,7 @@ function createFakeSession() {
     setSeed: vi.fn(),
     startMatch: vi.fn(),
     setCpuPlayer: vi.fn(),
+    setSettingsOverrides: vi.fn(),
     pause: vi.fn(),
     resume: vi.fn(),
     getSeeds: vi.fn(() => ({ matchSeed: 0, roundIndex: 0, roundSeeds: [] })),
@@ -197,6 +198,26 @@ describe('KS-03-06 createTestHooks', () => {
       const { hooks, session } = buildHooks();
       hooks.setCpuPlayer(1, null);
       expect(session.setCpuPlayer).toHaveBeenCalledWith(1, null);
+    });
+  });
+
+  describe('setSettingsOverrides', () => {
+    it('KI-04-01: setSettingsOverrides forwards the override tree straight through, unreshaped', () => {
+      // Verbatim, because `session.js` is where `withOverrides()` is actually called and the only honest
+      // job of this hook is to carry the tree there. A hook that defaulted, validated or normalised
+      // anything would make the swept cells of `docs/qa/playtests/round-pacing.md` measure something other
+      // than the values they are labelled with.
+      const { hooks, session } = buildHooks();
+      const overrides = { laserStartTime: 25, roundDuration: 60 };
+      hooks.setSettingsOverrides(overrides);
+      expect(session.setSettingsOverrides).toHaveBeenCalledWith(overrides);
+      expect(session.setSettingsOverrides.mock.calls[0][0]).toBe(overrides);
+    });
+
+    it('KI-04-01: setSettingsOverrides(null) forwards null (reverts to the session’s own settings)', () => {
+      const { hooks, session } = buildHooks();
+      hooks.setSettingsOverrides(null);
+      expect(session.setSettingsOverrides).toHaveBeenCalledWith(null);
     });
   });
 

@@ -38,6 +38,9 @@ import { STATES } from './gameStateMachine.js';
  *   declared deviation from this ticket's own `Files:` list, per its PR description) because `tests/e2e/cpu
  *   .spec.js` is the only way to prove the CPU plays through the *real* keyboard-fed `handleDirection` inside
  *   a real browser, and every other `session.js` method this file exposes reaches the page the same way.
+ * @property {(overrides: object | null) => void} setSettingsOverrides - a straight passthrough to
+ *   `session.js`'s own method, which is the only route from a `withOverrides()` tree to the settings every
+ *   round is built from. See the `KobiTestHooks` typedef below for why KI-04-01 needed it exposed.
  * @property {() => void} pause
  * @property {() => void} resume
  * @property {() => {matchSeed: number, roundIndex: number, roundSeeds: number[]}} getSeeds
@@ -113,6 +116,20 @@ import { STATES } from './gameStateMachine.js';
  * @property {(playerNumber: 1 | 2, policy: import('./bots/policy.js').Policy | null) => void} setCpuPlayer -
  *   KI-12-02: registers (or clears, with `null`) the CPU policy for one player — see
  *   `TestHooksSession.setCpuPlayer`'s own doc comment for why this file carries it at all.
+ * @property {(overrides: object | null) => void} setSettingsOverrides - KI-04-01 (a declared deviation from
+ *   that ticket's own `Files:` list, per its PR description): applies a `withOverrides()`-shaped tree to the
+ *   settings every subsequent round is constructed from, or reverts to the session's own with `null`.
+ *
+ *   The `?tuning=1` overlay (`src/ui/screens/tuning.js`) already drives `session.setSettingsOverrides`, but
+ *   only through its own `TUNABLES` list, and `roundDuration` is not on it — so a sweep of `roundDuration`
+ *   had no route into the page at all, and I04's ticket forbids reaching one by editing `src/core/settings.js`.
+ *   This exposes the seam the overlay uses rather than adding a second one: the value still goes through
+ *   `withOverrides()` in `session.js` and nothing here validates, reshapes or defaults it.
+ *
+ *   **Call it before `startMatch`.** `session.js` reads `settings` when it constructs each round
+ *   (`startRound`), so a tree set beforehand applies to every round of the match and one set mid-match
+ *   applies from the next round on. Inert until called: no existing caller passes one, which is what keeps
+ *   `agent-run.md`'s figures and this hook's own match loop comparable.
  * @property {() => void} pause - opens the real PAUSE state, exactly as Esc does.
  * @property {() => void} resume - leaves it, READY? beat included.
  * @property {() => {matchSeed: number, roundIndex: number, roundSeeds: number[]}} getSeeds - the match seed
@@ -332,6 +349,9 @@ export function createTestHooks({ session, renderer, eventTarget, KeyboardEventC
     },
     setCpuPlayer(playerNumber, policy) {
       session.setCpuPlayer(playerNumber, policy);
+    },
+    setSettingsOverrides(overrides) {
+      session.setSettingsOverrides(overrides);
     },
     pause() {
       session.pause();
