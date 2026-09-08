@@ -77,14 +77,16 @@ test.describe('KI-10-03 HOW TO PLAY panel', () => {
 
     const before = await readMachine();
     expect(before.state).toBe('MAIN_MENU');
-    // The six rows `TRANSITIONS[MAIN_MENU]` already had, in table order — HOW TO PLAY must not add a
-    // seventh, since it dispatches no `GAME_EVENTS` at all (`mainMenu.js`'s `isHowToPlay` row).
+    // The rows `TRANSITIONS[MAIN_MENU]` already had, in table order (KI-05-03 added `SELECT_REPLAY`) — HOW
+    // TO PLAY must not add one of its own, since it dispatches no `GAME_EVENTS` at all (`mainMenu.js`'s
+    // `isHowToPlay` row).
     expect(before.legalEvents).toEqual([
       'SELECT_2P',
       'SELECT_PRACTICE',
       'SELECT_TUTORIAL',
       'SELECT_SHOP',
       'SELECT_SETTINGS',
+      'SELECT_REPLAY',
       'BACK',
     ]);
 

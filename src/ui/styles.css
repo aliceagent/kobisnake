@@ -691,6 +691,101 @@ body {
   letter-spacing: 0.04em;
 }
 
+/* KI-05-03: the REPLAY screen (`src/ui/screens/replay.js`). Grey-box like every other screen in this file —
+   Sprint 11's job to restyle — built on `.menu-screen`/`.menu-panel`/`.menu-item` like the rest, widened for
+   the paste box the other screens have no equivalent of. */
+.replay-panel {
+  min-width: 26rem;
+  max-width: 32rem;
+  align-items: stretch;
+  text-align: left;
+}
+
+.replay-load,
+.replay-player {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.replay-load[hidden],
+.replay-player[hidden] {
+  display: none;
+}
+
+.replay-paste-label {
+  font-size: 0.85rem;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  opacity: 0.85;
+}
+
+/* Mirrors `.tuning-replay-json`'s monospace/dark treatment, but writable (that one is `readOnly`) — this is
+   the app's first player-editable text field, pasted into rather than typed at large (module doc on
+   `replay.js`: `input.js` owns every keystroke, so this box is reached and filled mostly by mouse/paste). */
+.replay-textarea {
+  width: 100%;
+  height: 8rem;
+  resize: vertical;
+  box-sizing: border-box;
+  padding: 0.5rem;
+  background: rgba(0, 0, 0, 0.4);
+  color: #ffffff;
+  border: 0.0625rem solid rgba(255, 255, 255, 0.2);
+  border-radius: 0.4rem;
+  font-family: monospace;
+  font-size: 0.8rem;
+}
+
+/* #211 §4: the approved-once-ruled heading plus the parser's own diagnostic as a quieter line beneath it
+   (`replay.js`'s `describeLoadError`) — the same "informs, never shouts" weight `.colour-safety-note` uses
+   above, in the same red `.hud-timer--warning` already uses for a problem the player needs to notice. */
+.replay-error {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  padding: 0.6rem 0.75rem;
+  border-radius: 0.5rem;
+  border-left: 0.35rem solid #e3261b;
+  background: rgba(227, 38, 27, 0.12);
+}
+
+.replay-error[hidden] {
+  display: none;
+}
+
+.replay-error-heading {
+  font-weight: 800;
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
+}
+
+.replay-error-detail {
+  font-size: 0.85rem;
+  opacity: 0.85;
+}
+
+.replay-readout {
+  font-size: 1.5rem;
+  font-weight: 800;
+  text-align: center;
+  letter-spacing: 0.03em;
+}
+
+.replay-end {
+  font-size: 0.9rem;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  text-align: center;
+  opacity: 0.85;
+}
+
+.replay-end[hidden] {
+  display: none;
+}
+
 /* KI-15-03: CSS transitions and animations on menus are off under `prefers-reduced-motion: reduce` — the
    media query half of reduced motion (`?reducedFx=1` is the other half, and covers the 3D scene in
    `src/render`; see `src/render/reducedMotion.js`). Nothing in this stylesheet defines a `transition` or

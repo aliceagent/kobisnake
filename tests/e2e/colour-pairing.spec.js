@@ -58,9 +58,14 @@ test.describe('KI-15-02 colour-safe pairing', () => {
     // that still clears the check against `red` — as a `data-` attribute.
     await expect(note).toHaveAttribute('data-recommended-color', 'blue');
 
-    // Never blocks starting: START MATCH is still the last, reachable row.
+    // Never blocks starting: START MATCH is still the last, reachable row. Scoped to MATCH_SETUP — KI-05-03
+    // adds more `.menu-item--action` rows to the REPLAY screen elsewhere in the DOM (hidden, but a plain
+    // `.menu-item--action` locator is not scoped to a screen and Playwright's strict mode rejects the
+    // now-ambiguous match).
     await page.keyboard.press('ArrowDown');
-    await expect(page.locator('.menu-item--action')).toHaveClass(/menu-item--focused/);
+    await expect(page.locator('[data-screen="MATCH_SETUP"] .menu-item--action')).toHaveClass(
+      /menu-item--focused/,
+    );
 
     // Cycling P2 back to blue (red/blue passes) hides the note again — it tracks the live pair, not a
     // one-shot check.

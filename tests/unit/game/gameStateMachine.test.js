@@ -75,6 +75,8 @@ const PATHS = {
     GAME_EVENTS.COUNTDOWN_DONE,
     GAME_EVENTS.PAUSE,
   ],
+  // KI-05-03: the only entry point this build has (MAIN_MENU's own SELECT_REPLAY row).
+  [STATES.REPLAY]: [GAME_EVENTS.SELECT_REPLAY],
 };
 
 /**
@@ -95,7 +97,7 @@ function driveTo(state, options = {}) {
 }
 
 describe('KS-05-02 the state machine vocabulary', () => {
-  test('KS-05-02: the states are exactly the twelve the ticket lists', () => {
+  test('KS-05-02: the states are exactly the twelve the ticket lists, plus KI-05-03: REPLAY', () => {
     // Spelled out rather than derived from `STATES`, so a state renamed or dropped in the source fails here
     // instead of quietly redefining what "every state" means for the coverage assertion below.
     expect(Object.keys(STATES).sort()).toEqual(
@@ -108,6 +110,8 @@ describe('KS-05-02 the state machine vocabulary', () => {
         'PAUSE',
         'PLAYING',
         'PRACTICE',
+        // KI-05-03: the REPLAY screen's own state.
+        'REPLAY',
         'ROUND_OVER',
         'SETTINGS',
         'SHOP',
@@ -116,7 +120,7 @@ describe('KS-05-02 the state machine vocabulary', () => {
     );
   });
 
-  test('KS-05-02: the events are exactly the eighteen the ticket lists', () => {
+  test('KS-05-02: the events are exactly the eighteen the ticket lists, plus KI-05-03: SELECT_REPLAY', () => {
     expect(Object.keys(GAME_EVENTS).sort()).toEqual(
       [
         'AUTO_PAUSE',
@@ -133,6 +137,8 @@ describe('KS-05-02 the state machine vocabulary', () => {
         'ROUND_OVER',
         'SELECT_2P',
         'SELECT_PRACTICE',
+        // KI-05-03: chooses the REPLAY screen from MAIN_MENU.
+        'SELECT_REPLAY',
         'SELECT_SETTINGS',
         'SELECT_SHOP',
         'SELECT_TUTORIAL',
@@ -232,6 +238,14 @@ describe('KS-05-02 the machine', () => {
     expect(machine.dispatch(GAME_EVENTS.MATCH_OVER)).toBe(STATES.MATCH_OVER);
     // REMATCH goes straight to a countdown (`DESIGN-DECISIONS §2.6`: same settings, swap nothing).
     expect(machine.dispatch(GAME_EVENTS.REMATCH)).toBe(STATES.COUNTDOWN);
+  });
+
+  test('KI-05-03 AC4: BACK from REPLAY returns to the state it was entered from', () => {
+    const machine = driveTo(STATES.REPLAY);
+    expect(machine.getPreviousState()).toBe(STATES.MAIN_MENU);
+    expect(machine.dispatch(GAME_EVENTS.BACK)).toBe(STATES.MAIN_MENU);
+    // Same "nothing left to resume into" rule PAUSE's own RESUME follows: leaving REPLAY forgets it.
+    expect(machine.getPreviousState()).toBeNull();
   });
 
   test('KS-05-02: LASER_WARNING is a sub-state of PLAYING, not a way out of it', () => {

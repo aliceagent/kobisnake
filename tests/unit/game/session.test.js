@@ -1,9 +1,13 @@
 // @ts-check
+import { readFileSync } from 'node:fs';
+import { dirname, join } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { describe, expect, it, vi } from 'vitest';
 import { RESULTS } from '../../../src/core/events.js';
 import { DIRECTIONS } from '../../../src/core/grid.js';
+import { REPLAY_ERROR_CODES } from '../../../src/core/replay.js';
 import { SETTINGS, withOverrides } from '../../../src/core/settings.js';
-import { STATES } from '../../../src/game/gameStateMachine.js';
+import { GAME_EVENTS, STATES } from '../../../src/game/gameStateMachine.js';
 import {
   MATCH_SETUP_APPLE_CELL,
   createSession,
@@ -11,6 +15,10 @@ import {
   roundSeedFor,
 } from '../../../src/game/session.js';
 import { runRound } from '../../sim/harness.js';
+
+/** KI-05-03: a real, committed fixture — the same shape a paste box or a chosen file hands `onLoad`. */
+const REPLAYS_DIR = join(dirname(fileURLToPath(import.meta.url)), '../../sim/replays');
+const NO_INPUT_ROUND = JSON.parse(readFileSync(join(REPLAYS_DIR, 'no-input-round.json'), 'utf8'));
 
 /**
  * KS-05-03: the session rewritten around the state machine.
@@ -65,6 +73,9 @@ function createFakeUi() {
     },
     show: vi.fn(),
     handleMenuAction: vi.fn(),
+    // KI-05-03: the REPLAY screen's cheap per-frame update (`runUpdate`'s new `REPLAY` case; `ui.js`'s own
+    // `updateReplayProgress`).
+    updateReplayProgress: vi.fn(),
   };
 }
 
@@ -1454,5 +1465,121 @@ describe('KI-11-02 the playtest prompt seam', () => {
     expect(dispatchSpy).not.toHaveBeenCalled();
     expect(session.getState()).toBe(STATES.ROUND_OVER);
     dispatchSpy.mockRestore();
+  });
+});
+
+describe('KI-05-03 the REPLAY screen entry point', () => {
+  it('KI-05-03: SELECT_REPLAY from MAIN_MENU shows REPLAY with nothing loaded and no error', () => {
+    const { session, ui } = buildSession({ seed: 1 });
+
+    session.machine.dispatch(GAME_EVENTS.SELECT_REPLAY);
+
+    expect(session.getState()).toBe(STATES.REPLAY);
+    const props = lastShow(ui, STATES.REPLAY);
+    expect(props.loaded).toBe(false);
+    expect(props.error).toBeNull();
+  });
+
+  it('KI-05-03 AC1: pasting a valid replay plays it', () => {
+    const { session, ui } = buildSession({ seed: 1 });
+    session.machine.dispatch(GAME_EVENTS.SELECT_REPLAY);
+
+    lastShow(ui, STATES.REPLAY).onLoad(JSON.stringify(NO_INPUT_ROUND));
+
+    // The screen was re-rendered with the successful result — `render()` is called again per `onLoad`'s own
+    // doc comment — and the session's own replay-mode accessors agree that something is now loaded.
+    const props = lastShow(ui, STATES.REPLAY);
+    expect(props.loaded).toBe(true);
+    expect(props.error).toBeNull();
+    expect(session.hasReplay()).toBe(true);
+    expect(session.getReplayTick()).toBe(0);
+    expect(session.getReplayPhase()).toBe('PLAYING');
+  });
+
+  it('KI-05-03 AC1: pasting rubbish shows a readable error and stays on the screen', () => {
+    const { session, ui } = buildSession({ seed: 1 });
+    session.machine.dispatch(GAME_EVENTS.SELECT_REPLAY);
+
+    lastShow(ui, STATES.REPLAY).onLoad('{not valid json');
+
+    // Still on REPLAY (AC1's "stays on the screen") — no state-machine transition happened over a bad paste.
+    expect(session.getState()).toBe(STATES.REPLAY);
+    const props = lastShow(ui, STATES.REPLAY);
+    expect(props.loaded).toBe(false);
+    expect(props.error).not.toBeNull();
+    expect(props.error.code).toBe(REPLAY_ERROR_CODES.INVALID_JSON);
+    expect(session.hasReplay()).toBe(false);
+  });
+
+  it('KI-05-03 AC1: a failed paste does not disturb a replay already loaded', () => {
+    // `replayPlayer.js`'s own documented contract ("failure leaves the previous replay in place") — this
+    // ticket's `loadReplayInternal` must not narrow that, since the public `loadReplay()` still promises it.
+    const { session, ui } = buildSession({ seed: 1 });
+    session.machine.dispatch(GAME_EVENTS.SELECT_REPLAY);
+    lastShow(ui, STATES.REPLAY).onLoad(JSON.stringify(NO_INPUT_ROUND));
+    expect(session.hasReplay()).toBe(true);
+
+    lastShow(ui, STATES.REPLAY).onLoad('{not valid json');
+
+    expect(session.hasReplay()).toBe(true);
+    expect(session.getReplayTick()).toBe(0);
+  });
+
+  it('KI-05-03 AC4: Esc (BACK) leaves REPLAY and returns to MAIN_MENU', () => {
+    const { session, ui } = buildSession({ seed: 1 });
+    session.machine.dispatch(GAME_EVENTS.SELECT_REPLAY);
+    expect(session.getState()).toBe(STATES.REPLAY);
+
+    lastShow(ui, STATES.REPLAY).onBack();
+
+    expect(session.getState()).toBe(STATES.MAIN_MENU);
+  });
+
+  it('KI-05-03: the REPLAY case in runUpdate drives a loaded, playing replay forward every frame', () => {
+    const { session, renderer, ui } = buildSession({ seed: 1 });
+    session.machine.dispatch(GAME_EVENTS.SELECT_REPLAY);
+    lastShow(ui, STATES.REPLAY).onLoad(JSON.stringify(NO_INPUT_ROUND));
+    lastShow(ui, STATES.REPLAY).onPlayToggle();
+    expect(session.isReplayPlaying()).toBe(true);
+
+    const dt = 1 / SETTINGS.simHz;
+    renderer.render.mockClear();
+    session.advanceSimulation(dt);
+
+    // One simulated tick advanced, drawn through the ordinary renderer (module doc: "renders it with the
+    // existing renderer and HUD"), and the screen's own per-frame progress hook saw it.
+    expect(session.getReplayTick()).toBe(1);
+    expect(renderer.render).toHaveBeenCalled();
+    expect(ui.updateReplayProgress).toHaveBeenCalledWith(
+      expect.objectContaining({ tick: 1, phase: 'PLAYING', isPlaying: true }),
+    );
+  });
+
+  it('KI-05-03: driving the replay automatically through runUpdate still accepts no player input', () => {
+    // The property KI-05-02's own AC3 proved for the hand-driven `advanceReplayFrame` — a keydown has no code
+    // path to `replayPlayer` regardless of the state machine — re-checked here for the new *automatic*
+    // per-frame call site this ticket adds (`runUpdate`'s `REPLAY` case). `NO_INPUT_ROUND` has an empty
+    // `inputs` log, so a leaked key that reached the replay's own simulation would steer a snake its golden
+    // log never told it to move, which would show up as a diverging event log at the end — not merely as a
+    // boolean staying false.
+    const { session, target } = buildSession({ seed: 1 });
+    session.machine.dispatch(GAME_EVENTS.SELECT_REPLAY);
+    session.loadReplay(JSON.stringify(NO_INPUT_ROUND));
+    session.playReplay();
+
+    const dt = 1 / SETTINGS.simHz;
+    let guard = 0;
+    while (session.getReplayPhase() === 'PLAYING' && guard < 20_000) {
+      session.advanceSimulation(dt);
+      // Real keydowns, at the same target `createInput` listens on, every single frame this replay is
+      // being driven — including directions this fixture's own log never records.
+      fireKeydown(target, 'ArrowLeft');
+      fireKeydown(target, 'ArrowUp');
+      guard += 1;
+    }
+
+    expect(guard).toBeLessThan(20_000);
+    expect(session.getReplayPhase()).toBe('ROUND_OVER');
+    expect(session.getReplayEvents()).toEqual(NO_INPUT_ROUND.expectedEvents);
   });
 });

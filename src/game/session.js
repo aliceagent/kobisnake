@@ -154,6 +154,34 @@ import { createReplayPlayer } from './replayPlayer.js';
  * editing concurrently (tech-lead note H). `advanceReplayFrame` below is called by hand — today, by
  * `tests/e2e/replay.spec.js` through `__kobi`, and later by whatever loop KI-05-03's screen drives — rather
  * than from a state-machine `onEnter`.
+ *
+ * ## KI-05-03: the per-frame call site, and why it still cannot touch input
+ *
+ * This ticket is the "later" the paragraph above refers to: `gameStateMachine.js` grows a `REPLAY` state, and
+ * this file's own `runUpdate` switch grows a `case STATES.REPLAY` that calls {@link advanceReplayInternal}
+ * every frame the machine is in it — the declared `session.js`/loop deviation the ticket's tech-lead notes
+ * call out (the PR description explains the "why here" half; this comment is the "why it is still safe"
+ * half). It preserves KI-05-02's own property exactly rather than merely not regressing it:
+ *
+ * - **The new case is the only new thing.** No new branch is added to `handleDirection`, `handleMenuAction`
+ *   forwards to `ui.handleMenuAction` for `REPLAY` exactly as it already did for every other screen (its
+ *   `default` branch — `REPLAY` needed no new arm there), and `driveCpuPlayers` still runs first in
+ *   `runUpdate` and still bails out on its own `sim === null`/`acceptsSteeringInput()` guards, which `REPLAY`
+ *   fails the same way every non-round state does. Nothing about *reading* a keydown changed.
+ * - **`replayPlayer` is still the one variable only this section reads and writes.** `advanceReplayInternal`
+ *   is `replayPlayer?.advance(wallSeconds); renderReplayFrame();` — unchanged from what KI-05-02 already
+ *   built as `advanceReplayFrame`'s body, just given a name `runUpdate` can call alongside the public method
+ *   that now forwards to it. A movement key still has no code path to `replayPlayer` at all, `REPLAY` state
+ *   or not — KI-12-02's `driveCpuPlayers` is a second caller of `handleDirection`, not a second caller of
+ *   anything in this section, so it is not entangled with this deviation either.
+ * - **`REPLAY` carries no `PAUSE`/`AUTO_PAUSE` row** (`gameStateMachine.js`'s own table), so a replay's
+ *   play/pause state is owned entirely by `replayPlayer.js`'s own `play()`/`pause()` — never by
+ *   `loop.timeScale`, which stays exactly what it already was (usually `1`, from whatever screen was up
+ *   before `REPLAY`) for the whole time a replay is loaded. `advanceReplayInternal` is therefore called
+ *   unconditionally, every frame, and is safe to: `replayPlayer.advance()` is already a documented no-op
+ *   while paused, and `renderReplayFrame()` already draws the frozen frame (or the empty arena, with nothing
+ *   loaded) exactly as `runUpdate`'s own `default` case does for every menu and for `PAUSE` ("the frame
+ *   still renders").
  */
 
 /** @typedef {import('./input.js').Direction} Direction */
@@ -226,6 +254,12 @@ import { createReplayPlayer } from './replayPlayer.js';
  *   A {@link ScreenAction}, not the wider {@link MenuAction} `input.js` emits: `PAUSE_TOGGLE` is Space, and
  *   Space never reaches a screen ({@link handleMenuAction} translates or drops it first), so the narrower
  *   type is the true one and the checker enforces it.
+ * @property {(progress: {tick: number | null, replay: import('../core/replay.js').Replay | null, phase: import('../core/events.js').Phase | null, isPlaying: boolean}) => void} updateReplayProgress -
+ *   KI-05-03: the REPLAY screen's cheap, once-a-frame readout update — see this file's own "the per-frame
+ *   call site" header note and `ui.js`'s own doc comment on the real implementation. `replay` carries the
+ *   loaded replay itself (or `null`) rather than a pre-computed total tick, so this file never has to import
+ *   anything from `src/ui/` to answer "how many ticks does this replay run" — that derivation is
+ *   `replay.js`'s own (`replayTotalTick`), kept entirely on the ui side of the line `ARCHITECTURE §3` draws.
  */
 
 /**
@@ -754,6 +788,19 @@ export function createSession({
     ui.show(machine.getState());
   }
 
+  /**
+   * KI-05-03: `onEnter[STATES.REPLAY]`. `replayLoadError` clears on every fresh entry — a stale error from a
+   * previous visit (Esc'd away from and reached again) has nothing left to point at — but `replayPlayer`
+   * itself is deliberately left alone: a replay already loaded before REPLAY was last left survives a
+   * round trip back to it, resuming (or staying paused) exactly where it was, which costs nothing extra to
+   * support and is simply what falls out of `replayPlayer`'s own lifecycle (this file's "a replay mode that
+   * never touches match state" header note) never being told to reset on a state re-entry.
+   */
+  function showReplayScreen() {
+    replayLoadError = null;
+    ui.show(STATES.REPLAY, replayScreenProps());
+  }
+
   // --- match and round lifecycle ------------------------------------------------------------------------
 
   /** Builds the match whose first round the countdown is counting into. */
@@ -880,6 +927,13 @@ export function createSession({
         break;
       case STATES.ROUND_OVER:
         advanceScoreboard(unscaledDt);
+        break;
+      case STATES.REPLAY:
+        // KI-05-03's declared deviation (this file's own "the per-frame call site" header note): the loaded
+        // replay (if any) advances by whatever it was already going to advance by; a no-op, safely, when
+        // nothing is loaded or it is paused.
+        advanceReplayInternal(unscaledDt);
+        updateReplayScreenProgress();
         break;
       default:
         // Menus and PAUSE: nothing ticks. The frame still renders, which is what a pause screen over a frozen
@@ -1112,6 +1166,102 @@ export function createSession({
     }
   }
 
+  /**
+   * The last load attempt's error, or `null` — the REPLAY screen's own `error` prop (raw `{code, message}`,
+   * never mapped to player copy here: that mapping is `replay.js`'s `describeLoadError`, entirely on the ui
+   * side of the line `ARCHITECTURE §3` draws, per this ticket's "the copy is not yours to write" note).
+   * @type {import('../core/replay.js').ReplayError | import('./replayPlayer.js').ReplayPlayerError | null}
+   */
+  let replayLoadError = null;
+
+  /**
+   * KI-05-03: the shared "try to load a replay" logic behind both the public `loadReplay()` (unchanged
+   * contract — every existing caller, `tests/e2e/replay.spec.js`'s `__kobi.loadReplay` included, sees no
+   * difference) and the REPLAY screen's own paste/file callback below. Pulled out to a standalone function
+   * only so both have exactly one implementation to agree with, not two that could drift.
+   * @param {string | unknown} input
+   * @returns {{ok: true} | {ok: false, error: {code: string, message: string}}}
+   */
+  function loadReplayInternal(input) {
+    const built = createReplayPlayer(input);
+    if (!built.ok) return built;
+    replayPlayer = built.player;
+    return { ok: true };
+  }
+
+  /** Shared by the public `playReplay()` and the REPLAY screen's PLAY/PAUSE toggle. */
+  function playReplayInternal() {
+    replayPlayer?.play();
+  }
+  /** Shared by the public `pauseReplay()` and the REPLAY screen's PLAY/PAUSE toggle. */
+  function pauseReplayInternal() {
+    replayPlayer?.pause();
+  }
+  /** Shared by the public `stepReplay()` and the REPLAY screen's STEP button. @returns {boolean} */
+  function stepReplayInternal() {
+    return replayPlayer?.step() ?? false;
+  }
+  /** Shared by the public `seekReplay()` and the REPLAY screen's START AGAIN button. @param {number} tick */
+  function seekReplayInternal(tick) {
+    replayPlayer?.seek(tick);
+  }
+  /**
+   * Shared by the public `advanceReplayFrame()` and `runUpdate`'s new `REPLAY` case (this file's own header
+   * note on the deviation). Unchanged from what KI-05-02 wrote inline as `advanceReplayFrame`'s own body.
+   * @param {number} wallSeconds
+   */
+  function advanceReplayInternal(wallSeconds) {
+    replayPlayer?.advance(wallSeconds);
+    renderReplayFrame();
+  }
+
+  /**
+   * The REPLAY screen's props for `ui.show(STATES.REPLAY, ...)` (`replay.js`'s own `ReplayScreenProps`).
+   * Rebuilt fresh on every call rather than kept as one object with mutated fields, the same "screen re-
+   * rendered from the session's copy" discipline `showMatchSetup` already uses — there is exactly one
+   * authority on `loaded`/`error` and the screen cannot drift from it.
+   */
+  function replayScreenProps() {
+    return {
+      loaded: replayPlayer !== null,
+      error: replayLoadError,
+      /** @param {string} text */
+      onLoad(text) {
+        const result = loadReplayInternal(text);
+        replayLoadError = result.ok ? null : result.error;
+        ui.show(STATES.REPLAY, replayScreenProps());
+      },
+      onPlayToggle() {
+        if (replayPlayer === null) return;
+        if (replayPlayer.isPlaying()) pauseReplayInternal();
+        else playReplayInternal();
+      },
+      onStep() {
+        stepReplayInternal();
+        renderReplayFrame();
+      },
+      onSeekToStart() {
+        seekReplayInternal(0);
+        renderReplayFrame();
+      },
+      onBack: () => machine.dispatch(GAME_EVENTS.BACK),
+    };
+  }
+
+  /**
+   * `runUpdate`'s `REPLAY` case calls this every frame (this file's own header note on the deviation): the
+   * screen's cheap tick-readout/PLAY-PAUSE-label update, entirely separate from the full `render(props)` a
+   * load attempt triggers above.
+   */
+  function updateReplayScreenProgress() {
+    ui.updateReplayProgress({
+      tick: replayPlayer?.tick ?? null,
+      replay: replayPlayer?.getReplay() ?? null,
+      phase: replayPlayer?.phase ?? null,
+      isPlaying: replayPlayer?.isPlaying() ?? false,
+    });
+  }
+
   // --- input --------------------------------------------------------------------------------------------
 
   /**
@@ -1296,6 +1446,7 @@ export function createSession({
       [STATES.ROUND_OVER]: enterRoundOver,
       [STATES.MATCH_OVER]: enterMatchOver,
       [STATES.PAUSE]: enterPause,
+      [STATES.REPLAY]: showReplayScreen,
     },
   });
 
@@ -1524,10 +1675,7 @@ export function createSession({
      * @returns {{ok: true} | {ok: false, error: {code: string, message: string}}}
      */
     loadReplay(input) {
-      const built = createReplayPlayer(input);
-      if (!built.ok) return built;
-      replayPlayer = built.player;
-      return { ok: true };
+      return loadReplayInternal(input);
     },
     /** Whether a replay is currently loaded. */
     hasReplay() {
@@ -1535,11 +1683,11 @@ export function createSession({
     },
     /** Marks the loaded replay as playing; {@link advanceReplayFrame} is what actually moves it forward. */
     playReplay() {
-      replayPlayer?.play();
+      playReplayInternal();
     },
     /** Marks the loaded replay as paused. `stepReplay`/`seekReplay` still work while paused. */
     pauseReplay() {
-      replayPlayer?.pause();
+      pauseReplayInternal();
     },
     /** @returns {boolean} */
     isReplayPlaying() {
@@ -1547,7 +1695,7 @@ export function createSession({
     },
     /** Advances the loaded replay by exactly one simulation tick. A no-op once it has left `PLAYING`. */
     stepReplay() {
-      return replayPlayer?.step() ?? false;
+      return stepReplayInternal();
     },
     /**
      * Seeks the loaded replay to `tick` by replaying it from the start (ticket spec: "cheap and exact") — see
@@ -1555,7 +1703,7 @@ export function createSession({
      * @param {number} tick
      */
     seekReplay(tick) {
-      replayPlayer?.seek(tick);
+      seekReplayInternal(tick);
     },
     /**
      * Consumes `wallSeconds` of real time of the loaded replay, while it is playing, then draws it with the
@@ -1564,8 +1712,7 @@ export function createSession({
      * @param {number} wallSeconds
      */
     advanceReplayFrame(wallSeconds) {
-      replayPlayer?.advance(wallSeconds);
-      renderReplayFrame();
+      advanceReplayInternal(wallSeconds);
     },
     /** Draws one frame of the loaded replay's current tick, without advancing it. */
     renderReplayFrame() {

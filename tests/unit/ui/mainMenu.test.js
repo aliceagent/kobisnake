@@ -2,6 +2,7 @@
 import { describe, expect, it, vi } from 'vitest';
 import { GAME_EVENTS, STATES } from '../../../src/game/gameStateMachine.js';
 import { createMainMenuScreen } from '../../../src/ui/screens/mainMenu.js';
+import { REPLAY_COPY } from '../../../src/ui/screens/replay.js';
 
 /**
  * KI-10-01: the main menu presents its one playable row as the primary action and groups the five
@@ -135,20 +136,22 @@ function findByClass(node, className) {
 }
 
 /**
- * The seven labels in `MENU_ITEMS` order. KI-10-03 added HOW TO PLAY directly after `2 PLAYERS` (design-lead
- * review on #145: it belongs with the available actions, not below five locked ones), so this list and the
- * "only one enabled row" assumption the tests below were first written against both had to grow by one.
+ * The eight labels in `MENU_ITEMS` order. KI-10-03 added HOW TO PLAY directly after `2 PLAYERS` (design-lead
+ * review on #145: it belongs with the available actions, not below five locked ones); KI-05-03 added REPLAY
+ * directly after that (a declared `Files:` deviation, approved in advance — see `mainMenu.js`'s own module
+ * doc). Both are enabled rows, so this list and the "only N enabled rows" assumptions below have grown twice.
  */
 const ALL_LABELS = [
   '1 PLAYER',
   '2 PLAYERS',
   'HOW TO PLAY',
+  REPLAY_COPY.menuLabel,
   'PRACTICE',
   'TUTORIAL',
   'SHOP',
   'SETTINGS',
 ];
-/** Every label that is not a playable action — unchanged by KI-10-03, which added an enabled row. */
+/** Every label that is not a playable action — unchanged by KI-10-03/KI-05-03, which only added enabled rows. */
 const UNAVAILABLE_LABELS = ['1 PLAYER', 'PRACTICE', 'TUTORIAL', 'SHOP', 'SETTINGS'];
 
 describe('createMainMenuScreen — KI-10-01', () => {
@@ -194,10 +197,10 @@ describe('createMainMenuScreen — KI-10-01', () => {
     // called through to onSelect.
     expect(onSelect).not.toHaveBeenCalled();
 
-    // ↓/↑ can never land on a disabled row. There are two enabled rows since KI-10-03 (2 PLAYERS and
-    // HOW TO PLAY), so this walks the cursor all the way round the list and asserts it only ever rests on
-    // one of those two — a stronger check than the original "it stays put", which only held while a single
-    // focusable slot existed.
+    // ↓/↑ can never land on a disabled row. There are three enabled rows since KI-05-03 (2 PLAYERS, HOW TO
+    // PLAY and REPLAY), so this walks the cursor all the way round the list and asserts it only ever rests
+    // on one of those three — a stronger check than the original "it stays put", which only held while a
+    // single focusable slot existed.
     const visited = [];
     for (let i = 0; i < ALL_LABELS.length; i += 1) {
       screen.handleMenuAction('DOWN');
@@ -205,7 +208,9 @@ describe('createMainMenuScreen — KI-10-01', () => {
       expect(focusedRows).toHaveLength(1);
       visited.push(findByClass(focusedRows[0], 'menu-item-label').textContent);
     }
-    expect([...new Set(visited)].sort()).toEqual(['2 PLAYERS', 'HOW TO PLAY']);
+    expect([...new Set(visited)].sort()).toEqual(
+      ['2 PLAYERS', 'HOW TO PLAY', REPLAY_COPY.menuLabel].sort(),
+    );
     for (const label of visited) expect(UNAVAILABLE_LABELS).not.toContain(label);
   });
 
@@ -222,6 +227,25 @@ describe('createMainMenuScreen — KI-10-01', () => {
     screen.handleMenuAction('CONFIRM');
     expect(onSelect).toHaveBeenCalledTimes(1);
     expect(onSelect).toHaveBeenCalledWith(GAME_EVENTS.SELECT_2P);
+  });
+
+  it('KI-05-03: the REPLAY row is enabled and fires SELECT_REPLAY', () => {
+    const root = createFakeRoot();
+    const onSelect = vi.fn();
+    const screen = createMainMenuScreen(/** @type {any} */ (root));
+    screen.render({ onSelect });
+
+    // DOWN twice from the default focus (2 PLAYERS) passes over HOW TO PLAY and lands on REPLAY — the
+    // module doc's own placement: directly after HOW TO PLAY, above the locked group.
+    screen.handleMenuAction('DOWN');
+    screen.handleMenuAction('DOWN');
+    const focused = findAllByClass(/** @type {any} */ (root), 'menu-item--focused');
+    expect(focused).toHaveLength(1);
+    expect(findByClass(focused[0], 'menu-item-label').textContent).toBe(REPLAY_COPY.menuLabel);
+
+    screen.handleMenuAction('CONFIRM');
+    expect(onSelect).toHaveBeenCalledTimes(1);
+    expect(onSelect).toHaveBeenCalledWith(GAME_EVENTS.SELECT_REPLAY);
   });
 
   it('KI-10-01 AC2: the approved description line is rendered verbatim under the title', () => {
