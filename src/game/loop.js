@@ -320,6 +320,13 @@ export function createLoop({
    * nothing (there is nothing to draw for while the page may never run again), and if the page really is
    * gone, no `pageshow` ever arrives to undo it.
    *
+   * **Both pairs share the one `suspended` flag, so whichever "back" event arrives first ends the
+   * suspension** — a `freeze` answered by a `pageshow`, or the reverse, is treated as the page running
+   * again. That is deliberate rather than an oversight of the two-source design: the flag records *whether
+   * this page is being given frames*, which is one fact about one page, not one fact per event pair. A
+   * browser that had truly stopped the page would not be delivering either event. The last test in
+   * `loop.test.js`'s KI-06-03 block pins this crossing down, so it cannot change silently.
+   *
    * @param {boolean} nextSuspended
    */
   function onSuspendChange(nextSuspended) {
