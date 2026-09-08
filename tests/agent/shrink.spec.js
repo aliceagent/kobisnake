@@ -57,6 +57,15 @@ test.describe('KI-18-02 · shrinking a real monkey run', () => {
     // comfortably enough margin that the run stops early rather than needing every action.
     const original = idleFocusActions(10, 0.5);
 
+    // The predicate has to know `STUCK_THRESHOLD_SECONDS` to search with — the fixture does not exist until
+    // after the search finishes — but it also records the `stuck` finding of the last candidate it *kept*,
+    // which by construction is the finding the final shrunk list itself produces: the search only advances
+    // `current` on a candidate the predicate said still fails, so the last "still fails" it ever records is
+    // for exactly the candidate that becomes `shrunk.actions`. That is what {@link buildShrinkFixture}'s
+    // `failure` gets built from below, rather than a second, separate replay to go and find it again.
+    /** @type {{rule: string, detail: string} | null} */
+    let lastFailureFound = null;
+
     /** @param {import('./monkey.js').MonkeyAction[]} candidate */
     const predicate = async (candidate) => {
       if (candidate.length === 0) return false;
@@ -66,10 +75,13 @@ test.describe('KI-18-02 · shrinking a real monkey run', () => {
         stuckSimulatedSeconds: STUCK_THRESHOLD_SECONDS,
       });
       expect(result.pageErrors).toEqual([]);
-      return result.problems.some((problem) => problem.rule === 'stuck');
+      const stuck = result.problems.find((problem) => problem.rule === 'stuck');
+      if (stuck !== undefined) lastFailureFound = { rule: stuck.rule, detail: stuck.detail };
+      return stuck !== undefined;
     };
 
     const shrunk = await shrinkFailure(original, predicate);
+    expect(lastFailureFound).not.toBeNull();
 
     console.log(
       `KI-18-02 AC2: a real stuck run over ${original.length} actions shrank to ` +
@@ -83,38 +95,56 @@ test.describe('KI-18-02 · shrinking a real monkey run', () => {
     expect(shrunk.actions.length).toBeLessThanOrEqual(5);
     expect(shrunk.actions.length).toBeGreaterThan(0);
 
+    // `failure` and `options` are what the tech-lead review asked this fixture to carry: which finding the
+    // actions reproduce, and the non-default `runMonkeySession` option (`stuckSimulatedSeconds`, far below
+    // `monkey.js`'s real 60 s default) the replay needs — so the fixture is the whole recipe rather than
+    // something a reader has to already know to pass `stuckSimulatedSeconds` by hand to reproduce.
     const fixture = buildShrinkFixture({
       seed: 909,
       originalActionCount: original.length,
       actions: shrunk.actions,
       evaluations: shrunk.evaluations,
+      failure: /** @type {{rule: string, detail: string}} */ (lastFailureFound),
+      options: { stuckSimulatedSeconds: STUCK_THRESHOLD_SECONDS },
     });
 
     expect(fixture.seed).toBe(909);
     expect(fixture.originalActionCount).toBe(10);
     expect(fixture.shrunkActionCount).toBe(shrunk.actions.length);
     expect(fixture.sentence).toMatch(/^wait \d+\.\d{3} s, focus the window/);
-    console.log(`KI-18-02 AC2 fixture sentence: ${fixture.sentence}`);
+    expect(fixture.failure).toEqual(lastFailureFound);
+    expect(fixture.failure?.rule).toBe('stuck');
+    expect(fixture.options).toEqual({ stuckSimulatedSeconds: STUCK_THRESHOLD_SECONDS });
+    console.log(
+      `KI-18-02 AC2 fixture sentence: ${fixture.sentence}\n` +
+        `KI-18-02 AC2 fixture failure: ${fixture.failure?.rule} — ${fixture.failure?.detail}`,
+    );
 
     // AC2 itself: replaying the fixture — through the real driver, on a fresh page load, exactly as
-    // `runMonkeySession(page, {seed: fixture.seed, actions: fixture.actions})` documents it should be used —
-    // reproduces the same finding.
+    // `runMonkeySession(page, {seed: fixture.seed, actions: fixture.actions, ...fixture.options})` documents
+    // it should be used — reproduces the same finding. `STUCK_THRESHOLD_SECONDS` is deliberately not named
+    // again from here on: `...fixture.options` is the only place either replay below gets it, which is what
+    // proves the fixture is self-sufficient rather than merely demonstrating it by coincidence.
     const replayed = await runMonkeySession(page, {
       seed: fixture.seed,
       actions: fixture.actions,
-      stuckSimulatedSeconds: STUCK_THRESHOLD_SECONDS,
+      ...fixture.options,
     });
     expect(replayed.pageErrors).toEqual([]);
-    expect(replayed.problems.some((problem) => problem.rule === 'stuck')).toBe(true);
+    expect(replayed.problems.some((problem) => problem.rule === fixture.failure?.rule)).toBe(true);
 
     // And the fixture survives being written out and read back — `docs/qa/reports/` would commit the JSON,
-    // not the live objects — and still replays.
+    // not the live objects — and still replays, `options` included.
     const revived = JSON.parse(JSON.stringify(fixture));
+    expect(revived.failure).toEqual(fixture.failure);
+    expect(revived.options).toEqual(fixture.options);
     const replayedFromJson = await runMonkeySession(page, {
       seed: revived.seed,
       actions: revived.actions,
-      stuckSimulatedSeconds: STUCK_THRESHOLD_SECONDS,
+      ...revived.options,
     });
-    expect(replayedFromJson.problems.some((problem) => problem.rule === 'stuck')).toBe(true);
+    expect(replayedFromJson.problems.some((problem) => problem.rule === revived.failure.rule)).toBe(
+      true,
+    );
   });
 });

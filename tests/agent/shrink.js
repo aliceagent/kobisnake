@@ -65,6 +65,17 @@ import { describeAction } from './monkey.js';
  * 0..n-1: a shrunk fixture's third action still reports itself — in a replayed run's `problems` — as
  * whichever index it always was, so a reviewer holding the original campaign log and the shrunk fixture side
  * by side can find the same action in both.
+ *
+ * The fixture also carries — both optional, so nothing that built a fixture before they existed breaks —
+ * `failure` and `options`. Neither is needed to *shrink*; both are needed for the fixture to stand on its
+ * own once it is filed. KI-18-03 files one issue per distinct failure with the shrunk sequence, and an issue
+ * whose fixture says what a child did but not what went wrong cannot be verified by whoever picks it up: they
+ * replay it, see *a* problem, and have no committed statement of which one was meant — so `failure` is that
+ * statement, the finding (at minimum a `rule`, and a `detail` where there is one) the actions are expected to
+ * reproduce. `options` is the other half of the same completeness: the non-default `runMonkeySession` options
+ * the replay needs (`stuckSimulatedSeconds`, say, for a fixture built against a lowered threshold) so that
+ * `runMonkeySession(page, {seed: fixture.seed, actions: fixture.actions, ...fixture.options})` is the whole
+ * recipe, with nothing the reader has to already know to pass by hand.
  */
 
 /** @typedef {import('./monkey.js').MonkeyAction} MonkeyAction */
@@ -224,15 +235,32 @@ export function renderSentence(actions) {
 }
 
 /**
+ * The finding a fixture's actions are expected to reproduce on replay — at minimum which check fired, and
+ * the detail where the check reports one. Deliberately the same two field names `MonkeyProblem` and
+ * `monkeyFailureReasons` already use in `monkey.js`, so a `{rule, detail}` lifted straight out of a
+ * `MonkeyResult.problems` entry is already the right shape.
+ *
+ * @typedef {object} ShrinkFailure
+ * @property {string} rule
+ * @property {string} [detail]
+ */
+
+/**
  * @typedef {object} ShrinkFixture
  * @property {number} seed - the match seed the actions were generated against, and the one to replay with:
- *   `runMonkeySession(page, {seed: fixture.seed, actions: fixture.actions})`.
+ *   `runMonkeySession(page, {seed: fixture.seed, actions: fixture.actions, ...fixture.options})`.
  * @property {number} originalActionCount - how long the run was before shrinking.
  * @property {number} shrunkActionCount - `actions.length`, kept alongside the list for a reviewer skimming
  *   the fixture without counting.
  * @property {MonkeyAction[]} actions - the shrunk list, replayable as-is.
  * @property {number} evaluations - how many candidates the search evaluated to find this list.
  * @property {string} sentence - {@link renderSentence} of `actions`.
+ * @property {ShrinkFailure} [failure] - the finding this fixture's actions reproduce on replay, when the
+ *   caller supplied one. Absent rather than `null` when it was not given, so an older fixture and a fixture
+ *   nobody attached a finding to look identical.
+ * @property {Record<string, unknown>} [options] - the non-default `runMonkeySession` options the replay
+ *   needs (`stuckSimulatedSeconds`, say), when the caller supplied any. Absent for the same reason `failure`
+ *   is.
  */
 
 /**
@@ -240,14 +268,29 @@ export function renderSentence(actions) {
  * actions themselves, and enough to re-run it — plus the sentence, so a reviewer reading the fixture never
  * has to separately call {@link renderSentence}.
  *
+ * `failure` and `options` are both optional and both omitted from the returned object entirely when not
+ * given, rather than written in as `undefined` — so a caller that never passes them gets exactly the fixture
+ * shape this function always returned, and a fixture written to disk with `JSON.stringify` carries no dead
+ * keys either way (`JSON.stringify` drops an explicit `undefined` on its own, but leaving the key out here
+ * means `'failure' in fixture` already answers the question, without a caller having to check the value).
+ *
  * @param {object} args
  * @param {number} args.seed
  * @param {number} args.originalActionCount
  * @param {MonkeyAction[]} args.actions - the shrunk list, e.g. `(await shrinkFailure(...)).actions`.
  * @param {number} args.evaluations
+ * @param {ShrinkFailure} [args.failure] - see this module's header, "The two outputs the ticket names".
+ * @param {Record<string, unknown>} [args.options] - see the same section.
  * @returns {ShrinkFixture}
  */
-export function buildShrinkFixture({ seed, originalActionCount, actions, evaluations }) {
+export function buildShrinkFixture({
+  seed,
+  originalActionCount,
+  actions,
+  evaluations,
+  failure,
+  options,
+}) {
   return {
     seed,
     originalActionCount,
@@ -255,5 +298,7 @@ export function buildShrinkFixture({ seed, originalActionCount, actions, evaluat
     actions,
     evaluations,
     sentence: renderSentence(actions),
+    ...(failure !== undefined ? { failure } : {}),
+    ...(options !== undefined ? { options } : {}),
   };
 }

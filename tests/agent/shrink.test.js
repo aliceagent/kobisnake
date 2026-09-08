@@ -182,11 +182,17 @@ describe('KI-18-02 AC2 · the shrunk fixture reproduces the failure on replay', 
     const { actions, trigger, predicate } = singleCauseScenario(77, 2000, 1500);
     const shrunk = await shrinkFailure(actions, predicate);
 
+    // `failure` and `options` are what turn "actions that once failed something" into "the whole recipe":
+    // which finding the actions reproduce, and the non-default `runMonkeySession` options the replay needs
+    // (`shrink.spec.js` demonstrates the real ones; a plain `{rule, detail}` and an arbitrary options bag
+    // are enough to prove this module carries them through without caring what is inside either).
     const fixture = buildShrinkFixture({
       seed: 77,
       originalActionCount: actions.length,
       actions: shrunk.actions,
       evaluations: shrunk.evaluations,
+      failure: { rule: 'contains-trigger', detail: `action ${trigger.index} present` },
+      options: { stuckSimulatedSeconds: 5 },
     });
 
     // Everything the ticket names is here, and it is what it says it is.
@@ -196,24 +202,36 @@ describe('KI-18-02 AC2 · the shrunk fixture reproduces the failure on replay', 
     expect(fixture.actions).toContain(trigger);
     expect(fixture.sentence).toBe(renderSentence(fixture.actions));
     expect(fixture.evaluations).toBe(shrunk.evaluations);
+    // …and so is what the tech-lead review asked for: the finding the actions reproduce, and the options a
+    // replay needs, both round-trippable as part of the same object rather than known only by the caller.
+    expect(fixture.failure).toEqual({
+      rule: 'contains-trigger',
+      detail: `action ${trigger.index} present`,
+    });
+    expect(fixture.options).toEqual({ stuckSimulatedSeconds: 5 });
 
     // Replayed directly: the fixture's own actions still trip the predicate that found the failure.
     await expect(predicate(fixture.actions)).resolves.toBe(true);
 
     // Replayed after a JSON round trip — the shape `docs/qa/reports/` would actually commit and the shape
-    // `runMonkeySession(page, {seed, actions})` would actually be handed on a later invocation of this
-    // process, where the original `trigger` object no longer exists to compare by reference. The predicate
-    // above cannot be reused as-is (it closes over `trigger`'s identity), so this checks the thing identity
-    // cannot: every field of every action survives the round trip untouched, in order.
+    // `runMonkeySession(page, {seed, actions, ...options})` would actually be handed on a later invocation of
+    // this process, where the original `trigger` object no longer exists to compare by reference. The
+    // predicate above cannot be reused as-is (it closes over `trigger`'s identity), so this checks the thing
+    // identity cannot: every field of every action, and `failure` and `options` themselves, survive the round
+    // trip untouched.
     const revived = JSON.parse(JSON.stringify(fixture));
     expect(revived.actions).toEqual(fixture.actions);
     expect(revived.sentence).toBe(fixture.sentence);
+    expect(revived.failure).toEqual(fixture.failure);
+    expect(revived.options).toEqual(fixture.options);
     expect(revived.actions.some((/** @type {any} */ a) => a.index === trigger.index)).toBe(true);
   });
 
-  it('KI-18-02 AC2: the fixture keeps each action\'s original index rather than renumbering', async () => {
-    // A reviewer holding a 2 000-action campaign log and a shrunk fixture side by side should be able to
-    // find "action 1500" in both. Renumbering the shrunk list 0..n-1 would break exactly that.
+  it('KI-18-02 AC2: `failure` and `options` are omitted, not written in as `undefined`, when the caller never supplies them', async () => {
+    // The tech-lead review's own condition: "both optional, so nothing that builds a fixture today breaks".
+    // A fixture built the way every call before this addition built one should be indistinguishable from
+    // one built before `failure`/`options` existed — not merely `undefined`-valued, genuinely absent, which
+    // is also the only shape a `JSON.stringify` round trip cannot smuggle a stray key through by accident.
     const { actions, trigger, predicate } = singleCauseScenario(3, 300, 217);
     const shrunk = await shrinkFailure(actions, predicate);
     const fixture = buildShrinkFixture({
@@ -222,7 +240,16 @@ describe('KI-18-02 AC2 · the shrunk fixture reproduces the failure on replay', 
       actions: shrunk.actions,
       evaluations: shrunk.evaluations,
     });
+
+    // A reviewer holding a 2 000-action campaign log and a shrunk fixture side by side should be able to
+    // find "action 1500" in both. Renumbering the shrunk list 0..n-1 would break exactly that.
     expect(fixture.actions[0].index).toBe(trigger.index);
     expect(trigger.index).toBe(217);
+
+    expect('failure' in fixture).toBe(false);
+    expect('options' in fixture).toBe(false);
+    expect(Object.keys(fixture).sort()).toEqual(
+      ['actions', 'evaluations', 'originalActionCount', 'seed', 'sentence', 'shrunkActionCount'].sort(),
+    );
   });
 });
