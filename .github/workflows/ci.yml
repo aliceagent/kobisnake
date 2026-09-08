@@ -168,11 +168,28 @@ jobs:
         env:
           PLAYWRIGHT_HTML_REPORT: playwright-report/visual
         run: npm run test:visual -- --reporter=github,html
-      - name: Fail the job if either suite failed
-        if: steps.e2e.outcome == 'failure' || steps.visual.outcome == 'failure'
+      # KI-19-01 (#200): two steps rather than one, so *which* suite failed is readable without the log.
+      # `continue-on-error` above means GitHub reports both suite steps' `conclusion` as `success` whatever
+      # happened — only their `outcome` records the truth, and the jobs API exposes the former. A single
+      # combined gate therefore said "a suite failed" and nothing more.
+      #
+      # This is **complementary to KI-03-05's `--reporter=github` above, not a replacement for it**, and the
+      # two answer different questions: the annotation names the failing *test*, which is what you want once
+      # you know where to look, and these two steps name the failing *suite*, which is what the jobs API can
+      # tell you before you have anything to look at. Annotations are also only emitted when Playwright gets
+      # far enough to report — a suite that dies in `webServer` start-up produces none, and then the step list
+      # is the only thing left.
+      - name: e2e failed
+        if: steps.e2e.outcome == 'failure'
         run: |
-          echo "e2e outcome: ${{ steps.e2e.outcome }}"
-          echo "visual outcome: ${{ steps.visual.outcome }}"
+          echo "The e2e suite failed. Reproduce it with: npm run test:e2e"
+          echo "Run it on its own — never alongside another Playwright suite (CLAUDE.md, #86)."
+          exit 1
+      - name: visual failed
+        if: steps.visual.outcome == 'failure'
+        run: |
+          echo "The visual suite failed. Reproduce it with: npm run test:visual"
+          echo "If a baseline genuinely changed, update it in a PR labelled needs-design-review."
           exit 1
 
       # KS-01-04 AC3: downloadable on failure. `test-results/` carries the traces
@@ -185,3 +202,98 @@ jobs:
             playwright-report/
             test-results/
           retention-days: 14
+
+  # KI-19-01: what ships, and whether the lockfile still describes it.
+  #
+  # This job is deliberately separate from `build` rather than folded into it: its three checks answer
+  # "is this dependency set the one we agreed to?", which is a different question from "does the code
+  # compile", and a reader looking at a red PR should be able to tell those apart at a glance.
+  #
+  # NOTE FOR THE OWNER: `supply-chain` is a new check and is therefore **not** in the required-status-check
+  # list KS-01-06 pinned (`lint`, `typecheck`, `unit`, `build`, `browser`). It will show red on a pull request
+  # but will not block a merge until it is added, which is a repository-settings change agent sessions cannot
+  # make. The lockfile half is gated regardless, because every one of the five required jobs runs `npm ci`,
+  # and `npm ci` refuses (`EUSAGE`) when package.json and package-lock.json disagree.
+  supply-chain:
+    name: supply-chain
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+
+      # AC1, first line of defence. `npm ci` installs strictly from the lockfile and refuses outright when
+      # package.json disagrees with it, so this step alone fails a PR that edits one without the other.
+      - run: npm ci
+
+      # AC1, second line of defence, and the one with a message worth reading. `npm ci`'s own refusal is
+      # accurate but generic; this reproduces the lockfile from package.json and shows the diff, so the failure
+      # names the file to regenerate and the command to do it with. `--package-lock-only` touches no
+      # node_modules and `--ignore-scripts` runs nothing from the registry, so this is cheap and side-effect
+      # free: on an in-sync tree it rewrites the lockfile byte-identically and the diff is empty.
+      - name: package-lock.json is up to date with package.json
+        run: |
+          npm install --package-lock-only --ignore-scripts
+          if ! git diff --exit-code package-lock.json; then
+            echo ""
+            echo "::error title=Lockfile out of date::package-lock.json does not match package.json"
+            echo "package.json was changed without regenerating the lockfile (the diff above is what is"
+            echo "missing). Fix it with:"
+            echo ""
+            echo "    npm install --package-lock-only"
+            echo "    git add package-lock.json"
+            echo ""
+            echo "Do not hand-edit package-lock.json."
+            exit 1
+          fi
+
+      # AC2, the gate. **Scope: what ships.** `--omit=dev` narrows this to the runtime dependency tree, which
+      # is `three` and nothing else — the only code that reaches dist/ and therefore a player's browser. The
+      # level is `high`, meaning high and critical fail.
+      #
+      # Why not the whole tree: at the time this landed `main` carried four advisories (2 critical, 1 high,
+      # 1 moderate) and every one of them was a dev dependency — vitest, @vitest/coverage-v8, vite, esbuild.
+      # Gating on those would have turned `main` red on this job's first run, for findings that cannot reach a
+      # player, and one of them is only clearable by taking Vite from 5 to 8 — a semver-major of the build tool
+      # that the visual baselines would have to be re-proved against. A gate that is red for reasons the team
+      # has decided not to act on this week is a gate people learn to ignore, which is worse than no gate.
+      # So the dev toolchain is reported immediately below instead, and KI-19-02 is the ticket that brings
+      # those updates in as reviewable pull requests.
+      - name: Audit what ships (runtime dependencies, high and critical)
+        run: |
+          if ! npm audit --omit=dev --audit-level=high; then
+            echo ""
+            echo "::error title=Vulnerable runtime dependency::A high or critical advisory affects a package that ships to the browser"
+            echo "This is the dependency tree that ends up in dist/, so this one blocks."
+            echo "Reproduce with:  npm audit --omit=dev --audit-level=high"
+            echo "Then either update the package, or - if there is no fix - say so on the pull request and"
+            echo "get the design lead's decision before merging. Do not silence this step."
+            exit 1
+          fi
+
+      # AC2's other half: the dev toolchain, reported every run and never failing the job. Visible so the four
+      # advisories above cannot be quietly forgotten, advisory so they cannot block work that has nothing to do
+      # with them. Same reasoning KI-19-00 applied to the wall-clock latency figures.
+      - name: Audit the dev toolchain (advisory, never fails)
+        run: |
+          echo "Dev-dependency advisories. These do not ship; they are reported, not gated (KI-19-01)."
+          npm audit || true
+
+      # AC3. `npm sbom` is npm's own, built in since npm 9 — no dependency was added for this, which matters
+      # given that a supply-chain ticket adding a supply-chain dependency would be its own small joke.
+      # CycloneDX because it is the format Vercel, GitHub and most scanners read.
+      - name: Generate the SBOM
+        run: |
+          npm sbom --sbom-format cyclonedx > sbom.cyclonedx.json
+          node -e "const b=require('./sbom.cyclonedx.json');console.log('SBOM:',b.bomFormat,b.specVersion,'-',b.components.length,'components')"
+
+      # Uploaded on every run, not only `main`: AC3 asks for it on every `main` build, and having the same
+      # artifact on the pull request is what lets a reviewer diff what a change does to the dependency set
+      # before it becomes a `main` build.
+      - uses: actions/upload-artifact@v4
+        with:
+          name: sbom
+          path: sbom.cyclonedx.json
+          retention-days: 90

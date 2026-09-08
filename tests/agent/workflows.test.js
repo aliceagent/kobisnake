@@ -43,20 +43,29 @@ function workflowFiles() {
  * or a `|`/`>`/`>-` block of more-indented lines. Folding matters — `nightly.yml` writes its invocation as a
  * `>-` block, so a line-by-line check would see the runner and its `--reporter` flag as unrelated lines.
  *
+ * Each entry carries two views of the same `run:` block. `command` is everything, joined — what the lock
+ * check needs, since a suite invocation hidden anywhere in a block is still an invocation. `executable`
+ * drops lines that merely *print* text (`echo ...`), which the reporter check needs: KI-19-01's failure
+ * steps echo `npm run test:e2e` at the developer as the command to reproduce a failure with, and a check
+ * that could not tell that from an invocation would force those messages to stop naming the command — which
+ * is the one thing the sprint file requires a failing gate to do.
+ *
  * @param {string} text
- * @returns {{line: number, command: string}[]}
+ * @returns {{line: number, command: string, executable: string}[]}
  */
 function runCommands(text) {
   const lines = text.split('\n');
-  /** @type {{line: number, command: string}[]} */
+  /** @type {{line: number, command: string, executable: string}[]} */
   const commands = [];
+  /** Lines that only print text run nothing, whatever they happen to quote. */
+  const isEcho = (/** @type {string} */ part) => /^echo\b/.test(part);
   for (let i = 0; i < lines.length; i += 1) {
     const match = /^(\s*)-?\s*run:\s*(.*)$/.exec(lines[i]);
     if (match === null) continue;
     const indent = match[1].length;
     const inline = match[2].trim();
     if (inline !== '' && !/^[|>][-+]?$/.test(inline)) {
-      commands.push({ line: i + 1, command: inline });
+      commands.push({ line: i + 1, command: inline, executable: isEcho(inline) ? '' : inline });
       continue;
     }
     const parts = [];
@@ -68,7 +77,11 @@ function runCommands(text) {
       parts.push(body.trim());
       i = j;
     }
-    commands.push({ line: match.index === undefined ? 0 : i + 1, command: parts.join(' ') });
+    commands.push({
+      line: match.index === undefined ? 0 : i + 1,
+      command: parts.join(' '),
+      executable: parts.filter((part) => !isEcho(part)).join(' '),
+    });
   }
   return commands;
 }
@@ -122,8 +135,11 @@ describe('KI-03-05 AC2 · no two Playwright suites at once', () => {
       command.includes(RUNNER) || ROUTED_NPM_SCRIPTS.some((script) => command.includes(script));
     let checked = 0;
     for (const { name, text } of workflowFiles()) {
-      for (const { line, command } of runCommands(text)) {
-        if (!runsASuite(command)) continue;
+      for (const { line, command, executable } of runCommands(text)) {
+        // `executable`, not `command`: a step that *prints* `npm run test:e2e` as the command to reproduce a
+        // failure with (KI-19-01's own failure steps do exactly that) is not running a suite, and requiring
+        // a `--reporter` flag on a line of prose would only teach people to stop naming the command.
+        if (!runsASuite(executable)) continue;
         checked += 1;
         expect(command, `${name}:${line}`).toContain('--reporter=github');
       }
