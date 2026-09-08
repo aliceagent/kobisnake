@@ -46,6 +46,10 @@ const ROUTED_NPM_SCRIPTS = [
   'test:agent',
   'test:perf:drawcalls',
   'test:perf:frametime',
+  // KI-18-01 added the session fuzzer's campaign, which `agent-playtest.yml` runs as its own job. Same
+  // reasoning as the two `test:perf` entries above: this list is what the reporter check reads to decide
+  // whether a workflow step is running a suite at all.
+  'test:agent:monkey',
 ];
 
 function workflowFiles() {
@@ -167,8 +171,14 @@ describe('KI-03-05 AC2 · no two Playwright suites at once', () => {
     // step inside it. This counts routed suite invocations per job and holds every job to at most one —
     // except `browser`, whose two are the pre-existing e2e-then-visual pair that KI-03-05 documents as
     // sequential steps in one job, never parallel.
+    //
+    // The match is anchored on the right, not a plain `includes`: KI-18-01 added `test:agent:monkey`, and
+    // every script name is a prefix of any longer one built from it — so `includes('test:agent')` counted the
+    // monkey's single invocation as two suites and failed a job that runs one. The lookahead says "this
+    // script name, not the start of a longer one".
     const suiteInvocations = (/** @type {string} */ jobText) =>
-      ROUTED_NPM_SCRIPTS.filter((script) => jobText.includes(script)).length;
+      ROUTED_NPM_SCRIPTS.filter((script) => new RegExp(`${script}(?![\\w:.-])`).test(jobText))
+        .length;
 
     for (const { name, text } of workflowFiles()) {
       // Jobs start at a two-space-indented key under `jobs:`; split on that rather than parsing YAML, for

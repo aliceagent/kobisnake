@@ -22,6 +22,7 @@
     "test:agent:report": "node scripts/run-playwright-suite.mjs agent-report tests/agent/report.spec.js --project=chromium",
     "test:agent:pacing": "node scripts/run-playwright-suite.mjs agent-pacing tests/agent/pacing.spec.js --project=chromium",
     "test:agent:viewports": "node scripts/run-playwright-suite.mjs agent-viewports tests/agent/viewports.spec.js --project=chromium",
+    "test:agent:monkey": "node scripts/run-playwright-suite.mjs agent-monkey tests/agent/monkey.spec.js --project=chromium",
     "test:perf": "npm run test:perf:bundle && npm run test:perf:drawcalls",
     "test:perf:bundle": "vitest run tests/perf/bundle.test.js --coverage.enabled=false",
     "test:perf:drawcalls": "node scripts/run-playwright-suite.mjs perf-drawcalls tests/perf/drawCalls.spec.js --project=chromium",

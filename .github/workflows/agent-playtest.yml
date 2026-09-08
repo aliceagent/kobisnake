@@ -95,3 +95,60 @@ jobs:
           # throwaway debugging aid, and a nightly series is only useful if you can look back across it.
           retention-days: 30
           if-no-files-found: warn
+
+  # KI-18-01 (Improvement 18, `docs/sprints/improvement-18-session-fuzzing.md`, tracking issue #303): the
+  # session fuzzer's campaign, and the place AC3's ten minutes are measured — "200 seeds × 500 actions
+  # complete in under 10 minutes **on CI**", so CI is where the number has to come from.
+  #
+  # Its own job rather than another step in `agent playtest` above, for the reason `ci.yml`'s `perf` job
+  # gives in its own words: two GitHub jobs are two runners, which are two containers and cannot contend at
+  # all, so #86's "never two Playwright suites at once" is satisfied by construction — while two *steps* in
+  # one job would put a ten-minute fuzzing campaign on the critical path of the ten-match gate. It still goes
+  # through `scripts/run-playwright-suite.mjs`, so a future step added beside it inherits the lock rather
+  # than a comment.
+  #
+  # `KI_MONKEY=1` is what un-skips the campaign; without it `monkey.spec.js`'s AC3 test is discovered and
+  # instantly skipped, exactly as `report.spec.js` and `pacing.spec.js` gate their own long runs.
+  monkey:
+    name: session fuzz
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+      - run: npm ci
+
+      - name: Read installed Playwright version
+        id: playwright-version
+        run: |
+          version=$(node -p "require('./package-lock.json').packages['node_modules/@playwright/test'].version")
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+
+      - uses: actions/cache@v4
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-chromium-${{ runner.os }}-${{ steps.playwright-version.outputs.version }}
+      - run: npx playwright install --with-deps chromium
+
+      # `--reporter=github` for KI-03-05's reason: a check-run annotation is the part of a failed run that
+      # reads without opening anything. The campaign's own findings are printed to the log as well — they are
+      # KI-18-03's to shrink and file, and this job never fails on them (see `monkey.spec.js`'s header on why
+      # a fuzzer that goes red on its first finding is the one thing this sprint says not to build).
+      - name: Session fuzz (KI-18-01 AC3)
+        id: monkey
+        env:
+          KI_MONKEY: '1'
+          PLAYWRIGHT_HTML_REPORT: playwright-report/monkey
+        run: npm run test:agent:monkey -- --reporter=github,html
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: session-fuzz-report
+          path: |
+            playwright-report/
+            test-results/
+          retention-days: 30
+          if-no-files-found: warn
