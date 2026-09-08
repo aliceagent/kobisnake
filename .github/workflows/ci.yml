@@ -203,6 +203,88 @@ jobs:
             test-results/
           retention-days: 14
 
+  # KI-08-04 (Improvement 08): the performance budgets of `ARCHITECTURE §12`, on every pull request.
+  #
+  # ## Why this is its own job and not two more steps in `browser`
+  #
+  # #86 is that two Playwright suites in **one container** corrupt both. Two GitHub jobs run on two runners,
+  # which are two containers and cannot contend at all — `tests/agent/workflows.test.js` says so in its own
+  # words, and that is the whole reason it checks routing rather than job graphs. So a separate job satisfies
+  # this ticket's AC2 by construction, keeps the draw-call suite off the critical path of a `browser` job that
+  # already takes ~10 minutes, and still routes through `scripts/run-playwright-suite.mjs` so that a *future*
+  # step added beside it inherits the lock rather than a comment.
+  #
+  # ## What runs here, and what deliberately does not
+  #
+  # The two **cheap** budgets, the ones the sprint file puts on every PR: the gzipped bundle total
+  # (KI-08-01) and the draw-call budget over five staged scenes (KI-08-02). The frame-time and leak suite
+  # (KI-08-03) is nightly instead — `nightly.yml`'s `perf` job — because its churn run drives 500 rounds and
+  # the figure it would gate on is already covered here by the draw-call budget. That split is the sprint
+  # file's own ("run on every PR for the cheap checks (bundle, draw calls) and nightly for the rest") and is
+  # stated here so nobody has to reconstruct it from two workflows.
+  #
+  # The bundle gate also runs inside the `unit` job, because `tests/perf/bundle.test.js` is an ordinary Vitest
+  # test and `npm run test:unit` runs every test. That duplication is deliberate and costs two seconds: this
+  # job is where a budget failure is *legible as a budget failure*, and `unit` is what makes it impossible to
+  # land a bundle regression by touching this file.
+  #
+  # NOTE FOR THE OWNER: like `supply-chain`, `perf` is a new check and is **not** in the required-status-check
+  # list KS-01-06 pinned (`lint`, `typecheck`, `unit`, `build`, `browser`). It will show red on a pull request
+  # but will not block a merge until it is added, which is a repository-settings change agent sessions cannot
+  # make. The bundle half is gated regardless, through `unit`.
+  perf:
+    name: perf
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+      - run: npm ci
+
+      - name: Read installed Playwright version
+        id: playwright-version
+        run: |
+          version=$(node -p "require('./package-lock.json').packages['node_modules/@playwright/test'].version")
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+
+      # Same cache key shape as `browser` and `agent-playtest.yml`, so these three warm one another's binary.
+      - uses: actions/cache@v4
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-chromium-${{ runner.os }}-${{ steps.playwright-version.outputs.version }}
+      - run: npx playwright install --with-deps chromium
+
+      # AC1: a PR that crosses a budget goes red with a message naming the budget and the number. Both steps
+      # below fail with exactly that (`checkBundleBudget` and `buildBudgetFailureMessage` build the messages,
+      # and both are unit-tested against a fabricated over-budget input, so the text is proven rather than
+      # hoped for). Neither carries `continue-on-error`: unlike the `browser` job's two suites, there is no
+      # second suite here whose result would be hidden by the first failing.
+      #
+      # The bundle step builds the site itself, into its own temp directory — see `tests/perf/bundle.test.js`
+      # for why it never measures `dist/`.
+      - name: Bundle budget (ARCHITECTURE §12, gzipped JS+CSS)
+        run: npm run test:perf:bundle
+
+      # `--reporter=github` for the reason KI-03-05 gives: a failed run's job log and artifacts both redirect
+      # to blob storage the egress proxy refuses, so a check-run annotation is the only part an agent session
+      # can read. `tests/agent/workflows.test.js` enforces that this flag is present on every routed suite
+      # invocation, and KI-08-04 added these two scripts to the list it checks.
+      - name: Draw-call budget (ARCHITECTURE §12, five staged scenes)
+        env:
+          PLAYWRIGHT_HTML_REPORT: playwright-report/perf
+        run: npm run test:perf:drawcalls -- --reporter=github,html
+
+      - uses: actions/upload-artifact@v4
+        if: failure()
+        with:
+          name: playwright-report-perf
+          path: |
+            playwright-report/
+            test-results/
+          retention-days: 14
+
   # KI-19-01: what ships, and whether the lockfile still describes it.
   #
   # This job is deliberately separate from `build` rather than folded into it: its three checks answer

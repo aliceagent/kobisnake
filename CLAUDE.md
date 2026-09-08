@@ -22,10 +22,12 @@ Node 20 (`.nvmrc`). Run `npm install` once per worktree — `node_modules` is no
 | `npm run lint` | ESLint (flat config) |
 | `npm run format` | Prettier `--write .` — always safe; `.prettierignore` excludes `docs/**` and `*.md` |
 | `npm run typecheck` | `tsc --noEmit -p jsconfig.json` |
-| `npm run test:unit` | Vitest — every test (`tests/unit/**`, `tests/sim/**`, `tests/agent/**/*.test.js`), **coverage off** |
+| `npm run test:unit` | Vitest — every test (`tests/unit/**`, `tests/sim/**`, `tests/agent/**/*.test.js`, `tests/perf/**/*.test.js`), **coverage off** |
 | `npm run test:coverage` | Vitest — the per-file coverage thresholds over `tests/unit` + `tests/agent`; sets `COVERAGE_STRICT` itself |
 | `npm run test:e2e` | Playwright — `tests/e2e/**`, including the offline/zero-network-request check |
 | `npm run test:visual` | Playwright — `tests/visual/**` against `tests/visual/__baselines__/` |
+| `npm run test:perf` | The per-PR performance budgets (KI-08-04): bundle size, then draw calls |
+| `npm run test:perf:frametime` | The nightly one — frame cost over a played round, and the 500-round leak check |
 
 There is no `test:sim` script: simulation tests live in `tests/sim/` but run under `npm run test:unit`.
 
@@ -101,7 +103,16 @@ There is no `test:sim` script: simulation tests live in `tests/sim/` but run und
 - `tests/e2e` — Playwright, `npm run test:e2e`. Includes the offline/zero-network-request check.
 - `tests/visual` — Playwright screenshots vs `tests/visual/__baselines__/`, seed 1, `?reducedFx=1`. Run with
   `npm run test:visual`.
-- `tests/perf` — frame-time, draw-call and bundle-size budgets. Does not exist yet; arrives in Sprint 16.
+- `tests/perf` — the `ARCHITECTURE §12` budgets (Improvement 08, not Sprint 16 as this line used to say).
+  **`npm run test:perf` is the per-PR gate**: the gzipped bundle total (`bundle.test.js`, Vitest, and it also
+  rides along in `npm run test:unit`) and the draw-call budget over five staged scenes (`drawCalls.spec.js`,
+  Playwright). **`npm run test:perf:frametime` is the nightly one** — a played round sampled frame by frame
+  plus a leak check over 500 rounds of churn; it is nightly because the churn run is the expensive half.
+  CI runs the first as `ci.yml`'s `perf` job and the second as `nightly.yml`'s.
+  Two rules worth knowing before you touch any of it: **the budgets are `ARCHITECTURE §12`'s and are not
+  yours to raise** — a gate that fires is either a regression to fix or a `tuning-proposal` for the design
+  lead — and **no gate here keys on wall-clock milliseconds**. `docs/qa/playtests/perf-baseline.md` records
+  today's figures and says which are gated, which are only recorded, and why.
 
 ## When blocked
 Post `BLOCKED: <what you need> <from whom>` on your issue and pick up another ticket of yours.
