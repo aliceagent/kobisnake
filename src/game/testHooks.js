@@ -33,6 +33,11 @@ import { STATES } from './gameStateMachine.js';
  *   slow-mo beat from the inside (KS-06-00 AC3).
  * @property {(seed: number | null) => void} setSeed - fixes the seed the *next* match is built from.
  * @property {(overrides?: object) => void} startMatch - main menu to countdown in one call.
+ * @property {(playerNumber: 1 | 2, policy: import('./bots/policy.js').Policy | null) => void} setCpuPlayer -
+ *   KI-12-02: a straight passthrough to `session.js`'s own method — see its doc comment. Added here (a
+ *   declared deviation from this ticket's own `Files:` list, per its PR description) because `tests/e2e/cpu
+ *   .spec.js` is the only way to prove the CPU plays through the *real* keyboard-fed `handleDirection` inside
+ *   a real browser, and every other `session.js` method this file exposes reaches the page the same way.
  * @property {() => void} pause
  * @property {() => void} resume
  * @property {() => {matchSeed: number, roundIndex: number, roundSeeds: number[]}} getSeeds
@@ -90,6 +95,9 @@ import { STATES } from './gameStateMachine.js';
  * @property {(overrides?: object) => void} startMatch - drives the main menu and the setup screen in one
  *   call, leaving the game in COUNTDOWN. Every e2e and visual spec starts a round through this, because the
  *   placeholder "press Enter from an idle overlay" flow it replaces no longer exists (KS-05-03).
+ * @property {(playerNumber: 1 | 2, policy: import('./bots/policy.js').Policy | null) => void} setCpuPlayer -
+ *   KI-12-02: registers (or clears, with `null`) the CPU policy for one player — see
+ *   `TestHooksSession.setCpuPlayer`'s own doc comment for why this file carries it at all.
  * @property {() => void} pause - opens the real PAUSE state, exactly as Esc does.
  * @property {() => void} resume - leaves it, READY? beat included.
  * @property {() => {matchSeed: number, roundIndex: number, roundSeeds: number[]}} getSeeds - the match seed
@@ -291,6 +299,9 @@ export function createTestHooks({ session, renderer, eventTarget, KeyboardEventC
     },
     startMatch(overrides) {
       session.startMatch(overrides);
+    },
+    setCpuPlayer(playerNumber, policy) {
+      session.setCpuPlayer(playerNumber, policy);
     },
     pause() {
       session.pause();

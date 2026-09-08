@@ -5,6 +5,7 @@ import { createMatch } from '../core/match.js';
 import { createRng } from '../core/rng.js';
 import { RoundSimulation } from '../core/round.js';
 import { SETTINGS, withOverrides } from '../core/settings.js';
+import { createCpuPlayer } from './cpuPlayer.js';
 import { createGameStateMachine, GAME_EVENTS, STATES } from './gameStateMachine.js';
 import { createInput } from './input.js';
 import { createInputLatencyTracker, disabledInputLatencyStats } from './inputLatency.js';
@@ -99,6 +100,36 @@ import { createLoop } from './loop.js';
  * at most one extra comparison or increment on a path that already runs at most once per event or once per
  * round-over, which is cheap enough not to gate behind `playtestPrompt !== null` — neither is a new
  * collaborator, just one more thing this file already has everything it needs to track.
+ *
+ * ## KI-12-02: a CPU player is a seam, not a second input path
+ *
+ * `cpuPlayers` is a nullable collaborator *per player number*, the same idiom `inputLatency` and
+ * `playtestPrompt` already use above: `[null, null]` on every session until {@link setCpuPlayer} is called,
+ * which is never, outside a test, until KI-12-04 wires the match-setup switch to it — so a normal HUMAN/HUMAN
+ * load allocates nothing here and pays exactly one boolean check (`hasCpuPlayer`) per frame, in
+ * {@link driveCpuPlayers}, which is `runUpdate`'s very first line.
+ *
+ * `driveCpuPlayers` is a peer of `handleDirection`'s own keyboard callers, not a bypass of it: it asks each
+ * configured `CpuPlayer` (`cpuPlayer.js`) to `decide()` from the same `sim.getState()` snapshot the HUD
+ * already reads, and feeds a non-`null` answer straight into {@link handleDirection} — the exact function a
+ * keydown feeds — so `inputBufferSize`, the no-reversal rule and the replay's `roundInputLog` all apply to a
+ * CPU's inputs for free (AC1, AC2). `{@link acceptsSteeringInput}` is the state gate `handleDirection` has
+ * always used, pulled out so `driveCpuPlayers` can check it *before* calling `decide()` rather than after:
+ * PAUSE (and the READY? beat, and every menu state) fail that gate, so the policy is never even asked while
+ * the game is paused (AC3) — the decision is not merely discarded, it is never spent.
+ *
+ * This does not contradict KS-07-06's own care above about avoiding a `getState()` clone on every frame:
+ * that snapshot is read only when a CPU is actually configured (`hasCpuPlayer` gates it, same as the boolean
+ * check above), and it is cheap enough not to matter even then — **measured** (PR #226 review) at ≈ 0.5 µs
+ * per call, ≈ 0.003 % of a 16.6 ms frame at 60 fps, independently reproduced on this ticket's own machine.
+ * KS-07-06's own `sim.getState()` read, by contrast, is gated behind an *accepted* human input (a handful of
+ * times a second at most); this one runs every frame a CPU is configured, which is exactly why it was worth
+ * measuring rather than assuming.
+ *
+ * `startRound` resets every configured `CpuPlayer` alongside `inputLatency`, for the same reason: a fresh
+ * round's snakes spawn at fixed cells, and without clearing `cpuPlayer.js`'s own head-cell memory a spawn
+ * cell that happened to match the previous round's final head cell would silently swallow this round's first
+ * decision.
  */
 
 /** @typedef {import('./input.js').Direction} Direction */
@@ -452,6 +483,21 @@ export function createSession({
   let playtestPrompt = null;
 
   /**
+   * KI-12-02: `cpuPlayers[playerNumber - 1]` is `null` for a human player, or the `CpuPlayer`
+   * (`cpuPlayer.js`) driving that player otherwise. `[null, null]` until {@link setCpuPlayer} is called — see
+   * this file's own header note.
+   * @type {[ReturnType<typeof createCpuPlayer> | null, ReturnType<typeof createCpuPlayer> | null]}
+   */
+  let cpuPlayers = [null, null];
+
+  /**
+   * Whether either slot of {@link cpuPlayers} is non-`null`, kept alongside it so {@link driveCpuPlayers} — on
+   * `runUpdate`'s hot path, every frame, for every session — pays exactly one boolean read rather than two
+   * property reads when there is nothing to drive.
+   */
+  let hasCpuPlayer = false;
+
+  /**
    * KI-11-02's `RoundFacts.laserPhaseSeen`: true once any round has actually armed its lasers, for the whole
    * life of this session (never reset by a new round or a new match) — see this file's header note.
    */
@@ -726,6 +772,11 @@ export function createSession({
     // heading could be misread as a commit matching a stale pending entry from the round that just ended
     // (see `resetForRound`'s own comment in `inputLatency.js`).
     inputLatency?.resetForRound();
+    // KI-12-02: same idea, for `cpuPlayer.js`'s own head-cell memory — see this file's header note.
+    if (hasCpuPlayer) {
+      cpuPlayers[0]?.reset();
+      cpuPlayers[1]?.reset();
+    }
   }
 
   function resetRoundTimers() {
@@ -784,6 +835,7 @@ export function createSession({
    */
   function runUpdate(dt, unscaledDt) {
     lastDt = unscaledDt;
+    driveCpuPlayers();
 
     switch (machine.getState()) {
       case STATES.COUNTDOWN:
@@ -1009,19 +1061,32 @@ export function createSession({
   // --- input --------------------------------------------------------------------------------------------
 
   /**
-   * A steering key. Ignored unless a round is actually taking input: during PLAYING and LASER_WARNING, and
-   * during the countdown's "GO" beat, where `DESIGN-DECISIONS §2.4` says inputs are queued so a player can
-   * commit to a first turn before the snakes start moving.
+   * True while a round is actually taking steering input: during PLAYING and LASER_WARNING, and during the
+   * countdown's "GO" beat, where `DESIGN-DECISIONS §2.4` says inputs are queued so a player can commit to a
+   * first turn before the snakes start moving — but not through the post-pause READY? beat, which freezes
+   * the round it is about to hand back (`§2.8`).
+   *
+   * Pulled out of {@link handleDirection} for KI-12-02: {@link driveCpuPlayers} needs the identical gate
+   * *before* asking a CPU's policy for a decision, not after, so that PAUSE (which fails every branch here)
+   * stops the policy from being consulted at all rather than merely dropping the answer it gave.
+   */
+  function acceptsSteeringInput() {
+    const state = machine.getState();
+    const playing = state === STATES.PLAYING || state === STATES.LASER_WARNING;
+    if (!playing && !(state === STATES.COUNTDOWN && countdownAcceptsInput())) return false;
+    if (playing && readyRemaining > 0) return false;
+    return true;
+  }
+
+  /**
+   * A steering key. Ignored unless a round is actually taking input — see {@link acceptsSteeringInput}.
    *
    * @param {number} playerNumber
    * @param {Direction} dir
    */
   function handleDirection(playerNumber, dir) {
     if (sim === null) return;
-    const state = machine.getState();
-    const playing = state === STATES.PLAYING || state === STATES.LASER_WARNING;
-    if (!playing && !(state === STATES.COUNTDOWN && countdownAcceptsInput())) return;
-    if (playing && readyRemaining > 0) return;
+    if (!acceptsSteeringInput()) return;
     const playerId = PLAYER_IDS[playerNumber - 1];
     if (playerId === undefined) return;
     // KS-07-01 AC2: recorded before `applyInput`, at the round's current elapsed time, so `t` matches exactly
@@ -1039,6 +1104,28 @@ export function createSession({
       // `recordApplied` documents it never reads.
       const tick = accepted ? /** @type {RoundSnapshot} */ (sim.getState()).tick : -1;
       inputLatency.recordApplied(playerId, tick, accepted);
+    }
+  }
+
+  /**
+   * KI-12-02: feeds every configured `CpuPlayer`'s decision into {@link handleDirection}, exactly as
+   * `input.js`'s keydown listener feeds a human's — this file's own header note explains why that, and not a
+   * second call to `sim.applyInput`, is the whole of this function.
+   *
+   * `runUpdate`'s first line, every frame, for every session: {@link hasCpuPlayer} is the "no CPU configured
+   * costs one boolean read" guard this file's header note promises, and {@link acceptsSteeringInput} — the
+   * same gate `handleDirection` itself uses — runs *before* either `CpuPlayer.decide()` call, so PAUSE (and
+   * every other non-steering state) stops a CPU without ever asking its policy for an answer (AC3).
+   */
+  function driveCpuPlayers() {
+    if (!hasCpuPlayer || sim === null) return;
+    if (!acceptsSteeringInput()) return;
+    const snapshot = /** @type {import('./bots/policy.js').PolicySnapshot} */ (sim.getState());
+    for (let index = 0; index < cpuPlayers.length; index += 1) {
+      const cpu = cpuPlayers[index];
+      if (cpu === null) continue;
+      const dir = cpu.decide(snapshot, settings.grid);
+      if (dir !== null) handleDirection(index + 1, dir);
     }
   }
 
@@ -1335,6 +1422,21 @@ export function createSession({
      */
     setPlaytestPrompt(prompt) {
       playtestPrompt = prompt;
+    },
+    /**
+     * KI-12-02's seam: makes `playerNumber` (1 or 2) a CPU driven by `policy`, or hands it back to a human
+     * when `policy` is `null` — the default for both players on every session
+     * (`DESIGN-DECISIONS §1` row 27: "defaulting to HUMAN for both"). This file knows nothing beyond "does
+     * player N have a policy function": KI-12-03 supplies the three named levels and KI-12-04 wires this to
+     * the match-setup switch, and neither needs this file to change.
+     *
+     * @param {PlayerNumber} playerNumber
+     * @param {import('./bots/policy.js').Policy | null} policy
+     */
+    setCpuPlayer(playerNumber, policy) {
+      cpuPlayers[playerNumber - 1] =
+        policy === null ? null : createCpuPlayer({ playerNumber, policy });
+      hasCpuPlayer = cpuPlayers[0] !== null || cpuPlayers[1] !== null;
     },
     /**
      * The current round's replay, in exactly the shape `tests/sim/replays/*.json` fixtures use (KS-07-01

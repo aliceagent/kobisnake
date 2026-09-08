@@ -44,6 +44,7 @@ function createFakeSession() {
     renderFrame: vi.fn(),
     setSeed: vi.fn(),
     startMatch: vi.fn(),
+    setCpuPlayer: vi.fn(),
     pause: vi.fn(),
     resume: vi.fn(),
     getSeeds: vi.fn(() => ({ matchSeed: 0, roundIndex: 0, roundSeeds: [] })),
@@ -181,6 +182,21 @@ describe('KS-03-06 createTestHooks', () => {
       const { hooks, session } = buildHooks();
       hooks.setSeed(null);
       expect(session.setSeed).toHaveBeenCalledWith(null);
+    });
+  });
+
+  describe('setCpuPlayer', () => {
+    it('KI-12-02: setCpuPlayer forwards straight through to session.setCpuPlayer', () => {
+      const { hooks, session } = buildHooks();
+      const policy = () => 'UP';
+      hooks.setCpuPlayer(2, policy);
+      expect(session.setCpuPlayer).toHaveBeenCalledWith(2, policy);
+    });
+
+    it('KI-12-02: setCpuPlayer(playerNumber, null) forwards null (hands the player back to a human)', () => {
+      const { hooks, session } = buildHooks();
+      hooks.setCpuPlayer(1, null);
+      expect(session.setCpuPlayer).toHaveBeenCalledWith(1, null);
     });
   });
 
