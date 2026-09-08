@@ -164,6 +164,19 @@ its clock starts on the first PLAYING tick.
   reference images through CSS only (borders, radii, gradients, studs as pseudo-elements).
 - HUD updates come from simulation events, throttled to 10 Hz for the timer text. **The HUD is visible only in
   COUNTDOWN, PLAYING, LASER_WARNING and PAUSE**; menus, the scoreboard and MATCH_OVER hide it.
+- Every user-visible string lives in the catalogue (`src/ui/strings.js`, plus `src/ui/strings.playtest.js` for
+  one screen — Improvement 20, KI-20-01/06), never as a literal in a screen module; `eslint.config.js` enforces
+  it (KI-20-03, #251). Two facts matter for whoever next touches it. First, each catalogue group
+  (`menu`, `hud`, `matchSetup`, …) is its own `/*#__PURE__*/`-annotated top-level export, and a screen imports
+  its group rather than the `STRINGS` aggregate: Rollup cannot tree-shake properties out of one object literal,
+  and treats a bare `deepFreeze(...)` call as possibly side-effectful and keeps it regardless of whether
+  anything reads the result — so importing the aggregate (or dropping the annotation) drags every group into
+  every chunk that imports it (#258). Second, the catalogue is deliberately two files with no static import
+  edge between them: `playtestPrompt.js` is a dynamic-import boundary (KI-11-05), and anything reachable from
+  both the entry graph and that dynamic import lands in a shared chunk that Vite `modulepreload`s on a plain
+  load, which would put the playtest screen's copy back in front of every player regardless of whether they
+  ever open it (#317) — so `playtestPrompt.js` reads only `strings.playtest.js`, every other screen reads only
+  `strings.js`, and neither file imports the other.
 
 ## 9. Audio rules
 - `AudioContext` is created on the first keydown (browser autoplay policy). Until then, the game runs silent.
