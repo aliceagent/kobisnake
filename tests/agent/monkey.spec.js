@@ -11,6 +11,7 @@ import {
   MONKEY_KEY_CODES,
   MONKEY_KOBI_MEMBERS,
   MONKEY_VIEWPORTS,
+  STUCK_SIMULATED_SECONDS,
   describeAction,
   generateActions,
   monkeyFailureReasons,
@@ -332,6 +333,53 @@ test.describe('KI-18-01 · the monkey', () => {
     expect(inner.resizes).toBeGreaterThan(0);
     // The round survived it and kept running.
     expect(result.statesVisited).toContain('PLAYING');
+  });
+
+  test('KI-18-01: the stuck check fires when the game stops responding', async ({ page }) => {
+    test.setTimeout(120_000);
+    // `focus` is a real event at `window` and nothing in the game listens to it, so a run of nothing but
+    // focus events on MAIN_MENU changes nothing a player could see — which is what "stuck" has to mean.
+    const actions = Array.from({ length: 12 }, (_, index) => ({
+      index,
+      kind: /** @type {const} */ ('focus'),
+      waitSeconds: 0.5,
+    }));
+    const result = await runMonkeySession(page, {
+      seed: 1,
+      actions,
+      stuckSimulatedSeconds: 2,
+    });
+    expect(result.pageErrors).toEqual([]);
+    expect(result.problems.map((problem) => problem.rule)).toContain('stuck');
+    expect(result.stopped?.rule).toBe('stuck');
+  });
+
+  test('KI-18-01: the stuck check does not fire while the screen is still answering (#331)', async ({
+    page,
+  }) => {
+    test.setTimeout(180_000);
+    // Seed 1885 is the first campaign's only finding, withdrawn on investigation: it sat on `MAIN_MENU` for
+    // sixty simulated seconds without a machine transition, and was reported stuck — while focus moved on
+    // 109 of those actions and the HOW TO PLAY overlay opened and closed 133 times. `mainMenu.js` gives
+    // that overlay input priority by design, so it pins focus on its own row and absorbs `Enter`; the game
+    // answered nearly every key. This is that seed, kept as the regression it is.
+    const result = await runMonkeySession(page, {
+      seed: 1885,
+      actionCount: 500,
+      invariants: checkInvariants,
+      invariantConfig: INVARIANT_CONFIG,
+    });
+    expect(result.pageErrors).toEqual([]);
+    expect(result.problems.map((problem) => problem.rule)).not.toContain('stuck');
+    expect(result.actionsApplied).toBe(500);
+    // …and the thing that *was* true is still measured, as the observation it is rather than as a defect:
+    // the machine really did hold still for well past the stuck threshold while the screen kept answering.
+    expect(result.maxMachineStillSeconds).toBeGreaterThan(STUCK_SIMULATED_SECONDS);
+    console.log(
+      `KI-18-01 (#331): seed 1885 ran all 500 actions with no stuck report; the machine held still for ` +
+        `${result.maxMachineStillSeconds.toFixed(1)} simulated seconds at most while the screen kept ` +
+        `responding.`,
+    );
   });
 
   test('KI-18-01 AC3: 200 seeds × 500 actions inside ten minutes', async ({ page }) => {

@@ -181,6 +181,10 @@ export const DEFAULT_VIEWPORT = MONKEY_VIEWPORTS[0];
 /**
  * The stuck threshold, in simulated seconds: the ticket's own number.
  *
+ * What it measures is "the game has not visibly responded for this long", not "the machine has not
+ * transitioned" — see {@link runMonkeyStepsInPage}'s `fingerprint` for the campaign that made the
+ * difference matter and for #119 F4, which is the precedent for taking a false positive this seriously.
+ *
  * Long enough that nothing healthy comes near it — the longest a state legitimately holds still while the
  * player is pressing keys is the scoreboard's 2.5 s (`settings.js`'s `scoreboardSeconds`) — and short enough
  * that 500 actions of a run (≈ 96 simulated seconds at {@link WAIT_BANDS}' mean) can still trip it.
@@ -302,6 +306,9 @@ const MAX_TRACE_ENTRIES = 2500;
  * @property {number} simSeconds - simulated seconds advanced (a hidden tab advances none).
  * @property {number} hiddenSeconds - simulated seconds *not* advanced because the tab was hidden.
  * @property {number} framesPumped - real animation frames released, one per return to visible.
+ * @property {number} maxMachineStillSeconds - the longest the machine state held still, in simulated
+ *   seconds, while the screen kept responding. Not a failure — a screen with a working local overlay does
+ *   this all day — but it is how a screen that absorbs input shows up in the numbers.
  * @property {number} expensiveSeconds - simulated seconds spent in a {@link STATES_THAT_RENDER_UNASKED}
  *   state, capped at {@link EXPENSIVE_STATE_BUDGET_SECONDS}.
  * @property {number} expensiveSkippedSeconds - simulated seconds the run declined to advance in such a state
@@ -706,6 +713,9 @@ export function runMonkeyStepsInPage(args) {
         invariantsSource === null ? null : new Function('return (' + invariantsSource + ')')(),
       actionIndex: -1,
       lastChangeSimSeconds: 0,
+      lastFingerprint: null,
+      lastTransitionSimSeconds: 0,
+      maxMachineStillSeconds: 0,
       statesVisited: [kobi.getState()],
       transitions: [],
       problems: [],
@@ -747,6 +757,7 @@ export function runMonkeyStepsInPage(args) {
         // change: the stuck check asks whether the game *moved*, and a screen that answers every key with
         // itself has not.
         run.lastChangeSimSeconds = run.simSeconds;
+        run.lastTransitionSimSeconds = run.simSeconds;
         if (run.statesVisited.indexOf(to) === -1) run.statesVisited.push(to);
       }
       return to;
@@ -851,6 +862,30 @@ export function runMonkeyStepsInPage(args) {
     doc.dispatchEvent(new scope.Event('visibilitychange'));
   };
 
+  /**
+   * What the player can see, cheaply: the state, whichever menu row is focused, and how many things under
+   * `#ui` are hidden — which moves the moment a panel or a screen opens or closes.
+   *
+   * This is what the stuck check compares, rather than the machine state alone. The first campaign's only
+   * finding was a seed that sat on `MAIN_MENU` for sixty simulated seconds and was reported stuck, and it
+   * was not: focus moved on 109 of those actions and the HOW TO PLAY overlay opened and closed 133 times.
+   * The game answered nearly every key; what held still was the *machine*, because that overlay is local to
+   * `MAIN_MENU` by design (`mainMenu.js` gives it input priority and swallows everything but `BACK`, arrows
+   * included, which pins focus on its own row and absorbs `Enter`).
+   *
+   * #119's F4 is why that matters enough to change: the first version of the HUD invariant reported 135
+   * problems a match and every one of them was the design, and a QA layer that cries wolf is worse than
+   * none. "Stuck" has to mean *the game did not respond*, which is the question the ticket is really asking
+   * — a state nobody can get out of — and not merely *the machine did not transition*, which a screen with
+   * a working local overlay does all day.
+   */
+  const fingerprint = () => {
+    const focused = doc.querySelector('.menu-item--focused .menu-item-label')?.textContent ?? '';
+    const root = doc.querySelector('#ui');
+    const hiddenCount = root === null ? 0 : root.querySelectorAll('[hidden]').length;
+    return kobi.getState() + '|' + focused + '|' + hiddenCount;
+  };
+
   const observe = () => {
     const state = kobi.getState();
     if (knownStates.indexOf(state) === -1) {
@@ -868,6 +903,22 @@ export function runMonkeyStepsInPage(args) {
         });
         for (let i = 0; i < found.length; i += 1) report(found[i].rule, found[i].detail, false);
       }
+    }
+    // Any visible change is the game responding, and resets the clock. The machine's own transitions still
+    // reset it too (the dispatch recorder above), which matters for the changes this fingerprint cannot
+    // see — a transition between two screens that happen to hide the same number of things.
+    // Kept as a number rather than raised as a problem: how long the *machine* held still while the screen
+    // kept answering is real information — it is how a screen that absorbs input shows up — but it is an
+    // observation about the game's shape, not a defect, and the first campaign proved that reporting it as
+    // one produces a bug report that has to be withdrawn.
+    const machineStill = run.simSeconds - run.lastTransitionSimSeconds;
+    if (machineStill > run.maxMachineStillSeconds) run.maxMachineStillSeconds = machineStill;
+
+    const seen = fingerprint();
+    if (seen !== run.lastFingerprint) {
+      run.lastFingerprint = seen;
+      run.lastChangeSimSeconds = run.simSeconds;
+      return;
     }
     const still = run.simSeconds - run.lastChangeSimSeconds;
     if (still >= stuckSimulatedSeconds && roundRunningStates.indexOf(state) === -1) {
@@ -916,6 +967,7 @@ export function runMonkeyStepsInPage(args) {
     hiddenSeconds: run.hiddenSeconds,
     framesPumped: run.framesPumped,
     resizes: scope.__kobiMonkeyFrames.resizes(),
+    maxMachineStillSeconds: run.maxMachineStillSeconds,
     expensiveSeconds: run.expensiveSeconds,
     expensiveSkippedSeconds: run.expensiveSkippedSeconds,
     stateCost: run.stateCost,
@@ -1003,6 +1055,7 @@ export async function runMonkeySession(page, options) {
       simSeconds: 0,
       hiddenSeconds: 0,
       framesPumped: 0,
+      maxMachineStillSeconds: 0,
       expensiveSeconds: 0,
       expensiveSkippedSeconds: 0,
       stateCost: {},
@@ -1062,6 +1115,7 @@ export async function runMonkeySession(page, options) {
       hiddenSeconds: raw.hiddenSeconds,
       framesPumped: raw.framesPumped,
       statesVisited: raw.statesVisited,
+      maxMachineStillSeconds: raw.maxMachineStillSeconds,
       expensiveSeconds: raw.expensiveSeconds,
       expensiveSkippedSeconds: raw.expensiveSkippedSeconds,
       stateCost: raw.stateCost,
