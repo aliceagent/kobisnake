@@ -259,7 +259,8 @@ import { createReplayPlayer } from './replayPlayer.js';
 /**
  * @typedef {object} SessionRenderer
  * @property {(snapshot: object, dt?: number) => void} render
- * @property {() => void} resize
+ * @property {() => boolean} resize - KI-16-02: `false` when the canvas had no area to re-frame for (a
+ *   minimised window), so this file knows not to draw a frame for a zero-pixel viewport.
  * @property {{pulseLaserWarning: () => void, updateMatrixWorld?: () => void}} [camera] - the gameplay
  *   camera's `LASER_WARNING` reaction (KS-04-03) plus, since KS-06-02, whatever the HUD tag's projection
  *   needs from it — typed as only the members this file actually calls, because `src/game/` cannot import
@@ -1278,8 +1279,30 @@ export function createSession({
    */
   let lastRenderedState = EMPTY_SNAPSHOT;
 
-  /** Draws one frame of whatever the sim currently looks like, without advancing anything. */
+  /**
+   * Draws one frame of whatever the sim currently looks like, without advancing anything.
+   *
+   * This is `loop.js`'s `render` callback, which is called with the fixed-step interpolation `alpha` — a
+   * value this function has never used and must not start using by accident. So the frame's `dt` stays an
+   * explicit argument of {@link drawFrameWithDt} rather than a parameter here, where the loop's `alpha`
+   * would land on it silently (KI-16-02).
+   */
   function drawFrame() {
+    drawFrameWithDt(lastDt);
+  }
+
+  /**
+   * {@link drawFrame} with the seconds the camera's own effects should advance by, stated rather than
+   * assumed.
+   *
+   * A resize draws with `dt = 0` (KI-16-02 AC3): it is not a frame of gameplay, so the crash shake and the
+   * laser-warning zoom pulse must not tick forward for it. Passing `lastDt` there would replay the previous
+   * frame's slice of those envelopes a second time — a small thing on its own, and a real one for the
+   * visual baselines, which would then depend on how many times the window happened to be resized.
+   *
+   * @param {number} dt - seconds of camera-effect time this draw represents
+   */
+  function drawFrameWithDt(dt) {
     // KI-15-02/#157: MATCH_SETUP alone gets the one-apple preview snapshot; every other sim-less state
     // (MAIN_MENU foremost — see this constant's own doc comment) keeps the plain empty arena it always had.
     const state =
@@ -1295,7 +1318,7 @@ export function createSession({
     // distinct timestamps rather than one. Both are `null`-safe no-ops when `enableInputStats` is off, and
     // reuse the very snapshot `renderer.render` already needed, so there is no extra `getState()` call here.
     inputLatency?.observeState(/** @type {RoundSnapshot} */ (state));
-    renderer.render(state, lastDt);
+    renderer.render(state, dt);
     inputLatency?.markRendered();
   }
 
@@ -1718,6 +1741,39 @@ export function createSession({
     /** Draws one frame of the sim's current state, without advancing it. */
     renderFrame() {
       drawFrame();
+    },
+    /**
+     * The window changed shape (KI-16-02). Re-frames the camera and the drawing buffer to the canvas's new
+     * box, rewrites the HUD, and draws exactly one frame — **advancing no simulated time whatsoever**
+     * (AC3). `main.js`'s `resize` listener is the only caller.
+     *
+     * Three things have to happen here rather than being left to the next animation frame, and each is a
+     * visible defect if it is not:
+     *
+     * 1. **The frame.** `renderer.resize()` replaces the drawing buffer; until something draws into it the
+     *    browser scales whatever was in the old one across the new CSS box, so the arena visibly stretches
+     *    for a frame. Drawing immediately means there is never such a frame. (This is the "without a frame
+     *    of stretched canvas" half of the ticket.)
+     * 2. **The HUD.** `writeHud` is throttled to 10 Hz (`ARCHITECTURE §8`), and the power-up tags are
+     *    positioned as fractions of the viewport that `powerUpTagsFor` projects through the camera. After a
+     *    re-frame those fractions are stale, so a tag would sit away from its snake for up to
+     *    `HUD_INTERVAL_SECONDS`. Writing it here costs one projection and removes the whole window.
+     * 3. **No time.** The draw goes through {@link drawFrameWithDt} with `dt = 0` and nothing calls
+     *    `runUpdate`, so the round's tick, the countdown, the scoreboard beat and the camera's own effect
+     *    envelopes are all exactly where they were. Resizing the window mid-round is not a way to play the
+     *    game faster, and a player dragging a window edge produces a great many of these events.
+     *
+     * A canvas with no area — a minimised window — re-frames nothing and draws nothing: `renderer.resize()`
+     * answers `false` and there is no sensible picture to produce for a zero-pixel viewport anyway. The
+     * restore fires its own `resize` and is handled like any other.
+     *
+     * @returns {boolean} whether the canvas had an area and the frame was redrawn
+     */
+    resize() {
+      if (!renderer.resize()) return false;
+      writeHud();
+      drawFrameWithDt(0);
+      return true;
     },
     /**
      * KI-15-02: the exact object the last {@link drawFrame} call handed the renderer — `EMPTY_SNAPSHOT`,

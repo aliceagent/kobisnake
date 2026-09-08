@@ -58,7 +58,13 @@ function fireKeydown(target, code) {
 }
 
 function createFakeRenderer() {
-  return { render: vi.fn(), resize: vi.fn(), camera: { pulseLaserWarning: vi.fn() } };
+  // KI-16-02: `resize()` answers whether the canvas had an area to re-frame for. `true` is the ordinary
+  // case — a real window with a real size — and `session.resize()` only draws when it gets one.
+  return {
+    render: vi.fn(),
+    resize: vi.fn(() => true),
+    camera: { pulseLaserWarning: vi.fn(), updateMatrixWorld: vi.fn() },
+  };
 }
 
 /**
@@ -1811,10 +1817,100 @@ describe('KI-12-04: the switch actually drives a CpuPlayer', () => {
     // (a test, `levels.js`'s own consumers, a future debug seam). `startMatch`'s `playerKinds` override is
     // exactly such a path: it never goes through the row's `changePlayerKind` at all.
     const { session } = buildSession({ seed: 4242 });
-    expect(() => playTo(session, { bestOf: 1, playerKinds: { 1: 'HARD', 2: 'HUMAN' } })).not.toThrow();
+    expect(() =>
+      playTo(session, { bestOf: 1, playerKinds: { 1: 'HARD', 2: 'HUMAN' } }),
+    ).not.toThrow();
     expect(session.getMatchSettings().playerKinds[1]).toBe('HARD');
     // And it actually drives the snake, exactly as EASY does above — not merely accepted and then ignored.
     runFrames(session, 3.3, 40);
     expect(session.getSim()?.snakes[0].alive).toBe(true);
+  });
+});
+
+/**
+ * KI-16-02 AC3 — resizing the window is not a way to play the game.
+ *
+ * A player dragging a window edge produces a continuous stream of `resize` events, and `main.js` hands every
+ * one of them to `session.resize()`. The invariant that matters is the negative one: none of them may move
+ * the simulation, the countdown, the scoreboard beat or the camera's effect envelopes by so much as a tick.
+ */
+describe('KI-16-02 resize', () => {
+  it('KI-16-02 AC3: a resize during PLAYING advances no simulated time', () => {
+    const { session } = buildSession();
+    playTo(session);
+    expect(session.getState()).toBe(STATES.PLAYING);
+
+    // Somewhere into the round, so a stalled clock cannot be mistaken for a clock that never started.
+    runFrames(session, 1.5, 30);
+    const before = {
+      tick: session.getSim().getState().tick,
+      timeRemaining: session.getSim().getState().timeRemaining,
+      state: session.getState(),
+    };
+
+    for (let i = 0; i < 20; i += 1) session.resize();
+
+    const after = session.getSim().getState();
+    expect(after.tick).toBe(before.tick);
+    expect(after.timeRemaining).toBe(before.timeRemaining);
+    expect(session.getState()).toBe(before.state);
+  });
+
+  it('KI-16-02 AC3: a resize re-frames the renderer and draws exactly one frame, with no elapsed time', () => {
+    const { session, renderer } = buildSession();
+    playTo(session);
+    runFrames(session, 0.5, 10);
+
+    renderer.render.mockClear();
+    renderer.resize.mockClear();
+
+    expect(session.resize()).toBe(true);
+
+    expect(renderer.resize).toHaveBeenCalledTimes(1);
+    expect(renderer.render).toHaveBeenCalledTimes(1);
+    // The second argument is the seconds the camera's shake and zoom-pulse envelopes advance by. A resize is
+    // not a frame of gameplay, so it is zero — passing the previous frame's `dt` would replay a slice of
+    // those envelopes for every resize event, which would make the visual baselines depend on how often the
+    // window happened to be resized.
+    expect(renderer.render.mock.calls[0][1]).toBe(0);
+  });
+
+  it('KI-16-02: a resize rewrites the HUD immediately rather than waiting for the 10 Hz throttle', () => {
+    const { session, ui } = buildSession();
+    playTo(session);
+    runFrames(session, 0.5, 10);
+
+    ui.hud.setTime.mockClear();
+    ui.hud.setLengths.mockClear();
+
+    session.resize();
+
+    // The power-up tags are positioned as fractions of the viewport, projected through the camera that has
+    // just moved; leaving them to the next throttled write would strand a tag away from its snake for up to
+    // `HUD_INTERVAL_SECONDS`.
+    expect(ui.hud.setTime).toHaveBeenCalledTimes(1);
+    expect(ui.hud.setLengths).toHaveBeenCalledTimes(1);
+  });
+
+  it('KI-16-02: a canvas with no area re-frames nothing and draws nothing', () => {
+    const renderer = createFakeRenderer();
+    renderer.resize.mockReturnValue(false);
+    const { session } = buildSession({ renderer });
+    playTo(session);
+    renderer.render.mockClear();
+
+    expect(session.resize()).toBe(false);
+    expect(renderer.render).not.toHaveBeenCalled();
+  });
+
+  it('KI-16-02: resizing outside a round is harmless', () => {
+    // MAIN_MENU has no `sim` at all, and `writeHud` returns early there. The listener is global and fires in
+    // every state, so "harmless" has to include the states with nothing to draw from.
+    const { session, renderer } = buildSession();
+    expect(session.getState()).toBe(STATES.MAIN_MENU);
+    renderer.render.mockClear();
+
+    expect(() => session.resize()).not.toThrow();
+    expect(renderer.render).toHaveBeenCalledTimes(1);
   });
 });

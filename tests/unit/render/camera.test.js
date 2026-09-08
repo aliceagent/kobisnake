@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, it } from 'vitest';
 import * as THREE from 'three';
 import { createGameplayCamera, solveCameraDistance } from '../../../src/render/camera.js';
+import { WALL_HEIGHT, WALL_THICKNESS } from '../../../src/render/arenaView.js';
 import { SETTINGS } from '../../../src/core/settings.js';
 
 /**
@@ -420,6 +421,178 @@ describe('createGameplayCamera', () => {
       expect(solveCameraDistance({ ...base, fovDegrees: 16 })).toBeGreaterThan(
         solveCameraDistance(base),
       );
+    });
+  });
+  /**
+   * KI-16-02 — the framing rule (`DESIGN-DECISIONS §1 row 31`), asserted numerically at every viewport
+   * `docs/qa/playtests/viewports.md` measures rather than only at the one the design was confirmed at.
+   *
+   * The rule this proves is the one row 31 states: the whole arena plus one wall thickness of camera margin
+   * is inside the frame at any aspect ratio, fitted to whichever axis binds, with pitch and yaw untouched —
+   * and at 16:9 it resolves to exactly the confirmed picture of row 24. Nothing here is a new behaviour;
+   * `solveCameraDistance` already took whichever of the two constraints needed more room. What was missing
+   * was any assertion that it holds anywhere but 16:9 and 4:3, which is how it came to be believed and never
+   * checked (Improvement 16's own origin: "everything is proven at 1280×720 and nowhere else").
+   */
+  describe('KI-16-02: the framing rule at every measured viewport', () => {
+    /** The seven KI-16-01 measured, plus three shapes deliberately outside anything the ticket named. */
+    const VIEWPORTS = [
+      { slug: '1280x720', width: 1280, height: 720 },
+      { slug: '1024x768', width: 1024, height: 768 },
+      { slug: '800x600', width: 800, height: 600 },
+      { slug: '1920x1080', width: 1920, height: 1080 },
+      { slug: '2560x1080', width: 2560, height: 1080 },
+      // DPR does not reach the camera at all — it changes the drawing buffer, never the aspect — so the
+      // `1280x720@2` row of the matrix is the `1280x720` row here, and that is worth stating rather than
+      // silently omitting.
+      { slug: '640x480', width: 640, height: 480 },
+      // Beyond the list: a portrait split, an ultra-short letterbox, and a square. The rule claims "any
+      // aspect ratio", and the two constraints swap over at roughly 1.023, so the portrait and square cases
+      // are the only ones that exercise the *width* constraint at all.
+      { slug: '720x1280 (portrait)', width: 720, height: 1280 },
+      { slug: '1280x400 (letterbox)', width: 1280, height: 400 },
+      { slug: '900x900 (square)', width: 900, height: 900 },
+    ];
+
+    /**
+     * The wall ring's own eight top corners, at its real extent — `arenaView.js` puts the slabs one
+     * `WALL_THICKNESS` outside the grid on every side, standing `WALL_HEIGHT` tall.
+     *
+     * These are deliberately *not* the camera-margin box raised to wall height. That point is in empty
+     * framing headroom where no geometry stands, and projecting it reports an overflow that does not exist —
+     * the mistake KI-16-01's first draft made, which would have sent this ticket to move the camera and
+     * break AC2 (see that PR's review). The margin box is a framing target; the wall ring is a thing.
+     */
+    function wallTopCorners() {
+      const { width, height } = SETTINGS.grid;
+      return [-WALL_THICKNESS, width + WALL_THICKNESS].flatMap((x) =>
+        [-WALL_THICKNESS, height + WALL_THICKNESS].map((z) => new THREE.Vector3(x, WALL_HEIGHT, z)),
+      );
+    }
+
+    it.each(VIEWPORTS)(
+      'KI-16-02 AC1: at $slug the arena and its margin are inside the frame',
+      ({ width, height }) => {
+        const camera = createGameplayCamera({ aspect: width / height, reducedFx: false });
+
+        // The framing target of row 24: the floor rectangle grown by `camera.margin` on every side.
+        for (const corner of projectAll(camera, floorCorners(SETTINGS.camera.margin))) {
+          expect(Math.abs(corner.x)).toBeLessThanOrEqual(1 + 1e-9);
+          expect(Math.abs(corner.y)).toBeLessThanOrEqual(1 + 1e-9);
+        }
+
+        // And the geometry the player actually sees, which must never be cut off at any size.
+        for (const corner of projectAll(camera, wallTopCorners())) {
+          expect(Math.abs(corner.x)).toBeLessThanOrEqual(1 + 1e-9);
+          expect(Math.abs(corner.y)).toBeLessThanOrEqual(1 + 1e-9);
+        }
+      },
+    );
+
+    it('KI-16-02 AC1: the fit is exact, not merely safe — the binding edge touches the frame', () => {
+      // Stated as its own assertion because "inside the frame" alone is satisfied by a camera a kilometre
+      // away, and because the zero slack is the reason row 31 records the confirmed picture as a *minimum*:
+      // there is no room to give any viewport less arena than 16:9 gets.
+      for (const { width, height } of VIEWPORTS) {
+        const camera = createGameplayCamera({ aspect: width / height, reducedFx: false });
+        const framed = projectAll(camera, floorCorners(SETTINGS.camera.margin));
+        const worst = Math.max(
+          ...framed.flatMap((corner) => [Math.abs(corner.x), Math.abs(corner.y)]),
+        );
+        expect(worst).toBeCloseTo(1, 9);
+      }
+    });
+
+    it('KI-16-02 AC1: which axis binds is the shorter one, and it swaps at the stated crossover', () => {
+      // The rule is "fit to the shorter axis". Above the crossover the arena's height is what does not fit
+      // and the distance is aspect-independent; below it, the width takes over and the camera retreats.
+      const { camera: cameraSettings, grid } = SETTINGS;
+      const crossover =
+        (grid.width / 2 + cameraSettings.margin) /
+        ((grid.height / 2 + cameraSettings.margin) *
+          Math.sin(THREE.MathUtils.degToRad(cameraSettings.pitchDegrees)));
+
+      const distanceAt = (aspect) => createGameplayCamera({ aspect, reducedFx: false }).distance;
+      const wide = distanceAt(2560 / 1080);
+      const fourThree = distanceAt(4 / 3);
+
+      // Every landscape viewport in the matrix is above the crossover, so they share one distance exactly —
+      // which is why `viewports.md` reports the same near-edge NDC y for all of them.
+      expect(crossover).toBeLessThan(4 / 3);
+      expect(fourThree).toBe(wide);
+      expect(distanceAt(1280 / 720)).toBe(wide);
+      expect(distanceAt(640 / 480)).toBe(wide);
+
+      // Below it, the width binds and the camera has to stand further back.
+      expect(distanceAt(crossover * 0.9)).toBeGreaterThan(wide);
+      expect(distanceAt(720 / 1280)).toBeGreaterThan(distanceAt(1));
+    });
+
+    /**
+     * AC2, the constraint the whole ticket is fenced by: **at 1280×720 nothing moved.**
+     *
+     * Written as literal expected numbers rather than as a comparison against another camera built the same
+     * way, which would pass however wrong both of them were. These are the confirmed picture of row 24, and
+     * a change to the solve that alters them by a millimetre has to come here and say so deliberately.
+     */
+    it('KI-16-02 AC2: at 1280×720 every camera parameter is unchanged', () => {
+      const camera = createGameplayCamera({ aspect: 1280 / 720, reducedFx: false });
+
+      expect(camera.fov).toBe(32);
+      expect(camera.near).toBe(0.1);
+      expect(camera.far).toBe(500);
+      expect(camera.aspect).toBe(16 / 9);
+
+      expect(camera.distance).toBeCloseTo(48.8580897846397, 12);
+      expect(camera.position.x).toBeCloseTo(12, 12);
+      expect(camera.position.y).toBeCloseTo(47.79042329928218, 12);
+      expect(camera.position.z).toBeCloseTo(22.158168057250343, 12);
+      expect(camera.target.toArray()).toEqual([12, 0, 12]);
+
+      // Row 24's own two figures, measured off the projected arena rather than restated: "the arena fills
+      // ≈ 84 % of the frame height and ≈ 48 % of its width". The height is exact. The width measures 50.8 %,
+      // which is recorded in row 31 and raised with the design lead on #245 — row 24 is not edited here.
+      const arena = projectAll(camera, floorCorners(0));
+      const heightFraction =
+        (Math.max(...arena.map((c) => c.y)) - Math.min(...arena.map((c) => c.y))) / 2;
+      const widthFraction =
+        (Math.max(...arena.map((c) => c.x)) - Math.min(...arena.map((c) => c.x))) / 2;
+      expect(heightFraction).toBeCloseTo(0.84, 3);
+      expect(widthFraction).toBeCloseTo(0.5077, 3);
+    });
+
+    it('KI-16-02: a non-finite aspect is refused rather than poisoning the projection', () => {
+      // A canvas that is not laid out yet, or one in a minimised window, measures 0 × 0 — and `0 / 0` is
+      // NaN. Before this ticket that NaN reached `updateProjectionMatrix`, after which every later frame at
+      // a perfectly ordinary size drew nothing, with nothing anywhere to say why.
+      const camera = createGameplayCamera({ aspect: 16 / 9, reducedFx: false });
+      const before = camera.distance;
+
+      camera.setAspect(Number.NaN);
+      expect(camera.aspect).toBe(16 / 9);
+      expect(camera.distance).toBe(before);
+      expect(Number.isFinite(camera.projectionMatrix.elements[0])).toBe(true);
+
+      camera.setAspect(Number.POSITIVE_INFINITY);
+      expect(camera.aspect).toBe(16 / 9);
+
+      // A real, finite aspect still applies normally afterwards.
+      camera.setAspect(4 / 3);
+      expect(camera.aspect).toBe(4 / 3);
+    });
+
+    it("KI-16-02: a camera *built* at a non-finite aspect falls back to the design's own shape", () => {
+      // The case with nothing to fall back to: the canvas measured 0 × 0 at construction time, so
+      // `super()` has already stored the NaN and there is no previous good aspect to keep. 16:9 — the shape
+      // row 24 confirmed the picture at — is the only defensible answer.
+      const camera = createGameplayCamera({ aspect: Number.NaN, reducedFx: false });
+
+      expect(camera.aspect).toBe(16 / 9);
+      expect(Number.isFinite(camera.distance)).toBe(true);
+      for (const corner of projectAll(camera, floorCorners(SETTINGS.camera.margin))) {
+        expect(Math.abs(corner.x)).toBeLessThanOrEqual(1 + 1e-9);
+        expect(Math.abs(corner.y)).toBeLessThanOrEqual(1 + 1e-9);
+      }
     });
   });
 });
