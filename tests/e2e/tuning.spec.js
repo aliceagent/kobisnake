@@ -42,6 +42,28 @@ async function setSlider(page, key, value) {
   );
 }
 
+/**
+ * Clicks a preset chip **from inside the page**, by its exact label.
+ *
+ * Real `locator.click()` costs hundreds of milliseconds of wall time each, and the page's own rAF loop keeps
+ * running through it — long enough for a snake to cross the arena and end the round before the test meant it
+ * to. That is fine for the tests that click one chip and then start a match, but fatal to one measuring
+ * *when* an override takes effect. `setSlider` above dispatches through the DOM for exactly this reason; this
+ * is the same trade for a button, and the real-click path is still covered by the chip test that precedes it.
+ *
+ * @param {import('@playwright/test').Page} page @param {string} label
+ */
+async function clickPreset(page, label) {
+  await page.evaluate((label) => {
+    const global = /** @type {any} */ (globalThis);
+    const button = [...global.document.querySelectorAll('.tuning-preset-button')].find(
+      (/** @type {any} */ candidate) => candidate.textContent === label,
+    );
+    if (!button) throw new Error(`no preset button labelled ${label}`);
+    button.click();
+  }, label);
+}
+
 test.describe('KS-07-01 tuning overlay', () => {
   test('AC3: the overlay is absent (no DOM node) from ?test=1 without ?tuning=1, and from a plain load', async ({
     page,
@@ -108,6 +130,63 @@ test.describe('KS-07-01 tuning overlay', () => {
     const settings = await page.evaluate(() => /** @type {any} */ (globalThis).__kobi.sim.settings);
     expect(settings.laserStartTime).toBe(25);
     expect(settings.speedBoost).toEqual({ multiplier: 1.35, duration: 4 });
+  });
+
+  test('KI-04-03: each pacing chip produces exactly the settings it names', async ({ page }) => {
+    // The three chips Gate 1 session 2 plays (`PLAYTEST-SCRIPT §5`, `DESIGN-DECISIONS §1` row 30), through
+    // the real DOM, asserted the way the Speed Boost pair above is. Each moves one lever and leaves the
+    // other at shipping, so a human clicking between them compares one thing at a time.
+    /** @type {[string, number, number][]} */
+    const chips = [
+      ['round 75 s', 75, 30],
+      ['laser at 0:40', 90, 40],
+      ['90 s / 0:30 (shipping)', 90, 30],
+    ];
+
+    for (const [label, roundDuration, laserStartTime] of chips) {
+      await page.goto(TUNING_QUERY);
+      await page.getByRole('button', { name: label, exact: true }).click();
+      await page.evaluate(startMatchInPage);
+
+      const settings = await page.evaluate(
+        () => /** @type {any} */ (globalThis).__kobi.sim.settings,
+      );
+      expect(settings.roundDuration, label).toBe(roundDuration);
+      expect(settings.laserStartTime, label).toBe(laserStartTime);
+      // Nothing else moves with them — a pacing chip is two levers, not a profile.
+      expect(settings.snakeSpeed, label).toBe(6);
+      expect(settings.laserStepInterval, label).toBe(2.5);
+    }
+  });
+
+  test('KI-04-03: a pacing chip changes the *next* round, not the one in progress', async ({
+    page,
+  }) => {
+    // "Applying at the next round like every other override" — the same discipline the snake-speed slider
+    // test above proves, for the one override with no slider to drag.
+    await page.goto(TUNING_QUERY);
+    await page.evaluate(startMatchInPage);
+
+    const before = await page.evaluate(
+      () => /** @type {any} */ (globalThis).__kobi.sim.settings.roundDuration,
+    );
+    expect(before).toBe(90); // DESIGN-DECISIONS §2.1 shipping default
+
+    await clickPreset(page, 'round 75 s');
+    const midRound = await page.evaluate(
+      () => /** @type {any} */ (globalThis).__kobi.sim.settings.roundDuration,
+    );
+    expect(midRound).toBe(90);
+
+    const crashed = await page.evaluate(crashPlayerOneInPage);
+    expect(crashed.state).toBe('ROUND_OVER');
+    const nextState = await page.evaluate(nextRoundInPage);
+    expect(nextState).toBe('PLAYING');
+
+    const nextRound = await page.evaluate(
+      () => /** @type {any} */ (globalThis).__kobi.sim.settings.roundDuration,
+    );
+    expect(nextRound).toBe(75);
   });
 
   test('AC1: the SLOW target mode select applies to settings.slow.targetMode', async ({ page }) => {

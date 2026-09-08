@@ -4,6 +4,7 @@ import {
   LASER_START_TIME_PRESETS,
   LASER_STEP_INTERVAL_PRESETS,
   SLOW_TARGET_MODES,
+  PACING_PRESETS,
   SPEED_BOOST_PRESETS,
   TUNABLES,
   buildSettingsOverride,
@@ -138,7 +139,7 @@ export function createTuningScreen(root, { onChange, getReplay, clipboard }) {
   const resolvedClipboard =
     clipboard !== undefined
       ? clipboard
-      : /** @type {any} */ ((globalThis).navigator?.clipboard ?? null);
+      : /** @type {any} */ (globalThis.navigator?.clipboard ?? null);
 
   /** @type {Record<string, number> & {slowTargetMode: SlowTargetMode}} */
   const values = defaultTuningValues();
@@ -282,6 +283,18 @@ export function createTuningScreen(root, { onChange, getReplay, clipboard }) {
     SPEED_BOOST_PRESETS.map((preset) => ({
       text: preset.label,
       patch: { 'speedBoost.multiplier': preset.multiplier, 'speedBoost.duration': preset.duration },
+    })),
+  );
+  // KI-04-03: I04's two pacing candidates and the shipping pair, so Gate 1 session 2 plays all three in one
+  // sitting (`PLAYTEST-SCRIPT §5`, `DESIGN-DECISIONS §1` row 30). Each chip sets both levers — the one it
+  // names and the one it leaves at shipping — so clicking from any chip to any other lands on exactly that
+  // configuration rather than on whatever the previous click left behind. `laserStartTime` has a slider and
+  // `applyPatch` refreshes it; `roundDuration` has none by design and simply updates the flat state.
+  presetGroup(
+    'Pacing',
+    PACING_PRESETS.map((preset) => ({
+      text: preset.label,
+      patch: { roundDuration: preset.roundDuration, laserStartTime: preset.laserStartTime },
     })),
   );
 
