@@ -20,7 +20,8 @@
     "test:visual": "node scripts/run-playwright-suite.mjs visual tests/visual --project=chromium",
     "test:agent": "node scripts/run-playwright-suite.mjs agent tests/agent --project=chromium",
     "test:agent:report": "node scripts/run-playwright-suite.mjs agent-report tests/agent/report.spec.js --project=chromium",
-    "test:agent:pacing": "node scripts/run-playwright-suite.mjs agent-pacing tests/agent/pacing.spec.js --project=chromium"
+    "test:agent:pacing": "node scripts/run-playwright-suite.mjs agent-pacing tests/agent/pacing.spec.js --project=chromium",
+    "test:agent:viewports": "node scripts/run-playwright-suite.mjs agent-viewports tests/agent/viewports.spec.js --project=chromium"
   },
   "dependencies": {
     "three": "0.185.1"

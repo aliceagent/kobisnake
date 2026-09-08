@@ -76,6 +76,8 @@ import { STATES } from './gameStateMachine.js';
  * @property {(player: number) => {x: number, y: number, z: number}} getHeadWorldPosition
  * @property {() => number} getDrawCalls - KS-04-02: lets an e2e spec measure the laser phase's draw-call
  *   cost (AC3) against three's own counter, the same one `ARCHITECTURE §12`'s budget is measured from.
+ * @property {(x: number, y: number, z: number) => {x: number, y: number, z: number}} projectToNdc - KI-16-01:
+ *   a straight passthrough to `renderer.js`'s own method — see {@link KobiTestHooks.projectToNdc}.
  * @property {{
  *   reducedFx: boolean,
  *   shake: (amplitudeUnits: number, seconds: number) => void,
@@ -159,6 +161,12 @@ import { STATES } from './gameStateMachine.js';
  * @property {(player: 1 | 2, dir: Direction | DirectionName) => void} pressKey
  * @property {(player: number) => {x: number, y: number, z: number}} getHeadWorldPosition
  * @property {() => number} getDrawCalls - see {@link TestHooksRenderer.getDrawCalls}.
+ * @property {(x: number, y: number, z: number) => {x: number, y: number, z: number}} projectToNdc - KI-16-01
+ *   (a declared deviation from that ticket's own `Files:` list, per its PR description): the seam
+ *   `tests/agent/viewports.js` uses to ask where a world point lands on screen, without reconstructing the
+ *   gameplay camera's own projection maths in the measuring code — that would measure the test's arithmetic
+ *   instead of the game's. A straight passthrough to `renderer.js`'s own `projectToNdc`, the same
+ *   minimal-surface pattern every earlier renderer-facing addition here uses.
  * @property {() => import('./inputLatency.js').InputLatencyStats} getInputStats - see
  *   {@link TestHooksSession.getInputStats}; forwarded unchanged.
  * @property {() => boolean} isReducedMotion - KI-15-03 AC1: the live gameplay camera's own `reducedFx`,
@@ -429,6 +437,9 @@ export function createTestHooks({ session, renderer, eventTarget, KeyboardEventC
     },
     getDrawCalls() {
       return renderer.getDrawCalls();
+    },
+    projectToNdc(x, y, z) {
+      return renderer.projectToNdc(x, y, z);
     },
     isReducedMotion() {
       return renderer.camera?.reducedFx ?? false;
