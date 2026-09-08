@@ -155,15 +155,63 @@ jobs:
             test-results/
           retention-days: 14
 
+  # KI-08-04 (Improvement 08): the slot KS-01-04 reserved here in Sprint 01 — "a slot named `perf` that
+  # Sprint 16 turns into a real step" — filled two sprints early, because `ARCHITECTURE §12`'s budgets are
+  # worth enforcing *before* the art lands rather than after (that is Improvement 08's whole premise).
+  #
+  # ## Why this one is nightly and the other two are on every PR
+  #
+  # `ci.yml`'s `perf` job runs the two cheap budgets — bundle size and draw calls over five staged scenes —
+  # on every pull request. This job runs KI-08-03's frame-time and leak suite, which is the expensive half:
+  # its churn check drives 500 whole rounds. The split is the sprint file's own wording, and the trade-off is
+  # stated rather than hidden — a residency leak introduced today is found tomorrow morning, not on the PR
+  # that caused it. That is acceptable *because* the cheap gate already covers the number §12 actually
+  # budgets: the draw-call figure this suite would gate on is gated per-PR by `ci.yml`.
+  #
+  # `KI_PERF_BASELINE` is deliberately **not** set. Unset, the suite measures and asserts everything and
+  # writes nothing; set, it rewrites `docs/qa/playtests/perf-baseline.md`, and a nightly job that edits a
+  # committed document has nowhere to put the diff. Regenerating the baseline is a person's job, in a PR.
   perf:
     name: perf
     runs-on: ubuntu-latest
     steps:
-      # `tests/perf/` doesn't exist yet — it's Sprint 16's (docs/sprints/README.md). This job is the
-      # placeholder the ticket asks for so `nightly.yml` already has a slot named `perf` that
-      # Sprint 16 turns into a real step, without this ticket creating tests/perf files itself
-      # (outside KS-01-04's Files list).
-      - name: Perf specs not written yet (Sprint 16)
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+      - run: npm ci
+
+      - name: Read installed Playwright version
+        id: playwright-version
         run: |
-          echo "tests/perf/ does not exist yet — Sprint 16 (Hardening: Performance) adds the specs."
-          echo "This step is an intentional placeholder; see docs/sprints/sprint-16-hardening-performance-browsers-accessibility.md"
+          version=$(node -p "require('./package-lock.json').packages['node_modules/@playwright/test'].version")
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+
+      - uses: actions/cache@v4
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-chromium-${{ runner.os }}-${{ steps.playwright-version.outputs.version }}
+      - run: npx playwright install --with-deps chromium
+
+      # One suite in this job, through `scripts/run-playwright-suite.mjs` like every Playwright invocation in
+      # this repository (#86) — the lock never actually makes this leg wait, and uniformity is the point.
+      # `--reporter=github` so a failure lands in the check-run annotations, which is the only part of a
+      # failed run an agent session can read (KI-03-05).
+      - name: Frame-time and leak budgets (KI-08-03)
+        env:
+          PLAYWRIGHT_HTML_REPORT: playwright-report/perf
+          LIBGL_ALWAYS_SOFTWARE: '1'
+        run: npm run test:perf:frametime -- --reporter=github,html
+
+      # `if: always()`: the measurement tables this suite prints are the point of running it nightly, and a
+      # red run's are the ones worth reading.
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: playwright-report-perf
+          path: |
+            playwright-report/
+            test-results/
+          retention-days: 30
+          if-no-files-found: warn

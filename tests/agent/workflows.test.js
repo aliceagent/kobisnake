@@ -26,8 +26,27 @@ const RUNS_A_SUITE = /playwright\s+test\b/;
 /** The runner every Playwright invocation must go through, directly or through one of the npm scripts. */
 const RUNNER = 'scripts/run-playwright-suite.mjs';
 
-/** The npm scripts that are themselves defined as the runner (checked against package.json below). */
-const ROUTED_NPM_SCRIPTS = ['test:e2e', 'test:visual', 'test:agent'];
+/**
+ * The npm scripts that are themselves defined as the runner (checked against package.json below).
+ *
+ * KI-08-04 added the two `tests/perf` suites. They belong here for the same reason the first three do, and
+ * the gap was real rather than theoretical: this list is what the reporter check below uses to decide
+ * whether a workflow step is running a suite, so until a script is named here, a workflow could run it with
+ * no `--reporter=github` and nothing would notice — leaving a CI failure readable only in a job log that an
+ * agent session cannot open.
+ *
+ * `test:perf` itself is deliberately **not** here: it is an umbrella that shells out to the two scripts
+ * below (`npm run test:perf:bundle && npm run test:perf:drawcalls`) rather than naming the runner itself, so
+ * the package.json assertion below would fail on it for a reason that is not a defect. Workflows invoke the
+ * specific scripts; the umbrella is for a person at a terminal.
+ */
+const ROUTED_NPM_SCRIPTS = [
+  'test:e2e',
+  'test:visual',
+  'test:agent',
+  'test:perf:drawcalls',
+  'test:perf:frametime',
+];
 
 function workflowFiles() {
   return readdirSync(WORKFLOW_DIR)
@@ -124,6 +143,65 @@ describe('KI-03-05 AC2 · no two Playwright suites at once', () => {
     expect(text).toContain('docs/qa/playtests/agent-run.md');
     // A run of the agent suite must never share a job with another suite.
     expect(text.match(/test:e2e|test:visual/)).toBeNull();
+  });
+
+  it('KI-08-04 AC1: the cheap performance budgets run on every pull request', () => {
+    // The sprint file's own split: bundle and draw calls on every PR, the expensive frame-time and leak
+    // suite nightly. This asserts the per-PR half — that `ci.yml` runs both cheap gates, and that it runs
+    // them on `pull_request` at all, which is the difference between a budget and a document.
+    const ci = workflowFiles().find(({ name }) => name === 'ci.yml');
+    expect(ci, 'ci.yml is missing').toBeDefined();
+    const text = /** @type {{name: string, text: string}} */ (ci).text;
+
+    expect(text).toMatch(/pull_request:/);
+    expect(text, 'ci.yml does not run the bundle budget').toContain('test:perf:bundle');
+    expect(text, 'ci.yml does not run the draw-call budget').toContain('test:perf:drawcalls');
+    // The expensive one is deliberately not here (see `nightly.yml`); if it ever moves onto every PR that is
+    // a decision, and this line is where it gets made rather than noticed.
+    expect(text).not.toContain('test:perf:frametime');
+  });
+
+  it('KI-08-04 AC2: no job runs two Playwright suites, and the perf suites are not added to one that already has two', () => {
+    // AC2 is about *within* a job: two suites in one container corrupt both (#86). Two jobs are two runners
+    // and cannot contend, which is why `ci.yml`'s perf job is separate from `browser` rather than a third
+    // step inside it. This counts routed suite invocations per job and holds every job to at most one —
+    // except `browser`, whose two are the pre-existing e2e-then-visual pair that KI-03-05 documents as
+    // sequential steps in one job, never parallel.
+    const suiteInvocations = (/** @type {string} */ jobText) =>
+      ROUTED_NPM_SCRIPTS.filter((script) => jobText.includes(script)).length;
+
+    for (const { name, text } of workflowFiles()) {
+      // Jobs start at a two-space-indented key under `jobs:`; split on that rather than parsing YAML, for
+      // the same reason `runCommands` is hand-rolled.
+      const jobs = text.split(/\n {2}(?=[a-z][\w-]*:\n)/);
+      for (const job of jobs) {
+        const header = job.split('\n')[0];
+        const count = suiteInvocations(job);
+        const allowed = job.includes('name: browser') ? 2 : 1;
+        expect(
+          count,
+          `${name}: job "${header}" runs ${count} Playwright suites`,
+        ).toBeLessThanOrEqual(allowed);
+      }
+    }
+  });
+
+  it('KI-08-04 AC1: the expensive frame-time and leak budget runs nightly, with its report kept', () => {
+    const nightly = workflowFiles().find(({ name }) => name === 'nightly.yml');
+    expect(nightly, 'nightly.yml is missing').toBeDefined();
+    const text = /** @type {{name: string, text: string}} */ (nightly).text;
+
+    expect(text, 'the nightly perf slot is still a placeholder').toContain('test:perf:frametime');
+    expect(text).toMatch(/schedule:/);
+    expect(text).toMatch(/upload-artifact/);
+    // A nightly run must never rewrite the committed baseline: regenerating it is a person's job, in a PR.
+    // The assertion is on the env *assignment*, not on the word — `nightly.yml`'s own comment names the
+    // variable to explain why it is unset, and a check that could not tell those apart would force the
+    // comment to stop naming it, which is the same trap KI-19-01's echo lines set for the reporter check.
+    expect(
+      text,
+      'nightly.yml sets KI_PERF_BASELINE, so a scheduled run would rewrite the baseline',
+    ).not.toMatch(/KI_PERF_BASELINE\s*:/);
   });
 
   it('KI-03-05: a CI failure is readable as a check-run annotation, not only in the log', () => {
