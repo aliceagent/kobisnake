@@ -116,56 +116,71 @@ test.describe('KI-05-03 the REPLAY screen', () => {
       .click();
     await expect(page.locator('[data-replay-readout]')).toHaveText(/TICK 1/);
 
-    // PLAY, then advance the session's own update path deterministically (CLAUDE.md: fast-forward, never
-    // sleep) — `__kobi.advance` is the same path a real animation frame drives, so this exercises this
-    // ticket's own `runUpdate` REPLAY case, not a shortcut around it.
-    await page
-      .locator('[data-screen="REPLAY"] .menu-item', { hasText: REPLAY_COPY.playLabel })
-      .click();
-    await expect(
-      page.locator('[data-screen="REPLAY"] .menu-item', { hasText: REPLAY_COPY.pauseLabel }),
-    ).toBeVisible();
-
-    // KI-05-05: this used to be `advance(0.5)` and then `expect(tick).toBeGreaterThan(1)` — a duration,
-    // and an assertion loose enough to hide how many ticks actually arrived.
+    // KI-05-07 (#300): PLAY and PAUSE are exercised as **real clicks dispatched inside one synchronous
+    // `page.evaluate`**, and everything asserted about them is read in that same call.
     //
-    // Playing cannot be asserted against an absolute tick at all, and that is the real lesson here:
-    // `main.js` keeps a live `requestAnimationFrame` loop running, `runUpdate`'s REPLAY case advances the
-    // replay on every one of those frames, and frames land in the gaps between Playwright round-trips
-    // (`determinism.spec.js`'s "everything inside ONE synchronous evaluate" note is the same hazard). So
-    // between clicking PLAY and reading the tick back, an unknowable number of real frames have already
-    // run — a first attempt at this fix asked for tick 12 and got 97.
+    // Every earlier attempt at this test put a Playwright round trip between clicking PLAY and looking at
+    // the result, and each time the fixture's own pace decided whether it passed. `main.js` runs a live
+    // `requestAnimationFrame` loop, `runUpdate`'s REPLAY case advances the replay on every frame of it, and
+    // this 380-tick fixture plays itself out in 3.17 s of wall time. On a loaded CI runner — the failing
+    // suite took 9.8 minutes against ~5.9 here — the replay had finished before the next round trip landed,
+    // so `isReplayPlaying()` read false and the toggle's label had flipped back to PLAY. KI-05-05 asked for
+    // an absolute tick and got 97; KI-05-06 addressed the label but still waited; #300 caught both.
     //
-    // PAUSE first. `advanceReplayInternal` is a no-op while paused, so the live loop can no longer move
-    // the replay, and from there `stepReplay` gives exact whole ticks (PR #154's rule) that are the same
-    // on any machine. Play, pause and step are all still under test; only the unknowable wait is gone.
-    expect(
-      await page.evaluate(() => /** @type {any} */ (globalThis).__kobi.isReplayPlaying()),
-    ).toBe(true);
-    // KI-05-06 (#260): addressed by `data-replay-toggle`, never by the label. This used to be
-    // `.menu-item` filtered by the text `PAUSE`, and the label flips back to `PLAY` the instant the replay
-    // ends — 3.17 s after PLAY, for this 380-tick fixture. On CI everything before this line is slower, so
-    // the replay had usually finished by the time the click was attempted, the filtered locator matched
-    // nothing, and Playwright waited out the full 30 s test timeout. Addressing the row by a handle that
-    // does not change means the click lands whatever the label says, and a genuine failure fails fast
-    // instead of timing out.
-    await page.locator('[data-replay-toggle]').click();
+    // A `page.evaluate` body cannot be interrupted by `requestAnimationFrame`, so no frame — and therefore
+    // no tick — can land between the two clicks below. That is the same "one synchronous evaluate" rule
+    // `determinism.spec.js` already relies on. The clicks are genuine DOM clicks on the real row, so the
+    // screen's own listener is still what is under test; only the waiting is gone.
+    const toggled = await page.evaluate(() => {
+      const kobi = /** @type {any} */ (globalThis).__kobi;
+      const doc = /** @type {any} */ (globalThis).document;
+      const toggle = /** @type {HTMLElement} */ (doc.querySelector('[data-replay-toggle]'));
 
+      const labelBefore = (toggle.textContent ?? '').trim();
+
+      toggle.click();
+      const playingAfterFirst = kobi.isReplayPlaying();
+      // The label is redrawn by `updateReplayScreenProgress` inside `runUpdate`, not synchronously by the
+      // click, so one frame has to be driven before the DOM can be read back. `advance(1 / 120)` is exactly
+      // one tick — bounded and identical on every machine — rather than a wait for a real frame to arrive.
+      kobi.advance(1 / 120);
+      const labelWhilePlaying = (toggle.textContent ?? '').trim();
+
+      toggle.click();
+      const playingAfterSecond = kobi.isReplayPlaying();
+      kobi.advance(1 / 120);
+      const labelAfterPause = (toggle.textContent ?? '').trim();
+
+      return {
+        labelBefore,
+        playingAfterFirst,
+        labelWhilePlaying,
+        playingAfterSecond,
+        labelAfterPause,
+      };
+    });
+
+    expect(toggled.labelBefore).toBe(REPLAY_COPY.playLabel);
+    expect(toggled.playingAfterFirst).toBe(true);
+    expect(toggled.labelWhilePlaying).toBe(REPLAY_COPY.pauseLabel);
+    expect(toggled.playingAfterSecond).toBe(false);
+    expect(toggled.labelAfterPause).toBe(REPLAY_COPY.playLabel);
+
+    // Paused, so `advanceReplayInternal` is a no-op and the live loop can no longer move the replay: from
+    // here `stepReplay` gives exact whole ticks that are the same on any machine (PR #154's rule). The
+    // `advance` at the end drives one `runUpdate` so the readout redraws — it cannot move a paused replay.
     const stepped = await page.evaluate((steps) => {
       const kobi = /** @type {any} */ (globalThis).__kobi;
-      const playing = kobi.isReplayPlaying();
       const before = kobi.getReplayTick();
       for (let i = 0; i < steps; i += 1) kobi.stepReplay();
-      return { playing, before, after: kobi.getReplayTick() };
+      kobi.advance(1 / 120);
+      return { before, after: kobi.getReplayTick(), playing: kobi.isReplayPlaying() };
     }, 5);
 
-    // The toggle's label follows the player, and reads PLAY again now it is paused.
-    await expect(page.locator('[data-replay-toggle]')).toHaveText(REPLAY_COPY.playLabel);
-
-    // Assert the player before the DOM: it is what advanced, and the readout is only a picture of it.
     expect(stepped.playing).toBe(false);
     expect(stepped.after).toBe(stepped.before + 5);
-    expect(stepped.after).toBeGreaterThan(1);
+    // The toggle's label follows the player, and reads PLAY again now it is paused.
+    await expect(page.locator('[data-replay-toggle]')).toHaveText(REPLAY_COPY.playLabel);
     await expect(page.locator('[data-replay-readout]')).toHaveText(
       new RegExp(`TICK ${stepped.after}\\b`),
     );
@@ -181,43 +196,64 @@ test.describe('KI-05-03 the REPLAY screen', () => {
       .locator('[data-screen="REPLAY"] .menu-item', { hasText: REPLAY_COPY.watchLabel })
       .click();
     await expect(page.locator('.replay-player')).toBeVisible();
-    await page.locator('[data-replay-toggle]').click();
 
-    // #260: Playwright will not dispatch a click until an element's box is the same across two consecutive
-    // animation frames. This samples the transport's own box every frame, right through the final tick —
-    // the moment `END OF REPLAY` appears, which is what used to shift it. Sampling happens inside one
-    // `page.evaluate` so no round trip can land between two frames and hide a shift.
-    const boxes = await page.evaluate(async () => {
+    // KI-05-07 (#300): this **drives** the replay to its end instead of waiting for it to get there.
+    //
+    // The first version of this test sampled a live `requestAnimationFrame` loop until `END OF REPLAY`
+    // appeared, with a wall-clock deadline behind it. On a loaded CI runner the replay had not reached its
+    // end inside that window and the test failed on `expect(boxes.some((s) => s.endShown)).toBe(true)` —
+    // never observing the one transition it exists to check. Waiting on real time to reach a *simulated*
+    // event is the mistake; `CLAUDE.md` says as much ("e2e tests fast-forward time through `window.__kobi`;
+    // they never sleep").
+    //
+    // So: pause, then step whole ticks. `advanceReplayInternal` is a no-op while paused, so the live loop
+    // cannot move the replay and the tick count is entirely this test's own. `advance(1 / 120)` drives one
+    // `runUpdate` — the real per-frame path that redraws the readout and toggles `END OF REPLAY` — without
+    // being able to advance a paused replay. Every sample is taken inside one synchronous `page.evaluate`,
+    // so no frame can land between a step and the measurement that follows it.
+    const boxes = await page.evaluate(() => {
       const kobi = /** @type {any} */ (globalThis).__kobi;
       const doc = /** @type {any} */ (globalThis).document;
       const toggle = /** @type {HTMLElement} */ (doc.querySelector('[data-replay-toggle]'));
       const endEl = /** @type {HTMLElement} */ (doc.querySelector('[data-replay-end]'));
-      const shown = () => !endEl.classList.contains('replay-end--placeholder');
-      /** @type {{box: string, phase: string | null, endShown: boolean}[]} */
-      const seen = [];
-      // Bounded by the event under test, not by a frame count: sample every frame until the end-of-replay
-      // line has appeared and a few frames have passed with it up, so the transition itself is inside the
-      // window. The 380-tick fixture takes ~3.2 s of wall time to play out; the deadline is a safety net
-      // that fails the test honestly rather than hanging if it never gets there.
-      const deadline = performance.now() + 8000;
-      let afterEnd = 0;
-      while (afterEnd < 5 && performance.now() < deadline) {
-        await new Promise((resolve) => requestAnimationFrame(resolve));
+
+      /** One `runUpdate`, then the transport's box and the state around it. */
+      const sample = () => {
+        kobi.advance(1 / 120);
         const r = toggle.getBoundingClientRect();
-        seen.push({
+        return {
           box: `${r.x},${r.y},${r.width},${r.height}`,
+          tick: kobi.getReplayTick(),
           phase: kobi.getReplayPhase(),
-          endShown: shown(),
-        });
-        if (shown()) afterEnd += 1;
+          endShown: !endEl.classList.contains('replay-end--placeholder'),
+        };
+      };
+
+      kobi.pauseReplay();
+      kobi.seekReplay(0);
+
+      /** @type {ReturnType<typeof sample>[]} */
+      const seen = [sample()];
+      // Step to the end, sampling every tick for the first stretch and then around the transition itself —
+      // the box can only move when something above it changes height, and `END OF REPLAY` appearing at the
+      // last tick is the only thing that does. The guard is a tick count, not a clock.
+      let guard = 0;
+      while (kobi.getReplayPhase() === 'PLAYING' && guard < 5000) {
+        kobi.stepReplay();
+        guard += 1;
+        if (guard <= 10 || kobi.getReplayPhase() !== 'PLAYING') seen.push(sample());
       }
+      // A few more frames with the end line up, so the settled state is measured too.
+      for (let i = 0; i < 3; i += 1) seen.push(sample());
       return seen;
     });
 
-    // The replay really did finish inside the sampled window, so the end-of-replay transition is covered
-    // rather than merely assumed — without this the test could pass by never reaching the interesting frame.
+    // The replay really did play and really did finish inside the sampled window, so the end-of-replay
+    // transition is covered rather than merely assumed — without these the test could pass by never
+    // reaching the interesting frame, which is exactly how #300 caught it.
     expect(boxes.some((s) => s.phase === 'PLAYING')).toBe(true);
     expect(boxes.some((s) => s.endShown)).toBe(true);
+    expect(boxes.at(-1)?.phase).toBe('ROUND_OVER');
 
     const distinct = [...new Set(boxes.map((s) => s.box))];
     expect(
