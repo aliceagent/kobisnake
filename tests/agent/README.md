@@ -55,6 +55,25 @@ The suite fails on any of three things (KI-03-01 AC3), each reported with the **
 | `invariants.js` | The per-frame checks (KI-03-03). |
 | `report.js` | Pure aggregation of a run's `MatchResult[]` into the numbers a design lead uses, and the markdown renderer for `docs/qa/playtests/agent-run.md` (KI-03-04). Node-side only — never shipped into the page, so it imports normally and is unit-tested in `report.test.js`. |
 | `report.spec.js` | Plays the seeded matches `report.js` aggregates and writes `docs/qa/playtests/agent-run.md`. Gated behind `KI_AGENT_REPORT=1` (unset, it is discovered and instantly skipped) so it does not add to the ten-match gate's runtime. Run it with `npm run test:agent:report` — see that document's own "What actually ran" section for the exact regenerating command. |
+| `pacing.js` | `report.js`'s sibling for I04 (KI-04-01): aggregates a **swept** run into the shape of a round — round-length median and p90, the fraction reaching the laser warning, the fraction reaching each inset, timeout and draw rates, and whole-match wall clock — and renders `docs/qa/playtests/round-pacing.md`. Node-side and pure, like `report.js`. |
+| `pacing.spec.js` | Plays that sweep: `laserStartTime` × `roundDuration` through `withOverrides()`, three pairings, 150 seeded Best-of-3 matches per cell. Gated behind `KI_PACING=1`; run it with `npm run test:agent:pacing`. **Hours, not minutes** — see "Sweeping a setting" below. |
+| `pacing.test.js` | `pacing.js`'s pure functions against hand-built fixtures, plus the diff against the committed document's machine-readable block. Runs under `npm run test:unit`. |
+
+## Sweeping a setting
+
+`driver.playMatch` takes an optional `settingsOverrides` — a `withOverrides()`-shaped tree that reaches
+`session.js` through `__kobi.setSettingsOverrides` **before** the match starts, so it applies to every round
+including the first. That is the only supported way to measure a hypothetical setting from this layer, and
+`src/core/settings.js` is never edited to do it (`CLAUDE.md`'s never list; I04's ticket says so again in its
+own words). Omitting the option calls nothing, so every caller written before it existed measures exactly what
+it always did — which is what lets `round-pacing.md`'s baseline cell be checked against `agent-run.md` to the
+number.
+
+**A long sweep is resumable.** `pacing.spec.js` caches each finished cell's raw `MatchResult[]` under the OS
+temp directory and reuses it on a later invocation, keyed by pairing, both swept values and the seed list.
+That is sound rather than a shortcut: a match is a pure function of its seed and its settings
+(`ARCHITECTURE §11`), so a cached cell is *identical* to a replayed one. Delete the cache directory the spec
+names to force a cold run.
 
 ## Two things to know before you write anything here
 
