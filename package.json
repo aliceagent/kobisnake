@@ -25,7 +25,8 @@
     "test:perf": "npm run test:perf:bundle && npm run test:perf:drawcalls",
     "test:perf:bundle": "vitest run tests/perf/bundle.test.js --coverage.enabled=false",
     "test:perf:drawcalls": "node scripts/run-playwright-suite.mjs perf-drawcalls tests/perf/drawCalls.spec.js --project=chromium",
-    "test:perf:frametime": "node scripts/run-playwright-suite.mjs perf-frametime tests/perf/frameTime.spec.js --project=chromium"
+    "test:perf:frametime": "node scripts/run-playwright-suite.mjs perf-frametime tests/perf/frameTime.spec.js --project=chromium",
+    "test:mutation": "stryker run"
   },
   "dependencies": {
     "three": "0.185.1"
@@ -33,6 +34,8 @@
   "devDependencies": {
     "@eslint/js": "9.39.5",
     "@playwright/test": "1.56.1",
+    "@stryker-mutator/core": "9.6.1",
+    "@stryker-mutator/vitest-runner": "9.6.1",
     "@types/three": "0.185.4",
     "@vitest/coverage-v8": "3.2.4",
     "eslint": "9.39.5",
