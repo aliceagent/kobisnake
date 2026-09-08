@@ -9,6 +9,7 @@ import {
 import { snakeColorHex } from '../../../src/render/materials.js';
 import {
   MUSIC_TRACKS,
+  PLAYER_KIND_VALUES,
   changeMatchLength,
   changeMusicTrack,
   changePlayerKind,
@@ -119,19 +120,36 @@ describe('changeMusicTrack', () => {
 });
 
 /**
- * KI-12-04 · `changePlayerKind` — the switch itself. `DESIGN-DECISIONS §1` row 27 fixes the row's cycle order
- * (`HUMAN` first, then the three CPU levels) and its four approved value strings; `LEVELS` is imported from
- * `../../game/bots/levels.js` rather than retyped, so this test (and the row it proves) can never drift from
- * the level ids `session.js`'s own `policyForLevel` actually understands.
+ * KI-12-04 · `changePlayerKind` — the switch itself. `DESIGN-DECISIONS §1` row 27 fixes the row's cycle
+ * order (`HUMAN` first, then the offered CPU levels) and its value strings. Only `HUMAN`/`CPU EASY`/
+ * `CPU NORMAL` actually ship on the row — `HARD` is defined in `levels.js` and measured (#217), but the
+ * design lead ruled it off the menu (#210, "Two honest levels beat three with one that lies") because the
+ * redefined level's own +3.1pp margin against `NORMAL` (95% CI ±6.3pp, p = 0.32, n = 1000) is
+ * indistinguishable from zero. `PLAYER_KIND_VALUES` (imported from `matchSetup.js`, not re-derived here) is
+ * the one place that offered list is written; see its own doc comment for why it may never be "tidied" back
+ * into a derivation from the full `LEVELS` catalogue.
  */
 describe('changePlayerKind — KI-12-04 the switch', () => {
-  const CYCLE = ['HUMAN', ...Object.values(LEVELS)];
+  // The authoritative source, imported rather than re-derived — a re-assertion of `PLAYER_KIND_VALUES`
+  // itself, not a second guess at what it should be. Every other test in this block cycles through *this*,
+  // so a change to the real constant is what every one of them is actually proving correct.
+  const CYCLE = PLAYER_KIND_VALUES;
 
   it('KI-12-04 AC1: defaults to HUMAN for both players', () => {
     expect(BASE_SETTINGS.playerKinds).toEqual({ 1: 'HUMAN', 2: 'HUMAN' });
   });
 
-  it('cycles player 1 forward through HUMAN -> CPU EASY -> CPU NORMAL -> CPU HARD -> HUMAN, in that order', () => {
+  it('KI-12-04: the offered cycle is exactly HUMAN, CPU EASY, CPU NORMAL — HARD is deliberately not on the menu', () => {
+    // Pins the exact list, not just its length: silently re-adding a fourth value (or reordering the three)
+    // fails this test immediately, which is the point (docs/qa/playtests/cpu-levels.md, #217, ruled on #210).
+    expect(PLAYER_KIND_VALUES).toEqual(['HUMAN', 'EASY', 'NORMAL']);
+    // HARD still exists in the catalogue levels.js owns — this is about what the row offers, not what
+    // levels.js supports (checked against the real export, not a second hardcoded 'HARD' string).
+    expect(LEVELS.HARD).toBe('HARD');
+    expect(PLAYER_KIND_VALUES).not.toContain(LEVELS.HARD);
+  });
+
+  it('cycles player 1 forward through HUMAN -> CPU EASY -> CPU NORMAL -> HUMAN, in that order', () => {
     let settings = { ...BASE_SETTINGS, playerKinds: { 1: 'HUMAN', 2: 'HUMAN' } };
     for (const expected of [...CYCLE.slice(1), CYCLE[0]]) {
       settings = changePlayerKind(settings, 1, 1);

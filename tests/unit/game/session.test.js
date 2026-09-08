@@ -1803,4 +1803,18 @@ describe('KI-12-04: the switch actually drives a CpuPlayer', () => {
     // the one driving player 1, not a human's (silent, absent) keyboard.
     expect(session.getSim()?.snakes[0].direction).toEqual(DIRECTIONS.UP);
   });
+
+  it('KI-12-04: HARD keeps working when handed to the session programmatically — it is off the menu, not rejected', () => {
+    // `PLAYER_KIND_VALUES` (matchSetup.js) is the row's own offered list, and it deliberately excludes
+    // `HARD` (#217, ruled on #210) — but `session.js`'s own `syncCpuPlayersFromKinds`/`policyForLevel` stay
+    // generic and must never grow a guard that rejects a `'HARD'` `PlayerKind` reaching them some other way
+    // (a test, `levels.js`'s own consumers, a future debug seam). `startMatch`'s `playerKinds` override is
+    // exactly such a path: it never goes through the row's `changePlayerKind` at all.
+    const { session } = buildSession({ seed: 4242 });
+    expect(() => playTo(session, { bestOf: 1, playerKinds: { 1: 'HARD', 2: 'HUMAN' } })).not.toThrow();
+    expect(session.getMatchSettings().playerKinds[1]).toBe('HARD');
+    // And it actually drives the snake, exactly as EASY does above — not merely accepted and then ignored.
+    runFrames(session, 3.3, 40);
+    expect(session.getSim()?.snakes[0].alive).toBe(true);
+  });
 });

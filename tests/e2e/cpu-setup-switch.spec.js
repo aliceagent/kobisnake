@@ -38,7 +38,7 @@ test.describe('KI-12-04 the switch — match setup row', () => {
     expect(values[5]).toBe('HUMAN');
   });
 
-  test('KI-12-04: cycling PLAYER 1’s row visits the four approved values, in row-27 order, and wraps', async ({
+  test('KI-12-04: cycling PLAYER 1’s row visits exactly HUMAN, CPU EASY, CPU NORMAL, and wraps — CPU HARD is not offered', async ({
     page,
   }) => {
     await page.goto(DEFAULT_QUERY);
@@ -55,18 +55,19 @@ test.describe('KI-12-04 the switch — match setup row', () => {
     await expect(p1Kind).toHaveText('HUMAN');
 
     // Verbatim strings from `DESIGN-DECISIONS §1` row 27 — do not paraphrase these in the test either.
+    // Exactly three steps back to HUMAN pins the cycle length itself: if a fourth value (`CPU HARD`) were
+    // ever silently re-added to the menu, this third `ArrowRight` would land on it instead of wrapping,
+    // and the assertion right after it would fail (#217's measurement, ruled off the menu on #210).
     await page.keyboard.press('ArrowRight');
     await expect(p1Kind).toHaveText('CPU EASY');
     await page.keyboard.press('ArrowRight');
     await expect(p1Kind).toHaveText('CPU NORMAL');
     await page.keyboard.press('ArrowRight');
-    await expect(p1Kind).toHaveText('CPU HARD');
-    await page.keyboard.press('ArrowRight');
     await expect(p1Kind).toHaveText('HUMAN');
 
     // Backward too, and player 2's own row is never touched by cycling player 1's.
     await page.keyboard.press('ArrowLeft');
-    await expect(p1Kind).toHaveText('CPU HARD');
+    await expect(p1Kind).toHaveText('CPU NORMAL');
     await expect(page.locator('.menu-item-value').nth(5)).toHaveText('HUMAN');
   });
 
@@ -118,6 +119,10 @@ test.describe('KI-12-04 AC2 — the key rule, in the real bundled build', () => 
 
   test('KI-12-04 AC2: a human-vs-CPU match awards the normal amount', async ({ page }) => {
     await page.goto(DEFAULT_QUERY);
+    // `HARD` deliberately, not `EASY`/`NORMAL`: it is off the match-setup menu (#217, ruled on #210), but
+    // `startMatch`'s `playerKinds` override never goes through the row at all, and `policyForLevel` must
+    // still resolve it — this doubles as the real-browser half of "HARD keeps working when handed to the
+    // session programmatically" (`tests/unit/game/session.test.js`'s own test of the same claim).
     const rewardKeys = await page.evaluate(() => {
       const kobi = /** @type {any} */ (globalThis).__kobi;
       kobi.startMatch({ bestOf: 3, playerKinds: { 1: 'HUMAN', 2: 'HARD' } });

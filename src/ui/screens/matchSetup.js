@@ -32,14 +32,14 @@ import { createFocusModel } from '../focus.js';
  * ticket's `Files:` list to change, so there is nothing live to read yet — Improvement 07 (a real binding
  * table) has not landed. See the PR description.
  *
- * **KI-12-04 the switch.** Each player gains its own row, cycling `HUMAN` / `CPU EASY` / `CPU NORMAL` /
- * `CPU HARD` (`DESIGN-DECISIONS §1` row 27 — the only four approved strings for this row's *value*).
- * {@link changePlayerKind} is the same pure-function-of-`(matchSettings, player, direction)` pattern
- * {@link pickPlayerColor} already established on this file, cycling `matchSettings.playerKinds[player]`
- * through `'HUMAN'` and `../../game/bots/levels.js`'s own {@link LEVELS} — imported rather than re-listed
- * here, so a level this screen offers can never drift from a level `session.js`'s `policyForLevel` actually
- * knows how to build. The row's own left-hand label (`PLAYER 1` / `PLAYER 2`, placed directly above that
- * player's existing `PLAYER 1 COLOUR` / `PLAYER 2 COLOUR` row) is **not** copy row 27 approves — flagged as a
+ * **KI-12-04 the switch.** Each player gains its own row, cycling `HUMAN` / `CPU EASY` / `CPU NORMAL`
+ * (`DESIGN-DECISIONS §1` row 27 — the row's approved *value* strings). {@link changePlayerKind} is the same
+ * pure-function-of-`(matchSettings, player, direction)` pattern {@link pickPlayerColor} already established
+ * on this file, cycling `matchSettings.playerKinds[player]` through {@link PLAYER_KIND_VALUES} — see that
+ * constant's own doc comment for why `HARD` exists in `levels.js` but is deliberately not one of the three
+ * values this row offers (#217's measurement, ruled on #210). The row's own left-hand label (`PLAYER 1` /
+ * `PLAYER 2`, placed directly above that player's existing `PLAYER 1 COLOUR` / `PLAYER 2 COLOUR` row) is
+ * **not** copy row 27 approves — flagged as a
  * question on #210 in this ticket's own PR, the same way #184 is flagged for {@link COLOUR_NOTE_COPY} below;
  * nothing in this file or its tests reads that label text, only the row's position, so a ruling can change it
  * with no other edit. `controlsCardLabel` below is extended (not replaced) with a third, optional `isCpu`
@@ -184,15 +184,27 @@ export function pickPlayerColor(matchSettings, player, ownedColors, direction) {
 
 /**
  * The row's approved cycle order (`DESIGN-DECISIONS §1` row 27): `HUMAN` first (the shipping default), then
- * the three CPU levels in their own named order. `Object.values(LEVELS)` rather than a hand-written
- * `['EASY', 'NORMAL', 'HARD']` literal, for the same reason {@link changeMatchLength} reads
- * `SETTINGS.bestOfOptions` instead of retyping `[1, 3, 5]` — this screen may never invent a list `levels.js`
- * does not already own.
+ * the CPU levels this row actually **offers** — `EASY` and `NORMAL` only.
+ *
+ * **`HARD` is deliberately absent, on purpose, permanently — do not "tidy" this back into
+ * `['HUMAN', ...Object.values(LEVELS)]`.** `HARD` still exists and is fully supported in `levels.js` (it is
+ * exported from `LEVELS`, `policyForLevel('HARD')` still returns its policy, and nothing downstream of this
+ * row — {@link changePlayerKind}, `session.js`'s `syncCpuPlayersFromKinds`/`policyForLevel` — rejects it; a
+ * caller that hands `'HARD'` straight to `session.js` (a test, `levels.js`'s own consumers) still works). This
+ * is only about what a *player* is offered to choose. KI-12-03 measured the redefined `HARD` (survivor's
+ * rules plus eating when it is safe) at **+3.1pp against `NORMAL`, 95% CI ±6.3pp, p = 0.32, n = 1000**
+ * (`docs/qa/playtests/cpu-levels.md`, #217) — indistinguishable from zero, not an opponent a player would
+ * feel as stronger. Design-lead ruling on #210: "Two honest levels beat three with one that lies." The gap
+ * between the levels `levels.js` *defines* and the levels this row *offers* is the point of this constant,
+ * not an oversight for a later reader to close.
+ *
+ * `LEVELS.EASY`/`LEVELS.NORMAL` rather than the bare string literals `'EASY'`/`'NORMAL'`, so the two values
+ * this row does offer still can't drift from `levels.js`'s own spelling of them.
  *
  * @type {readonly PlayerKind[]}
  */
-const PLAYER_KIND_VALUES = Object.freeze(
-  /** @type {PlayerKind[]} */ (['HUMAN', ...Object.values(LEVELS)]),
+export const PLAYER_KIND_VALUES = Object.freeze(
+  /** @type {PlayerKind[]} */ (['HUMAN', LEVELS.EASY, LEVELS.NORMAL]),
 );
 
 /**
