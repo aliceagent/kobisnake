@@ -17,6 +17,12 @@ import { SETTINGS } from '../core/settings.js';
  * {@link DEFAULT_SLOW_TARGET_MODE} live only here and in `src/core/round.js`'s own local type, carried
  * through `withOverrides` as an extra `slow.targetMode` key that `Settings`' own `SlowSettings` typedef
  * (in `settings.js`, untouched) does not declare.
+ *
+ * KI-04-03 adds a second key outside {@link TUNABLES} for the same reason and by the same route:
+ * `roundDuration`. Unlike the SLOW target mode it *is* an ordinary `SETTINGS` field — it simply has no
+ * slider, because the design lead asked for {@link PACING_PRESETS} chips rather than another control. It is
+ * still `src/core/settings.js` untouched: a preset is a `withOverrides()` tree, exactly like every other
+ * value this file produces.
  */
 
 /** @typedef {import('../core/settings.js').Settings} Settings */
@@ -136,6 +142,52 @@ export const SPEED_BOOST_PRESETS = Object.freeze([
 ]);
 
 /**
+ * KI-04-03 — the two pacing candidates I04 measured, plus the shipping pair, as one-click chips.
+ *
+ * `docs/qa/playtests/round-pacing.md` swept `roundDuration` and `laserStartTime` over 33 cells and found
+ * both able to move how often a round reaches the laser warning, by different mechanisms: a shorter round
+ * raises the fraction by removing round, an earlier warning raises it by converting play into climax. The
+ * design lead's ruling (#229, `DESIGN-DECISIONS §1` row 30) is that **the matrix answers "which lever" and
+ * cannot answer "which value"** — humans die less cheaply than bots, so a permanent number chosen against
+ * bots would be chosen against the wrong population. So neither lands in `settings.js`. Both land here, and
+ * Gate 1 session 2 plays all three in one sitting (`PLAYTEST-SCRIPT §5`).
+ *
+ * Each preset moves **one** lever off shipping and leaves the other at it, which is what makes the three
+ * chips a controlled comparison rather than three unrelated configurations. The shipping chip reads its
+ * numbers from {@link SETTINGS} rather than repeating them, so if `settings.js` ever does change, the chip
+ * follows it instead of quietly lying; `tests/unit/game/tuning.test.js` asserts its label still describes
+ * the values it carries.
+ *
+ * @typedef {object} PacingPreset
+ * @property {string} id
+ * @property {string} label - exactly the text the chip shows, and the name `PLAYTEST-SCRIPT §5` uses.
+ * @property {number} roundDuration
+ * @property {number} laserStartTime
+ */
+
+/** @type {readonly PacingPreset[]} */
+export const PACING_PRESETS = Object.freeze([
+  Object.freeze({
+    id: 'round-75',
+    label: 'round 75 s',
+    roundDuration: 75,
+    laserStartTime: SETTINGS.laserStartTime,
+  }),
+  Object.freeze({
+    id: 'laser-40',
+    label: 'laser at 0:40',
+    roundDuration: SETTINGS.roundDuration,
+    laserStartTime: 40,
+  }),
+  Object.freeze({
+    id: 'shipping',
+    label: '90 s / 0:30 (shipping)',
+    roundDuration: SETTINGS.roundDuration,
+    laserStartTime: SETTINGS.laserStartTime,
+  }),
+]);
+
+/**
  * Reads a dotted `path` (`TunableSpec.key`) off a nested object, e.g. `'speedBoost.multiplier'` off
  * `{speedBoost: {multiplier: 1.5}}`.
  *
@@ -164,6 +216,13 @@ export function defaultTuningValues(settings = SETTINGS) {
   for (const tunable of TUNABLES) {
     values[tunable.key] = readPath(/** @type {any} */ (settings), tunable.key);
   }
+  // `roundDuration` is a real `SETTINGS` field but deliberately **not** a {@link TUNABLES} entry: KI-04-03
+  // needs it settable by {@link PACING_PRESETS} and the design lead asked for chips, not another slider. It
+  // rides in the flat state and is stamped into the tree by {@link buildSettingsOverride}, exactly the way
+  // `slowTargetMode` already does — one established pattern rather than a second new one. Set on `values`
+  // rather than in the literal below so the returned object keeps its `Record<string, number>` shape; an
+  // explicit numeric property there narrows the inferred type and the cast stops type-checking.
+  values.roundDuration = settings.roundDuration;
   return /** @type {Record<string, number> & {slowTargetMode: SlowTargetMode}} */ ({
     ...values,
     slowTargetMode: DEFAULT_SLOW_TARGET_MODE,
@@ -194,5 +253,9 @@ export function buildSettingsOverride(values) {
     }
   }
   overrides.slow = { ...(overrides.slow ?? {}), targetMode: values.slowTargetMode };
+  // Stamped like `slow.targetMode` and for the same reason (see {@link defaultTuningValues}). Falls back to
+  // the shipping value rather than emitting `undefined`, so a hand-built `values` missing the key produces a
+  // tree that changes nothing instead of one `withOverrides()` would merge a hole into.
+  overrides.roundDuration = values.roundDuration ?? SETTINGS.roundDuration;
   return /** @type {TuningSettingsOverride} */ (overrides);
 }
