@@ -309,15 +309,28 @@ export function createReplayScreen(root) {
   readout.dataset.replayReadout = 'true';
   playerView.appendChild(readout);
 
+  // KI-05-06 (#260): this line's box is **reserved whether or not it is showing**, via
+  // `.replay-end--placeholder` rather than the `hidden` attribute. `END OF REPLAY` appears the instant the
+  // replay finishes, and when it did so by going from `display: none` to a real box it grew the panel by its
+  // own height plus the flex gap — which, in a vertically centred panel, moved every transport row below it
+  // down by half that. Measured at 14 px: `PAUSE` sat at y 326.5 on the frame before the last tick and y
+  // 340.5 on the frame after. A player reaching for PAUSE or STEP has the button move under the cursor at
+  // exactly the moment they are most likely to be reaching for it, so this is a real defect and not only a
+  // test's problem. Keeping the box always means the panel's height never changes and the rows never move.
   const endOfReplay = doc.createElement('div');
-  endOfReplay.className = 'replay-end';
+  endOfReplay.className = 'replay-end replay-end--placeholder';
   endOfReplay.textContent = REPLAY_COPY.endOfReplayText;
-  endOfReplay.hidden = true;
+  endOfReplay.dataset.replayEnd = 'true';
   playerView.appendChild(endOfReplay);
 
   const playRow = doc.createElement('div');
   playRow.className = 'menu-item menu-item--action';
   playRow.textContent = REPLAY_COPY.playLabel;
+  // KI-05-06 (#260): a stable handle that does not change when the label does. This row's text flips between
+  // PLAY and PAUSE, and a locator written as `.menu-item` filtered by the text `PAUSE` stops matching
+  // anything the moment the replay ends and the label flips back — which is how #260 burned a full 30-second
+  // timeout rather than failing in a way that named the cause.
+  playRow.dataset.replayToggle = 'true';
   playerView.appendChild(playRow);
 
   const stepRow = doc.createElement('div');
@@ -441,7 +454,13 @@ export function createReplayScreen(root) {
       const totalTick = progress.replay === null ? null : replayTotalTick(progress.replay);
       readout.textContent = formatTickReadout(progress.tick, totalTick);
       playRow.textContent = progress.isPlaying ? REPLAY_COPY.pauseLabel : REPLAY_COPY.playLabel;
-      endOfReplay.hidden = progress.phase === null || progress.phase === PHASES.PLAYING;
+      // KI-05-06 (#260): toggles *visibility*, never the box. `--placeholder` keeps the line's height and
+      // leaves the text invisible and out of the accessibility tree; dropping it reveals the same box. See
+      // this element's own note above for why its box must never come and go.
+      endOfReplay.classList.toggle(
+        'replay-end--placeholder',
+        progress.phase === null || progress.phase === PHASES.PLAYING,
+      );
     },
     show() {
       container.hidden = false;
