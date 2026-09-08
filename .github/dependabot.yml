@@ -1,0 +1,91 @@
+# KI-19-02 — automated dependency-update PRs.
+#
+# What this file does and does not do:
+#   - It opens PRs. It does not merge anything — this repository has no auto-merge workflow (nothing here
+#     listens for a Dependabot PR and merges it), so "three.js is never auto-merged" holds simply because
+#     nothing here is ever auto-merged. If an auto-merge workflow is added later, it must exclude `three` and
+#     `@types/three` by name — see the comment below on why they are ungrouped.
+#   - Every PR it opens is a normal PR against `main`, so `ci.yml`'s existing `pull_request:` trigger already
+#     runs the full suite against it (lint, typecheck, unit, coverage, build, browser, supply-chain). No change
+#     to `ci.yml` was needed for "every update PR runs the full suite".
+#
+# `main` carries four `npm audit` advisories today (issue #186), all dev dependencies:
+#   - `vitest` / `@vitest/coverage-v8` — critical, fix is 3.2.4 -> 3.2.7, not semver-major.
+#   - `vite` / `esbuild` — high/moderate, fix needs `vite` 5 -> 8, a semver-major of the build tool.
+# KI-19-01 deliberately left all four for this ticket to bring in as reviewable PRs instead of gating CI on
+# them. The grouping below is shaped so the vitest fix (a minor/patch-range bump) can land inside the routine
+# `dev-dependencies` group, while the vite major is excluded from every group's `update-types` and so opens as
+# its own, ungrouped PR — reviewed alone, exactly as KI-19-01's comment on the advisory says it should.
+#
+# `.npmrc` sets `save-exact=true` on purpose (KI-19-01): every version in package.json is an exact pin, no
+# `^`/`~`. `versioning-strategy: increase` below is what keeps Dependabot's edits matching that — it always
+# rewrites the manifest to the new exact version rather than widening it to a range. The default ("auto")
+# would likely land on the same behaviour here (Dependabot treats a `"private": true` package with no
+# `main`/`exports` as an application, and applications get the exact-version treatment), but that is a
+# heuristic inferred from the shape of package.json, and this repository's pin discipline is not something to
+# leave to one — `increase` says it outright.
+version: 2
+updates:
+  - package-ecosystem: 'npm'
+    directory: '/'
+    schedule:
+      interval: 'weekly'
+      day: 'monday'
+    versioning-strategy: increase
+    open-pull-requests-limit: 10
+    # `dependencies` only. An earlier draft added `sprint:I19` as well; that is wrong for a schedule rather
+    # than a batch — these PRs keep arriving every Monday long after Improvement 19 is signed off, and a
+    # permanent `sprint:I19` label would make every future dependency bump look like part of a finished
+    # sprint. The label has to describe the PR, not the ticket that set the schedule up.
+    labels:
+      - 'dependencies'
+    commit-message:
+      prefix: 'chore(deps)'
+      prefix-development: 'chore(deps-dev)'
+    groups:
+      # Routine dev-toolchain bumps only: `dependency-type: development` already keeps `three` out (it is
+      # this project's one runtime dependency, `dependencies` not `devDependencies`), and `@types/three` is
+      # excluded by name below even though it *is* a devDependency, because it only makes sense pinned to the
+      # same version as `three` and a version-mismatched pair is worse than two separate PRs. `update-types`
+      # deliberately lists only `minor` and `patch` — a `major` dev update (the Vite 5 -> 8 fix above is
+      # exactly one) matches no `update-types` entry in this group, so Dependabot cannot place it here and
+      # opens it as its own PR instead. That is the whole mechanism behind "a major never rides in with a
+      # group": there is no group left for it to match.
+      dev-dependencies:
+        applies-to: version-updates
+        dependency-type: 'development'
+        update-types:
+          - 'minor'
+          - 'patch'
+        exclude-patterns:
+          - 'three'
+          - '@types/three'
+    # `three` and `@types/three` are deliberately in no `groups:` entry at all — not even a single-member
+    # group of their own. A grouped update (however small the group) still gets a generic "bump the
+    # dev-dependencies group" PR title and Dependabot's group update/superseding behaviour; a renderer bump
+    # needs to read as what it is — "Bump three from X to Y" — and needs the visual suite and the design lead
+    # looking at one specific version change, not a mechanism built for routine batches. Leaving them out of
+    # every group is what makes AC2 ("three.js is excluded from grouping") true: they fall through to
+    # Dependabot's default for anything that matches no group, which is an ordinary, individual, ungrouped PR.
+
+  # GitHub warns that the actions this repository pins (`actions/checkout@v4`, `actions/setup-node@v4`, …) run
+  # on a deprecated Node version upstream. Not named in the ticket's `Files:` line, but "in the spirit of the
+  # ticket" per the tech lead's brief: it is the same mechanism (weekly Dependabot PRs, full suite via the
+  # existing `pull_request:` trigger, nothing auto-merged) applied to the other ecosystem this repository
+  # actually has pinned versions in. Grouped on its own — action bumps carry none of the runtime-vs-dev
+  # distinction the npm block above exists for, and a batch of `actions/*@vN` bumps is exactly the kind of
+  # low-risk, easy-to-review-together change grouping is for.
+  - package-ecosystem: 'github-actions'
+    directory: '/'
+    schedule:
+      interval: 'weekly'
+      day: 'monday'
+    labels:
+      - 'dependencies'
+    commit-message:
+      prefix: 'chore(ci)'
+    groups:
+      github-actions:
+        applies-to: version-updates
+        patterns:
+          - '*'
