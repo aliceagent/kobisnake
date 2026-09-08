@@ -19,46 +19,45 @@
  * so `LEVEL_POLICIES.EASY` and `LEVEL_POLICIES.NORMAL` *are* `greedy` and `survivor`, unmodified. Introducing
  * a wrapper here would be new code with nothing to justify it.
  *
- * ## HARD duplicates survivor's body on purpose
+ * ## HARD, redefined (design-lead ruling on #210, 2026-09-08)
  *
- * `hard` does not call `survivor()`. `policy.js`'s module doc's constraint 2 is the reason: `tests/agent/
- * driver.js` ships a policy into a browser page as source text via `Function.prototype.toString()`, so a
- * policy function may not reference anything outside itself — not a module-level constant, not an import, not
- * a sibling function. `greedy.js` and `survivor.js` each accept the cost of re-declaring their own small
- * helpers rather than sharing a module for exactly this reason; `hard` pays the same cost, duplicating
- * survivor's safety/lookahead machinery inline rather than importing it, so it can ship the same way its two
- * siblings do.
+ * The original `hard` steered into a cell a strictly-longer snake could win a head-on over (`DESIGN-DECISIONS
+ * §1` row 8's "longer survives"). Measured against NORMAL over 1 000 seeded rounds (`docs/qa/playtests/
+ * cpu-levels.md`'s first table), it came out **3.5 points weaker**, not stronger — the mechanic spends a
+ * little of survivor's own defensive margin chasing a coin the opponent can simply decline to flip (NORMAL's
+ * own contested-cell exclusion means it rarely walks into the cell HARD was steering toward), and that spent
+ * margin cost more in the laser endgame than the occasional won head-on paid back. The ruling accepted that
+ * finding outright and replaced the mechanic rather than asking for it to be tuned until the number moved:
  *
- * The design brief (`docs/sprints/improvement-12-cpu-opponent.md` KI-12-03, `DESIGN-DECISIONS §1 row 8`):
- * when both heads enter the same cell, or swap cells, in one step, **the longer snake survives, equal
- * lengths both die**. Two things follow from that rule, both load-bearing for `hard`:
+ * > HARD is: NORMAL's survival rules, plus eating when it is safe — take an apple when the cell it sits on
+ * > still leaves at least as much reachable room as the best non-apple move, so the snake grows without
+ * > boxing itself in.
  *
- * 1. **Only a strictly-longer snake should ever want a head-on.** Equal length kills both sides — the same
- *    outcome as staying out of the way, but with the extra risk of actually reaching that cell — so `hard`
- *    only ever relaxes survivor's caution when `me.segments.length` is strictly greater than every living
- *    opponent's. Ticket wording: "steers to force head-ons **it will win** by length". When it is not
- *    strictly longer, `hard` runs exactly survivor's own two-pass evaluation (exclude every contested cell,
- *    fall back to plain safety only if that leaves nothing at all) with no bonus terms at all, which is what
- *    makes it byte-for-byte survivor's answer on every board where it is not ahead — proved in
- *    `tests/sim/cpuLevels.test.js` and (optionally) `tests/unit/game/bots/purity.test.js`.
- * 2. **"Contested" is the only cell a head-on can actually land on.** `isImmediatelySafe` already refuses any
- *    cell currently occupied by an opponent's body — including its current head cell — because a snake that
- *    steps there dies to an ordinary body collision unless the opponent happens to vacate it into *my* current
- *    head cell at the same instant (the "swap" case), which a policy cannot engineer without knowing the
- *    opponent's own choice in advance. What a policy *can* aim at is a cell the opponent's head could occupy
- *    **after its next step** — survivor's own `contestedCells` set, up to three cells per living opponent,
- *    already excludes the reverse of its current direction the same way this snake's own candidates do. If
- *    both heads land there on the same tick, that is the "both heads enter the same cell" branch of row 8, not
- *    a guess. `hard` keeps that same set unmodified; a longer `hard` simply stops excluding it and gives it a
- *    strong bonus, and adds a gentle pull toward the nearest living opponent's head so it is actually steering
- *    toward the chance of one, not just declining to avoid it when one happens to arise.
+ * The reasoning behind the words: NORMAL never eats (`survivor.js`'s own module doc) and stays at spawn
+ * length all round. A HARD that grows wins timeouts on length (`DESIGN-DECISIONS §2.5`: "Longer snake wins
+ * the round" at 0:00), wins a head-on **without ever having sought one** (row 8 already pays out for length —
+ * `hard` no longer needs to go looking for the chance), and reaches the laser phase with the same survival
+ * discipline survivor already has, only carrying more length. It is stronger the way a more experienced human
+ * is stronger — playing the same safe game a little better, not gambling on a coin the opponent can refuse —
+ * which is exactly what "harder" ought to mean for a level a beginner can still play against.
  *
- * Both bonus terms are named constants nested inside `hard` (not module scope — constraint 2 again):
- * `HEAD_ON_BONUS` is set well above the largest possible free-space/straight score (4 safe neighbours × the
- * free-space weight of 10, plus the straight bonus of 3 = 43 at most) so an available contested cell always
- * wins the comparison outright rather than merely nudging it; `APPROACH_WEIGHT` is a single point per
- * Manhattan cell of distance closed, the same order of magnitude as the straight-line bonus, so it steers
- * play toward the opponent without ever overriding a real difference in safety.
+ * `hard` still does not call `survivor()` — `policy.js`'s module doc's constraint 2: `tests/agent/driver.js`
+ * ships a policy into a browser page as source text via `Function.prototype.toString()`, so a policy function
+ * may not reference anything outside itself. `greedy.js` and `survivor.js` each pay the cost of re-declaring
+ * their own small helpers rather than sharing a module for exactly this reason; `hard` pays the same cost,
+ * duplicating survivor's safety machinery inline. Two things follow directly from the ruling's own wording:
+ *
+ * 1. **Contested cells are excluded outright, always** — exactly survivor's own two-pass exclusion (try
+ *    excluding every cell the opponent's head could also reach next step; fall back to plain safety only if
+ *    that leaves nothing at all). There is no branch that ever relaxes this, at any length: the ruling is
+ *    explicit that steering into (or even tolerating) a contested cell for the sake of a head-on is the
+ *    behaviour being deleted, not narrowed.
+ * 2. **"Reachable room" is `freeNeighborCount`, unmodified.** The ruling's own wording — "at least as much
+ *    reachable room as the best non-apple move" — names the existing measure rather than asking for a new
+ *    one, so eating is scored with the identical two-step-lookahead count survivor's own free-space term
+ *    already uses, computed under whichever exclusion pass is actually in effect. An apple only ever *breaks
+ *    a tie* among cells that were already safe; it can never buy a step into a cell with less room than the
+ *    best available alternative, and it plays no part in the safety filter itself.
  */
 
 /** @typedef {'EASY' | 'NORMAL' | 'HARD'} Level */
@@ -78,9 +77,9 @@ export const LEVELS = Object.freeze({
 });
 
 /**
- * The HARD policy: survivor's own safety and two-step lookahead, plus steering into a cell the opponent's
- * head could also reach next step when — and only when — `me` is strictly longer than every living opponent.
- * See the module doc for why every helper is nested here rather than shared with `survivor.js`.
+ * The HARD policy: survivor's own safety, laser awareness and contested-cell exclusion, unmodified, plus
+ * eating an apple when doing so costs no reachable room (the ruling on #210 — see the module doc). Every
+ * helper is nested here rather than shared with `survivor.js`; see the module doc for why.
  *
  * @param {import('./policy.js').PolicyView} view
  * @returns {import('./policy.js').PolicyMove}
@@ -129,22 +128,8 @@ export function hard(view) {
   const ownBodyAfterStep = (snake) =>
     snake.pendingGrowth > 0 ? snake.segments : snake.segments.slice(0, -1);
 
-  /**
-   * @param {{x: number, y: number}} a
-   * @param {{x: number, y: number}} b
-   * @returns {number}
-   */
-  const manhattan = (a, b) => Math.abs(a.x - b.x) + Math.abs(a.y - b.y);
-
   const opponents = snapshot.snakes.filter((_, index) => index !== playerIndex);
   const livingOpponents = opponents.filter((opponent) => opponent.alive);
-
-  // Row 8: a head-on this snake does not win outright is exactly as bad as one it never risked, so only a
-  // *strictly* longer snake ever steers toward one. `segments.length` is public and is measured before this
-  // step's own growth resolves, matching the length the engine itself compares (`DESIGN-DECISIONS §2.5`).
-  const amLonger =
-    livingOpponents.length > 0 &&
-    livingOpponents.every((opponent) => me.segments.length > opponent.segments.length);
 
   // The safe square is `[inset, width - 1 - inset]` on both axes (`src/core/lasers.js`'s `isDeadly`).
   const inset = snapshot.lasers.inset;
@@ -175,7 +160,8 @@ export function hard(view) {
     cell.x === safeMinX || cell.x === safeMaxX || cell.y === safeMinY || cell.y === safeMaxY;
 
   // Every cell a living opponent's own head could occupy after its next step — up to three per opponent,
-  // excluding the reverse of its own current direction, exactly `survivor.js`'s `contestedCells`.
+  // excluding the reverse of its own current direction, exactly `survivor.js`'s `contestedCells`. Unlike the
+  // pre-ruling `hard`, there is no branch that ever stops excluding this set (module doc).
   /** @type {{x: number, y: number}[]} */
   const contestedCells = [];
   for (const opponent of livingOpponents) {
@@ -190,24 +176,6 @@ export function hard(view) {
    * @returns {boolean}
    */
   const isContested = (cell) => contestedCells.some((c) => c.x === cell.x && c.y === cell.y);
-
-  const livingOpponentHeads = livingOpponents.map((opponent) => opponent.segments[0]);
-  /**
-   * The Manhattan distance from `cell` to the nearest living opponent's head, or 0 with no living opponent
-   * (in which case the hunting bonus below never fires anyway — `amLonger` is false with no living opponent).
-   *
-   * @param {{x: number, y: number}} cell
-   * @returns {number}
-   */
-  const nearestOpponentHeadDistance = (cell) => {
-    if (livingOpponentHeads.length === 0) return 0;
-    let min = Infinity;
-    for (const opponentHead of livingOpponentHeads) {
-      const d = manhattan(opponentHead, cell);
-      if (d < min) min = d;
-    }
-    return min;
-  };
 
   /**
    * @param {{x: number, y: number}} cell
@@ -238,76 +206,75 @@ export function hard(view) {
     return count;
   };
 
+  // Apples only (module doc: the ruling names apples, not power-ups) — filtered for `null` the same way
+  // `greedy.js` does, since a food slot can stand empty (`DESIGN-DECISIONS §2.3`: "foodCount is a target, not
+  // an invariant").
+  const appleCells = snapshot.apples.filter((apple) => apple !== null);
+  /**
+   * @param {{x: number, y: number}} cell
+   * @returns {boolean}
+   */
+  const hasApple = (cell) => appleCells.some((apple) => apple.x === cell.x && apple.y === cell.y);
+
   const head = me.segments[0];
   const candidates = CARDINALS.filter((dir) => !isOpposite(dir, me.direction));
 
   /**
-   * Exactly survivor's own scoring under its `'exclude'` rule: free space dominates (weight 10), a small
-   * straight-line bonus (3) keeps ties from flip-flopping, `jitter` breaks the rest. No head-on term at all —
-   * this is the branch a `hard` that is not strictly longer must reproduce exactly.
+   * Every direction that survives the safety filter under one exclusion pass, scored exactly as `survivor.js`
+   * scores it (free space dominates at weight 10, a small straight-line bonus of 3 keeps ties from
+   * flip-flopping, `jitter` breaks the rest) — no eating term here at all; that preference is applied once,
+   * after this returns, over whichever pass actually produced candidates (module doc point 1).
    *
    * @param {boolean} avoidContested
-   * @returns {{score: number, dir: {name: string, dx: number, dy: number}} | null}
+   * @returns {{dir: {name: string, dx: number, dy: number}, score: number, room: number, hasApple: boolean}[]}
    */
-  const evaluateDefensive = (avoidContested) => {
-    /** @type {{score: number, dir: {name: string, dx: number, dy: number}} | null} */
-    let best = null;
+  const evaluateCandidates = (avoidContested) => {
+    const evaluated = [];
     for (const dir of candidates) {
       const next = { x: head.x + dir.dx, y: head.y + dir.dy };
       if (!isImmediatelySafe(next)) continue;
       if (avoidContested && isContested(next)) continue;
 
-      const free = freeNeighborCount(next, avoidContested);
+      const room = freeNeighborCount(next, avoidContested);
       const straight = dir.dx === me.direction.dx && dir.dy === me.direction.dy;
-      const score = free * 10 + (straight ? 3 : 0) + (jitter === null ? 0 : jitter());
-      if (best === null || score > best.score) best = { score, dir };
+      const score = room * 10 + (straight ? 3 : 0) + (jitter === null ? 0 : jitter());
+      evaluated.push({ dir, score, room, hasApple: hasApple(next) });
     }
-    return best;
+    return evaluated;
   };
 
-  /**
-   * The hunting branch: same safety and free-space scoring as `evaluateDefensive(false)`, plus a decisive
-   * bonus for a contested cell (module doc's `HEAD_ON_BONUS`) and a gentle pull toward the nearest living
-   * opponent's head (`APPROACH_WEIGHT`) so `hard` actively closes the distance instead of only accepting a
-   * head-on that happens to fall in its lap.
-   *
-   * @returns {{score: number, dir: {name: string, dx: number, dy: number}} | null}
-   */
-  const evaluateHunting = () => {
-    // Comfortably above the largest possible free-space + straight score (4 neighbours * 10 + 3 = 43): an
-    // available contested cell always outranks every purely-defensive alternative.
-    const HEAD_ON_BONUS = 1000;
-    // One point per Manhattan cell of distance closed — the same order of magnitude as the straight-line
-    // bonus, enough to steer play toward the opponent without ever outweighing a real safety difference.
-    const APPROACH_WEIGHT = 1;
+  // Survivor's own two-pass exclusion, unchanged: try excluding every contested cell; if that leaves nothing
+  // at all, fall back to plain safety rather than returning `null` into what might be the only way off a wall.
+  let evaluated = evaluateCandidates(true);
+  if (evaluated.length === 0) evaluated = evaluateCandidates(false);
+  if (evaluated.length === 0) return null;
 
-    /** @type {{score: number, dir: {name: string, dx: number, dy: number}} | null} */
-    let best = null;
-    for (const dir of candidates) {
-      const next = { x: head.x + dir.dx, y: head.y + dir.dy };
-      if (!isImmediatelySafe(next)) continue;
+  // Survivor's own pick: highest score wins, first candidate (fixed CARDINALS order) keeps a tie.
+  let best = evaluated[0];
+  for (const candidate of evaluated) {
+    if (candidate.score > best.score) best = candidate;
+  }
 
-      const free = freeNeighborCount(next, false);
-      const straight = dir.dx === me.direction.dx && dir.dy === me.direction.dy;
-      const headOnBonus = isContested(next) ? HEAD_ON_BONUS : 0;
-      const score =
-        free * 10 +
-        (straight ? 3 : 0) +
-        (jitter === null ? 0 : jitter()) +
-        headOnBonus -
-        APPROACH_WEIGHT * nearestOpponentHeadDistance(next);
-      if (best === null || score > best.score) best = { score, dir };
+  // The ruling's safe-eating rule: an apple cell is preferred over `best` whenever its own reachable room is
+  // at least as good as the best *non-apple* candidate's — never a reduction in room, only a tie broken in
+  // favour of growing. With no non-apple candidate at all the comparison is vacuously true, so the best-scoring
+  // apple (there is nothing else in `evaluated`) simply stands, which already equals `best` above.
+  const nonAppleCandidates = evaluated.filter((candidate) => !candidate.hasApple);
+  const appleCandidates = evaluated.filter((candidate) => candidate.hasApple);
+  if (appleCandidates.length > 0) {
+    const bestNonAppleRoom =
+      nonAppleCandidates.length > 0
+        ? Math.max(...nonAppleCandidates.map((candidate) => candidate.room))
+        : -Infinity;
+    /** @type {(typeof appleCandidates)[number] | null} */
+    let bestApple = null;
+    for (const candidate of appleCandidates) {
+      if (candidate.room < bestNonAppleRoom) continue;
+      if (bestApple === null || candidate.score > bestApple.score) bestApple = candidate;
     }
-    return best;
-  };
+    if (bestApple !== null) best = bestApple;
+  }
 
-  // Not strictly longer: exactly survivor's own two-pass exclusion (`survivor.js`'s own comment: "if that
-  // leaves nothing at all, fall back to plain safety rather than returning null into what might be the only
-  // way off a wall"). Strictly longer: hunt, with no exclusion pass at all — there is nothing to fall back to
-  // that hunting itself does not already consider, since it is `evaluateDefensive(false)` plus bonus terms.
-  const best = amLonger ? evaluateHunting() : (evaluateDefensive(true) ?? evaluateDefensive(false));
-
-  if (best === null) return null;
   if (best.dir.dx === me.direction.dx && best.dir.dy === me.direction.dy) return null;
   return /** @type {import('./policy.js').PolicyMove} */ (best.dir.name);
 }

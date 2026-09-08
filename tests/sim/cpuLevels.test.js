@@ -13,15 +13,21 @@ import { runRound } from './harness.js';
  * no-input human, 500 seeded rounds per side of each matchup (`docs/sprints/improvement-12-cpu-opponent.md`).
  * The committed counterpart is `docs/qa/playtests/cpu-levels.md`.
  *
- * **Status: BLOCKED on #217.** AC1 requires the three levels to order themselves — HARD beats NORMAL beats
- * EASY, each by a clear margin — asserted, not just observed. Two of the three orderings hold by a wide
- * margin (NORMAL over EASY, and HARD over EASY). **HARD does not beat NORMAL**: the measured gap is
- * *negative* (NORMAL wins more often), confirmed below with the same margin every other comparison in this
- * file uses. `docs/qa/playtests/cpu-levels.md`'s "Why HARD does not beat NORMAL" section has the investigation
- * (seat-swap control, an ablation of the steering term, and the death-cause breakdown); this is a real,
- * seat-controlled finding, not noise or a bug in the harness, and per this ticket's own instruction ("do not
- * tune the bots to hit the numbers... post BLOCKED and tell me the numbers") the assertion below is left
- * exactly as it is required to read, and is expected to fail until the design lead decides what changes.
+ * **Status: BLOCKED on #217, still.** AC1 requires the three levels to order themselves — HARD beats NORMAL
+ * beats EASY, each by a clear margin — asserted, not just observed. Two of the three orderings hold by a wide
+ * margin (NORMAL over EASY, and HARD over EASY) under both of `HARD`'s definitions this ticket has measured.
+ *
+ * `HARD`'s first definition (steer into a cell a strictly-longer snake would win a head-on over) measured 3.5
+ * points *weaker* than NORMAL, not stronger. The design lead ruled on that finding (#210, quoted in
+ * `src/game/bots/levels.js`'s module doc) and redefined `HARD` as NORMAL's own rules plus eating an apple when
+ * it costs no reachable room. Re-measured on the *same* seats, seeds and margin: **HARD now edges NORMAL by
+ * +3.1 points — a real, positive, seat-controlled improvement over the first definition's −3.5 — but still far
+ * short of the 20-point margin AC1 asks for.** `docs/qa/playtests/cpu-levels.md` keeps both measurements, in
+ * order, as the record of why the definition changed and what changing it bought.
+ *
+ * Per the ruling's own explicit instruction this file does not chase the margin further: "measure once, report
+ * the number, and if it fails tell me — I will take the fallback to KI-12-04." The assertion below is left
+ * exactly as it is required to read, and is expected to fail.
  *
  * ## Why every matchup is measured in *both* seats
  *
@@ -277,8 +283,8 @@ describe('KI-12-03 CPU levels', () => {
       );
     }
     console.log(
-      'KI-12-03 is BLOCKED on #217: HARD does not beat NORMAL by any positive margin (see ' +
-        'docs/qa/playtests/cpu-levels.md). Do not tune levels.js to change this number — report it.',
+      'KI-12-03 is BLOCKED on #217: HARD beats NORMAL by a positive but sub-margin gap (see ' +
+        'docs/qa/playtests/cpu-levels.md). Do not tune levels.js to chase the margin — report the number.',
     );
     if (FULL_RUN) {
       console.log(
@@ -304,8 +310,9 @@ describe('KI-12-03 CPU levels', () => {
       expect(matchups.hardVsEasy.gapPct).toBeGreaterThanOrEqual(ORDERING_MARGIN_PP);
     });
 
-    // BLOCKED on #217 (module doc): this is expected to fail. It is left exactly as every other assertion in
-    // this describe block reads — the ticket's own instruction is not to tune levels.js until this passes.
+    // BLOCKED on #217 (module doc): this is expected to fail, on both of HARD's definitions this ticket has
+    // measured. It is left exactly as every other assertion in this describe block reads — the design lead's
+    // ruling on #210 is explicit that this file does not chase the margin by tuning the eating rule.
     it('KI-12-03 AC1: HARD beats NORMAL by at least the ordering margin', () => {
       expect(matchups.hardVsNormal.gapPct).toBeGreaterThanOrEqual(ORDERING_MARGIN_PP);
     });
