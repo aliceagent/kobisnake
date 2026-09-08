@@ -190,3 +190,10 @@ its clock starts on the first PLAYING tick.
 | Frame time during PLAYING (integrated GPU, 1080p) | p95 ≤ 16.6 ms |
 | Draw calls during PLAYING | ≤ 120 |
 | Network requests after load | 0 |
+
+Two readings fixed by the design lead on 2026-09-08 (Improvement 08, #277). A kB here is 1000 bytes, the unit
+`npm run build` prints, so the gate in `tests/perf` and the build log are the same number; the bundle budget is
+therefore 350 000 bytes gzipped. The frame-time row cannot be measured on a runner with no GPU and is **not a CI
+gate**: it is measured on real hardware at KS-16-01 and recorded in `docs/qa/playtests/perf-baseline.md`, while CI
+gates the machine-independent proxies — draw calls per frame, scene residency, and the bundle — on every PR and
+nightly.
