@@ -127,8 +127,8 @@ export function checkBundleBudget(files) {
     .map((file) => `  ${(file.gzipBytes / 1000).toFixed(2).padStart(8)} kB  ${file.path}`)
     .join('\n');
 
-  // AC3 (the sprint's own QA plan): a failing gate names the budget, the measurement, and what to do about
-  // it. Under budget that "what to do" has nothing to say, so only the over-budget message carries the
+  // The sprint's own design constraint: a failing gate names the budget, the measurement, and what to do
+  // about it. Under budget that "what to do" has nothing to say, so only the over-budget message carries the
   // instruction — and it reads as an overage ("X kB over budget"), not a negative headroom, which is a
   // number a reader has to do arithmetic on to understand.
   const summary = ok
