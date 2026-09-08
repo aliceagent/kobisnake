@@ -914,8 +914,13 @@ body {
   opacity: 0.85;
 }
 
-.replay-end[hidden] {
-  display: none;
+/* KI-05-06 (#260): the end-of-replay line keeps its box at all times and only its *visibility* changes, so
+   the transport rows below it never move. When it toggled `display: none` instead, the line appearing at the
+   final tick grew the vertically-centred panel and shifted every row beneath it down by 14 px — under a
+   cursor already reaching for PAUSE or STEP. `visibility: hidden` also keeps it out of the accessibility
+   tree, which is what the `hidden` attribute was there for. */
+.replay-end--placeholder {
+  visibility: hidden;
 }
 
 /* KI-15-03: CSS transitions and animations on menus are off under `prefers-reduced-motion: reduce` — the
