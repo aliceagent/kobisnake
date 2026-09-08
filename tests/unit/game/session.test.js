@@ -2052,6 +2052,31 @@ describe('KI-06-01 surviving a lost WebGL context', () => {
     expect(session.getState()).toBe(STATES.PLAYING);
   });
 
+  it('KI-06-01: a player who leaves the pause by another door is not owed a resume later', () => {
+    // Loss pauses the match; the player quits to the menu while the canvas is still dead; the context comes
+    // back with nothing of its own to resume. The flag has to be spent by that restore, or the *next* pause —
+    // one the player opens deliberately — would look like the context's to end.
+    const renderer = createContextLossRenderer();
+    const { session, ui } = buildSession({ renderer, strict: true });
+    playTo(session);
+    renderer.loseContext();
+    expect(session.getState()).toBe(STATES.PAUSE);
+
+    // Out of the pause by another door, with the canvas still dead.
+    lastShow(ui, STATES.PAUSE).onMenu();
+    expect(session.getState()).toBe(STATES.MAIN_MENU);
+
+    // The restore has nothing of its own to resume, and spends the flag rather than leaving it standing.
+    renderer.restoreContext();
+    expect(session.getState()).toBe(STATES.MAIN_MENU);
+
+    // So the next pause — one the player opened themselves — survives the next restore.
+    playTo(session);
+    session.pause();
+    renderer.restoreContext();
+    expect(session.getState()).toBe(STATES.PAUSE);
+  });
+
   it('KI-06-01: dispose() unsubscribes from both context events', () => {
     const renderer = createContextLossRenderer();
     const { session } = buildSession({ renderer });

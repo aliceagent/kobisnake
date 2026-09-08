@@ -1648,10 +1648,16 @@ export function createSession({
    * row and Esc call — so the match continues through the same one-second READY? beat a normal resume plays,
    * from the same tick it stopped on. There is deliberately no second path: recovery that does not reuse the
    * ordinary resume is recovery nobody has tested.
+   *
+   * The flag is cleared **before** the decision, not inside {@link resume}'s guard: the player may have left
+   * the pause by another door while the canvas was dead (QUIT TO MENU, RESTART MATCH), in which case
+   * `resume()` finds no `RESUME` row and does nothing — and a flag left standing there would make the *next*
+   * pause, the one the player opened deliberately, look like the context's to end.
    */
   function handleContextRestored() {
-    if (!pausedByContextLoss) return;
-    resume();
+    const owedResume = pausedByContextLoss;
+    pausedByContextLoss = false;
+    if (owedResume) resume();
   }
 
   /**
