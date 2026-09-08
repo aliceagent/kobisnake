@@ -5,6 +5,15 @@ import path from 'node:path';
 
 import { describe, expect, it } from 'vitest';
 import { APPROVED_KEYS, STRINGS } from '../../../src/ui/strings.js';
+import { PLAYTEST_STRINGS, playtestPrompt } from '../../../src/ui/strings.playtest.js';
+
+/**
+ * The catalogue as one object, which is what every rule below is written against. KI-20-06 (#317) moved the
+ * `playtestPrompt` group into `src/ui/strings.playtest.js` because `playtestPrompt.js` is a dynamic-import
+ * boundary and the two halves must not share a module carrying copy; the split is a *bundling* boundary and
+ * nothing else, so the tests deliberately re-join it here and hold both halves to identical rules.
+ */
+const CATALOGUE = { ...STRINGS, playtestPrompt };
 
 /**
  * KI-20-01 (`docs/sprints/improvement-20-string-catalogue.md`, tracking #212, ticket #249).
@@ -80,6 +89,7 @@ const HERE = path.dirname(fileURLToPath(import.meta.url));
 const REPO_ROOT = path.resolve(HERE, '../../..');
 const DESIGN_DECISIONS_PATH = path.join(REPO_ROOT, 'docs/design/DESIGN-DECISIONS.md');
 const STRINGS_JS_PATH = path.join(REPO_ROOT, 'src/ui/strings.js');
+const STRINGS_PLAYTEST_JS_PATH = path.join(REPO_ROOT, 'src/ui/strings.playtest.js');
 
 /** Collapses any run of whitespace (including a line break) to one space, and trims. @param {string} s */
 function normalizeWhitespace(s) {
@@ -186,7 +196,7 @@ function getByPath(dotPath) {
       throw new Error(`getByPath: "${dotPath}" does not resolve (stuck at "${key}")`);
     }
     return /** @type {any} */ (value)[key];
-  }, /** @type {unknown} */ (STRINGS));
+  }, /** @type {unknown} */ (CATALOGUE));
 }
 
 /**
@@ -343,7 +353,12 @@ describe('KI-20-01 AC1 — every string in DESIGN-DECISIONS §3 is present and i
     const objectEnd = source.indexOf('export const STRINGS = ');
     expect(objectStart).toBeGreaterThan(-1);
     expect(objectEnd).toBeGreaterThan(objectStart);
-    const objectBody = source.slice(objectStart, objectEnd);
+    // KI-20-06 (#317): the catalogue has two files. The playtest half carries its own APPROVED markers, so
+    // the count has to span both or it silently stops covering `playtestPrompt.hintLine`.
+    const playtestSource = readFileSync(STRINGS_PLAYTEST_JS_PATH, 'utf8');
+    const objectBody =
+      source.slice(objectStart, objectEnd) +
+      playtestSource.slice(playtestSource.indexOf('export const playtestPrompt = '));
 
     // ".*" stays on one line (`//` comments end at the newline, and `.` does not match `\n`), so this still
     // only matches a single-line marker — but tolerates the extra words some entries carry between "APPROVED"
@@ -430,9 +445,14 @@ describe("KI-20-05 — the catalogue must not defeat KI-11-05's entry/playtest c
   // aggregate. The bundling itself is proved by KI-11-05's e2e; these are the cheap unit-level tripwires
   // that say *why* it broke when it does.
 
-  const source = readFileSync(STRINGS_JS_PATH, 'utf8');
+  const source =
+    readFileSync(STRINGS_JS_PATH, 'utf8') + readFileSync(STRINGS_PLAYTEST_JS_PATH, 'utf8');
 
-  /** Every top-level group name the catalogue is expected to export separately. */
+  /**
+   * Every top-level group name the catalogue is expected to export separately. `playtestPrompt` lives in
+   * `strings.playtest.js` since KI-20-06 (#317) and every other group in `strings.js`; both files are read
+   * above so the rule applies identically to both halves.
+   */
   const GROUPS = [
     'menu',
     'howToPlay',
@@ -456,15 +476,40 @@ describe("KI-20-05 — the catalogue must not defeat KI-11-05's entry/playtest c
     ).toBe(true);
   });
 
-  it('every exported group is reachable through the STRINGS aggregate too, and is the same object', async () => {
-    const module = await import('../../../src/ui/strings.js');
+  it("every exported group is reachable through its own half's aggregate, and is the same object", async () => {
+    const entryHalf = await import('../../../src/ui/strings.js');
+    const playtestHalf = await import('../../../src/ui/strings.playtest.js');
     for (const group of GROUPS) {
-      expect(module[group], `${group} is not exported`).toBeDefined();
+      const half = group === 'playtestPrompt' ? playtestHalf : entryHalf;
+      const aggregate = group === 'playtestPrompt' ? PLAYTEST_STRINGS : entryHalf.STRINGS;
+      expect(half[group], `${group} is not exported`).toBeDefined();
       expect(
-        module.STRINGS[group],
-        `STRINGS.${group} must be the very same object as the named export`,
-      ).toBe(module[group]);
+        aggregate[group],
+        `the aggregate's ${group} must be the very same object as the named export`,
+      ).toBe(half[group]);
     }
+  });
+
+  it('the two halves have no static import edge between them — that edge is what #317 was', () => {
+    const entry = readFileSync(STRINGS_JS_PATH, 'utf8');
+    const playtest = readFileSync(STRINGS_PLAYTEST_JS_PATH, 'utf8');
+    expect(
+      /from\s*'\.\/strings\.playtest\.js'/.test(entry),
+      'strings.js must not import the playtest half — it would make it reachable from the entry graph again',
+    ).toBe(false);
+    expect(
+      /from\s*'\.\/strings\.js'/.test(playtest),
+      'strings.playtest.js must not import strings.js — it would put the whole catalogue in a shared chunk',
+    ).toBe(false);
+  });
+
+  it('playtestPrompt.js imports the playtest half, never the entry half', () => {
+    const screen = readFileSync(path.join(REPO_ROOT, 'src/ui/screens/playtestPrompt.js'), 'utf8');
+    expect(/from\s*'\.\.\/strings\.playtest\.js'/.test(screen)).toBe(true);
+    expect(
+      /from\s*'\.\.\/strings\.js'/.test(screen),
+      'the dynamically-imported screen must not import the entry half (#317)',
+    ).toBe(false);
   });
 
   it('no module under src/ui imports the aggregate STRINGS — each imports its own group', () => {
@@ -668,8 +713,8 @@ describe("Parameterised strings match the live screens' own formatting, branch f
 
   // playtestPrompt
   it('playtestPrompt.playerLabel', () => {
-    expect(STRINGS.playtestPrompt.playerLabel(1)).toBe('P1');
-    expect(STRINGS.playtestPrompt.playerLabel(2)).toBe('P2');
+    expect(playtestPrompt.playerLabel(1)).toBe('P1');
+    expect(playtestPrompt.playerLabel(2)).toBe('P2');
   });
 
   // tuning
@@ -701,9 +746,7 @@ describe('KI-06-02 AC3 — the error screen carries no technical jargon', () => 
   ];
 
   /** @type {string[]} */
-  const renderedStrings = Object.values(STRINGS.error).filter(
-    (value) => typeof value === 'string',
-  );
+  const renderedStrings = Object.values(STRINGS.error).filter((value) => typeof value === 'string');
 
   it('sanity — the error group actually has strings to check (the check is not vacuous)', () => {
     expect(renderedStrings.length).toBeGreaterThan(0);
