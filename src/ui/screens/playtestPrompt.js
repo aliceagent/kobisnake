@@ -1,9 +1,6 @@
 // @ts-check
-import {
-  PLAYTEST_QUESTIONS,
-  findQuestionById,
-  isTriggerDue,
-} from '../../qa/playtestQuestions.js';
+import { playtestPrompt } from '../strings.playtest.js';
+import { PLAYTEST_QUESTIONS, findQuestionById, isTriggerDue } from '../../qa/playtestQuestions.js';
 import { buildSessionDocument, renderMarkdownSummary } from '../../qa/playtestSession.js';
 
 /**
@@ -72,7 +69,7 @@ export const MAX_QUESTIONS_PER_GAP = 2;
  * verbatim and character for character; `DESIGN-DECISIONS §3` carries it with the rest of the approved
  * first-minute copy. A named constant, and asserted against a literal in the unit test, so it cannot drift.
  */
-export const PROMPT_HINT_LINE = '← → CHOOSE · ENTER ANSWER · ESC SKIP';
+export const PROMPT_HINT_LINE = playtestPrompt.hintLine;
 
 /**
  * The two answers almost every question in the bank is written against — "answer yes", "Majority yes",
@@ -220,7 +217,8 @@ export function createPlaytestPromptState() {
         case 'LEFT': {
           const field = currentField();
           if (field !== null && !field.confirmed) {
-            field.choiceIndex = (field.choiceIndex - 1 + field.choices.length) % field.choices.length;
+            field.choiceIndex =
+              (field.choiceIndex - 1 + field.choices.length) % field.choices.length;
           }
           break;
         }
@@ -336,7 +334,7 @@ export function createPlaytestPrompt(root, { getReplay, getMatchSettings, clipbo
   const resolvedClipboard =
     clipboard !== undefined
       ? clipboard
-      : /** @type {any} */ (globalThis).navigator?.clipboard ?? null;
+      : /** @type {any} */ ((globalThis).navigator?.clipboard ?? null);
 
   /** Every round captured this session, in the order it was played (KI-11-03 tech-lead note 1/2 on #162: the
    * replay object inside each entry stays KS-07-01's shape verbatim — `../../qa/playtestSession.js` is what
@@ -391,7 +389,7 @@ export function createPlaytestPrompt(root, { getReplay, getMatchSettings, clipbo
   const exportButton = doc.createElement('button');
   exportButton.type = 'button';
   exportButton.className = 'playtest-export-button';
-  exportButton.textContent = 'Export session';
+  exportButton.textContent = playtestPrompt.exportButton;
   exportButton.dataset.playtestExportButton = 'true';
   exportContainer.appendChild(exportButton);
 
@@ -421,7 +419,7 @@ export function createPlaytestPrompt(root, { getReplay, getMatchSettings, clipbo
   // previous one on every export so a long session never leaks one object URL per click.
   const exportDownloadLink = /** @type {HTMLAnchorElement} */ (doc.createElement('a'));
   exportDownloadLink.className = 'playtest-export-download';
-  exportDownloadLink.textContent = 'Download session file';
+  exportDownloadLink.textContent = playtestPrompt.downloadSessionFile;
   exportDownloadLink.dataset.playtestExportDownload = 'true';
   exportDownloadLink.download = 'kobisnake-playtest-session.json';
   exportContainer.appendChild(exportDownloadLink);
@@ -433,7 +431,10 @@ export function createPlaytestPrompt(root, { getReplay, getMatchSettings, clipbo
 
   exportButton.addEventListener('click', () => {
     const document_ = buildSessionDocument({
-      rounds: capturedRounds.map((round) => ({ roundIndex: round.roundIndex, replay: round.replay })),
+      rounds: capturedRounds.map((round) => ({
+        roundIndex: round.roundIndex,
+        replay: round.replay,
+      })),
       answers: state.getAnswers(),
       matchSettings: getMatchSettings(),
     });
@@ -448,17 +449,17 @@ export function createPlaytestPrompt(root, { getReplay, getMatchSettings, clipbo
     exportDownloadLink.href = /** @type {string} */ (lastObjectUrl);
 
     if (resolvedClipboard === null || typeof resolvedClipboard.writeText !== 'function') {
-      exportStatus.textContent = 'Clipboard unavailable — copy the text below';
+      exportStatus.textContent = playtestPrompt.clipboardUnavailable;
       return;
     }
     resolvedClipboard.writeText(json).then(
       () => {
-        exportStatus.textContent = 'Copied!';
+        exportStatus.textContent = playtestPrompt.copied;
       },
       () => {
         // A denied clipboard permission must not fail silently (tuning.js's own tech-lead note 6) — the JSON
         // is already in `exportJsonEl` regardless of which branch this callback takes.
-        exportStatus.textContent = 'Clipboard blocked — copy the text below';
+        exportStatus.textContent = playtestPrompt.clipboardBlocked;
       },
     );
   });
@@ -507,7 +508,7 @@ export function createPlaytestPrompt(root, { getReplay, getMatchSettings, clipbo
       const playerEl = doc.createElement('span');
       playerEl.className = 'playtest-prompt-field-player';
       // `hud.js`'s own words — the HUD already writes exactly `P1`/`P2` (`createHud`'s `setLengths`).
-      playerEl.textContent = `P${field.player}`;
+      playerEl.textContent = playtestPrompt.playerLabel(field.player);
       fieldEl.appendChild(playerEl);
 
       const choicesEl = doc.createElement('span');

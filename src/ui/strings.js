@@ -1,4 +1,5 @@
 // @ts-check
+import { deepFreeze } from './deepFreeze.js';
 
 /**
  * KI-20-01 (`docs/sprints/improvement-20-string-catalogue.md`, tracking #212, ticket #249): every user-visible
@@ -401,30 +402,6 @@ export const replay = /*#__PURE__*/ deepFreeze({
 });
 
 /**
- * `playtestPrompt` — see this module's doc comment for the approved/unapproved convention, and for why each group
- * is its own `/*#__PURE__*\/`-annotated export rather than a property of one object.
- */
-export const playtestPrompt = /*#__PURE__*/ deepFreeze({
-  // APPROVED — DESIGN-DECISIONS §3, "The playtest prompt's key hint" (issue #182). Byte-identical to
-  // `playtestPrompt.js`'s exported `PROMPT_HINT_LINE`.
-  hintLine: '← → CHOOSE · ENTER ANSWER · ESC SKIP',
-  /** UNAPPROVED — KI-11-02 (`playtestPrompt.js`'s `playerEl.textContent`). @param {1 | 2} player @returns {string} */
-  playerLabel(player) {
-    return `P${player}`;
-  },
-  // UNAPPROVED — KI-11-03 (`playtestPrompt.js`'s `exportButton.textContent`).
-  exportButton: 'Export session',
-  // UNAPPROVED — KI-11-03 (`playtestPrompt.js`'s clipboard-success status text).
-  copied: 'Copied!',
-  // UNAPPROVED — KI-11-03 (`playtestPrompt.js`'s no-clipboard status text).
-  clipboardUnavailable: 'Clipboard unavailable — copy the text below',
-  // UNAPPROVED — KI-11-03 (`playtestPrompt.js`'s denied-clipboard status text).
-  clipboardBlocked: 'Clipboard blocked — copy the text below',
-  // UNAPPROVED — KI-11-03 (`playtestPrompt.js`'s `exportDownloadLink.textContent`).
-  downloadSessionFile: 'Download session file',
-});
-
-/**
  * `hud` — see this module's doc comment for the approved/unapproved convention, and for why each group
  * is its own `/*#__PURE__*\/`-annotated export rather than a property of one object.
  */
@@ -533,31 +510,6 @@ export const error = /*#__PURE__*/ deepFreeze({
 });
 
 /**
- * Recursively freezes `value` and everything reachable from it (nested plain objects, arrays and — since a
- * `Set` iterates its own values but freezing does not touch what a `Set` holds indirectly — every own property
- * of every object, function included). AC2's "a write throws" needs this to go all the way down: freezing only
- * the top-level `STRINGS` object would still let `STRINGS.menu.title = 'x'` or
- * `STRINGS.howToPlay.lines.push('x')` succeed silently.
- *
- * @template T
- * @param {T} value
- * @returns {T}
- */
-function deepFreeze(value) {
-  if (
-    (typeof value === 'object' || typeof value === 'function') &&
-    value !== null &&
-    !Object.isFrozen(value)
-  ) {
-    Object.freeze(value);
-    for (const key of Object.getOwnPropertyNames(value)) {
-      deepFreeze(/** @type {any} */ (value)[key]);
-    }
-  }
-  return value;
-}
-
-/**
  * Every user-visible string the game renders, deep-frozen (AC2) — see this module's own doc comment above for
  * the approved/unapproved convention every entry carries.
  */
@@ -570,7 +522,6 @@ export const STRINGS = /*#__PURE__*/ deepFreeze({
   pause,
   countdown,
   replay,
-  playtestPrompt,
   hud,
   tuning,
   tutorial,
