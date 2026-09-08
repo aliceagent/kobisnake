@@ -4,14 +4,13 @@ import { createFocusModel } from '../focus.js';
 
 /**
  * The match-over screen (`MATCH_OVER`, `DESIGN-DECISIONS §2.6`: "After MATCH_OVER: REMATCH (same settings,
- * swap nothing) or MAIN MENU."). Two focusables, in that order. `keys` is display-only this sprint — nothing
- * is persisted until Sprint 13 (the tech-lead contract's own note), so this screen must never touch
- * `localStorage`.
+ * swap nothing) or MAIN MENU."). `keys` is display-only this sprint — nothing is persisted until Sprint 13
+ * (the tech-lead contract's own note), so this screen must never touch `localStorage`.
  *
- * `gameStateMachine.js`'s `TRANSITIONS[MATCH_OVER]` carries no `BACK` row at all (only `REMATCH` and
- * `QUIT_TO_MENU`), so Esc is deliberately wired to nothing here — there is no `onBack` prop in the tech-lead
- * contract for this screen, and inventing one would let this screen attempt an illegal transition the state
- * machine does not have.
+ * `gameStateMachine.js`'s `TRANSITIONS[MATCH_OVER]` carries no `BACK` row at all (only `REMATCH`,
+ * `QUIT_TO_MENU` and, since KI-05-04, `SELECT_REPLAY`), so Esc is deliberately wired to nothing here — there
+ * is no `onBack` prop in the tech-lead contract for this screen, and inventing one would let this screen
+ * attempt an illegal transition the state machine does not have.
  *
  * KI-01-02: the draw cap (`DESIGN-DECISIONS §1` row 26) can end a match with a level score, which has no
  * winner — `winner` is `1 | 2 | null`, and `null` reads `IT'S A TIE` (`DESIGN-DECISIONS §3`'s "A match that
@@ -19,6 +18,25 @@ import { createFocusModel } from '../focus.js';
  * branch on `winner === null` before it ever reaches `colorNames[winner]` — indexing `colorNames` with `null`
  * reads `undefined`, and `capitalize(undefined)` would throw rather than silently rendering "UNDEFINED WINS
  * THE MATCH", but either failure mode is exactly the bug this ticket exists to close.
+ *
+ * ## KI-05-04: WATCH LAST ROUND, a declared `Files:` deviation
+ *
+ * The sprint file's own `Files:` list for KI-05-04 names `src/ui/screens/scoreboard.js`; the design lead's
+ * ruling on issue #211, recorded in `DESIGN-DECISIONS §3` under "The REPLAY screen" and repeated on issue
+ * #222, moves the row here instead: "`WATCH LAST ROUND` is a row on the match-over screen, not the
+ * scoreboard: the scoreboard is a 2.5-second passive beat and its interaction model is Sprint 11's to
+ * redesign." This screen already has real, focusable rows and already waits for a person, so the new row
+ * needs no new interaction model — it is a third focusable alongside `REMATCH` and `MAIN MENU`, wired through
+ * the exact same `createFocusModel`/`rows` machinery those two already use. It is placed *after* both
+ * existing rows rather than between them (see the row's own comment below, next to where it is built): several
+ * e2e specs key a single ArrowDown from the default-focused `REMATCH` to `MAIN MENU`, and appending the new
+ * row keeps every one of them true without editing a file outside this ticket's own change.
+ *
+ * `WATCH_LAST_ROUND_LABEL` is approved copy (same ruling), a named constant rather than an inline literal —
+ * the same discipline `scoreboard.js`'s own `DRAW_TEXT` carries ("Never invent another spelling").
+ * `onWatchLastRound` dispatches `gameStateMachine.js`'s `SELECT_REPLAY` event (`session.js`'s own doc comment
+ * on `watchLastRound`), the same event `mainMenu.js`'s REPLAY row already uses — one event, now two rows that
+ * can fire it, per that file's own table-doc note.
  */
 
 /** @typedef {import('../focus.js').MenuAction} MenuAction */
@@ -33,6 +51,9 @@ import { createFocusModel } from '../focus.js';
  * @property {number} keys - 0, 1 or 2 keys earned; display only (Sprint 13 persists it).
  * @property {() => void} onRematch
  * @property {() => void} onMenu
+ * @property {() => void} onWatchLastRound - KI-05-04: the WATCH LAST ROUND row. `session.js`'s own
+ *   `watchLastRound` loads the match's last round into the REPLAY screen's player and dispatches
+ *   `SELECT_REPLAY` — this screen only has to call it.
  */
 
 /**
@@ -43,6 +64,14 @@ import { createFocusModel } from '../focus.js';
  * @property {(action: MenuAction) => void} handleMenuAction
  * @property {() => void} destroy
  */
+
+/**
+ * The WATCH LAST ROUND row's label — approved copy, `DESIGN-DECISIONS §3` ("The REPLAY screen"), ruled on
+ * issue #211 and repeated on #222. Verbatim, never respelled here (the same rule `scoreboard.js`'s own
+ * `DRAW_TEXT` carries) — exported so `tests/unit/ui/matchOver.test.js` asserts against this constant rather
+ * than a second copy of the literal.
+ */
+export const WATCH_LAST_ROUND_LABEL = 'WATCH LAST ROUND';
 
 /** @param {string} name @returns {string} */
 function capitalize(name) {
@@ -89,6 +118,16 @@ export function createMatchOverScreen(root) {
   menuRow.textContent = 'MAIN MENU';
   panel.appendChild(menuRow);
 
+  // KI-05-04: appended after the two existing rows, not inserted between them — `tests/e2e/menus.spec.js` and
+  // `tests/e2e/powerups-toggle.spec.js` both key "one ArrowDown from REMATCH" to MAIN MENU (`QUIT_TO_MENU`),
+  // and putting the new row last is what keeps both true without editing either spec for a ticket that does
+  // not otherwise touch them (module doc's "declared deviation" note names the one deviation this ticket
+  // does make; this ordering choice avoids a second, needless one).
+  const watchLastRoundRow = doc.createElement('div');
+  watchLastRoundRow.className = 'menu-item';
+  watchLastRoundRow.textContent = WATCH_LAST_ROUND_LABEL;
+  panel.appendChild(watchLastRoundRow);
+
   container.appendChild(panel);
   root.appendChild(container);
 
@@ -101,13 +140,18 @@ export function createMatchOverScreen(root) {
     keys: 0,
     onRematch: () => {},
     onMenu: () => {},
+    onWatchLastRound: () => {},
   };
 
-  const rows = [rematchRow, menuRow];
+  const rows = [rematchRow, menuRow, watchLastRoundRow];
 
   // Built once (see `matchSetup.js`'s doc comment): each callback reads `props` live at call time.
   const focus = createFocusModel({
-    items: [{ onSelect: () => props.onRematch() }, { onSelect: () => props.onMenu() }],
+    items: [
+      { onSelect: () => props.onRematch() },
+      { onSelect: () => props.onMenu() },
+      { onSelect: () => props.onWatchLastRound() },
+    ],
   });
 
   function updateFocusClasses() {
@@ -132,7 +176,9 @@ export function createMatchOverScreen(root) {
     // `winner === null` must be checked before `colorNames[winner]` is ever read (module doc comment): a tie
     // has no player to name, and `IT'S A TIE` is the approved copy (`DESIGN-DECISIONS §3`), not a fallback.
     winnerLine.textContent =
-      winner === null ? "IT'S A TIE" : `${capitalize(colorNames[winner]).toUpperCase()} WINS THE MATCH`;
+      winner === null
+        ? "IT'S A TIE"
+        : `${capitalize(colorNames[winner]).toUpperCase()} WINS THE MATCH`;
     scoreLine.textContent = `BEST OF ${bestOf} — ${wins[1]}-${wins[2]}`;
     keysLine.textContent = `${keys} KEY${keys === 1 ? '' : 'S'} EARNED`;
   }

@@ -248,6 +248,24 @@ describe('KS-05-02 the machine', () => {
     expect(machine.getPreviousState()).toBeNull();
   });
 
+  test('KI-05-04 AC1: SELECT_REPLAY from MATCH_OVER enters REPLAY, remembering MATCH_OVER as home', () => {
+    // The second entry point the table's own `REPLAY`/`SELECT_REPLAY` doc notes anticipated: WATCH LAST ROUND
+    // on the match-over screen (`DESIGN-DECISIONS §3`, ruling on #211/#222) reuses the identical row shape
+    // MAIN_MENU's own SELECT_REPLAY row already has.
+    const machine = driveTo(STATES.MATCH_OVER);
+    expect(machine.can(GAME_EVENTS.SELECT_REPLAY)).toBe(true);
+    expect(machine.dispatch(GAME_EVENTS.SELECT_REPLAY)).toBe(STATES.REPLAY);
+    expect(machine.getPreviousState()).toBe(STATES.MATCH_OVER);
+  });
+
+  test('KI-05-04: BACK from REPLAY entered via MATCH_OVER returns to MATCH_OVER, not MAIN_MENU', () => {
+    const machine = driveTo(STATES.MATCH_OVER);
+    machine.dispatch(GAME_EVENTS.SELECT_REPLAY);
+    expect(machine.dispatch(GAME_EVENTS.BACK)).toBe(STATES.MATCH_OVER);
+    // Same "nothing left to resume into" rule PAUSE's own RESUME follows: leaving REPLAY forgets it.
+    expect(machine.getPreviousState()).toBeNull();
+  });
+
   test('KS-05-02: LASER_WARNING is a sub-state of PLAYING, not a way out of it', () => {
     const machine = driveTo(STATES.PLAYING);
     expect(machine.dispatch(GAME_EVENTS.LASER_WARNING)).toBe(STATES.LASER_WARNING);

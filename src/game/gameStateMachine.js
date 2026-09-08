@@ -63,9 +63,10 @@ export const STATES = Object.freeze({
   MATCH_OVER: 'MATCH_OVER',
   PAUSE: 'PAUSE',
   // KI-05-03: the REPLAY screen (`docs/sprints/improvement-05-replay-capture-and-playback.md`). Reached from
-  // MAIN_MENU today; a second entry point (the scoreboard's WATCH LAST ROUND) is KI-05-04's, not this
-  // ticket's, to add — see the `PREVIOUS` note on `RESUME`'s row below for why this state's own `BACK` row
-  // is already written to support more than one entry point without changing again when that lands.
+  // MAIN_MENU, and — since KI-05-04, per the design lead's ruling on issue #211/#222 moving WATCH LAST ROUND
+  // from the sprint file's scoreboard onto the match-over screen — from MATCH_OVER too. See the `PREVIOUS`
+  // note on `RESUME`'s row below for why this state's own `BACK` row needed no change to support the second
+  // entry point when it landed.
   REPLAY: 'REPLAY',
 });
 
@@ -120,9 +121,11 @@ export const GAME_EVENTS = Object.freeze({
   RESUME: 'RESUME',
   QUIT_TO_MENU: 'QUIT_TO_MENU',
   AUTO_PAUSE: 'AUTO_PAUSE',
-  // KI-05-03: chosen from MAIN_MENU (the ticket's own entry point). Not a player-visible string itself —
-  // this is the internal event name, distinct from whatever label the main-menu row ends up carrying once
-  // issue #211 rules on it (`src/ui/screens/replay.js`'s own constants block).
+  // KI-05-03: chosen from MAIN_MENU (that ticket's own entry point). Not a player-visible string itself —
+  // this is the internal event name, distinct from whatever label a row carries (`src/ui/screens/replay.js`'s
+  // own `REPLAY_COPY`, `matchOver.js`'s own `WATCH_LAST_ROUND_LABEL`). KI-05-04 dispatches this same event
+  // from MATCH_OVER's WATCH LAST ROUND row rather than inventing a second event for what is, from the
+  // machine's point of view, the identical intention: "show me the REPLAY screen".
   SELECT_REPLAY: 'SELECT_REPLAY',
 });
 
@@ -168,12 +171,13 @@ export const PREVIOUS = 'PREVIOUS';
  * - **`PRACTICE`, `TUTORIAL`, `SHOP` and `SETTINGS` only carry `BACK`.** They are grey placeholders until
  *   Sprints 12–15; their real inner flows arrive with them, as new rows here.
  * - **`REPLAY` carries `BACK` to {@link PREVIOUS}, the same sentinel `PAUSE`'s `RESUME` uses** (KI-05-03
- *   AC4: "Esc leaves replay mode and returns where it came from"). Today the only row landing on `REPLAY` is
- *   `MAIN_MENU`'s `SELECT_REPLAY`, so `PREVIOUS` always resolves to `MAIN_MENU` in this build — but it is
- *   written as the general "wherever it was entered from" mechanism, not as a `MAIN_MENU` literal, because
- *   KI-05-04 is expected to add a second entry point (the scoreboard's WATCH LAST ROUND) without this row
- *   changing again. See {@link createGameStateMachine}'s `previousState` bookkeeping, which now remembers the
- *   state on the way into `REPLAY` exactly as it already did for `PAUSE`.
+ *   AC4: "Esc leaves replay mode and returns where it came from"). It was written as the general "wherever it
+ *   was entered from" mechanism, not as a `MAIN_MENU` literal, precisely so a second entry point could be
+ *   added without this row changing — and KI-05-04 is that second entry point: `MATCH_OVER` now carries its
+ *   own `SELECT_REPLAY` row alongside `MAIN_MENU`'s (the design lead's ruling on issue #211/#222 moved WATCH
+ *   LAST ROUND from the sprint file's scoreboard onto match-over), and both land on the identical `REPLAY`
+ *   row above with no new shape required. See {@link createGameStateMachine}'s `previousState` bookkeeping,
+ *   which remembers the state on the way into `REPLAY` exactly as it already did for `PAUSE`.
  *
  * @type {Readonly<Record<GameState, Readonly<Partial<Record<GameEvent, GameState | 'PREVIOUS'>>>>>}
  */
@@ -225,6 +229,9 @@ export const TRANSITIONS = Object.freeze({
   [STATES.MATCH_OVER]: Object.freeze({
     [GAME_EVENTS.REMATCH]: STATES.COUNTDOWN,
     [GAME_EVENTS.QUIT_TO_MENU]: STATES.MAIN_MENU,
+    // KI-05-04: WATCH LAST ROUND (`DESIGN-DECISIONS §3`, ruled on #211/#222) — the table's own note above on
+    // `REPLAY`'s `BACK` row explains why this needed no new event or state, only this one row.
+    [GAME_EVENTS.SELECT_REPLAY]: STATES.REPLAY,
   }),
   [STATES.PAUSE]: Object.freeze({
     [GAME_EVENTS.RESUME]: PREVIOUS,
