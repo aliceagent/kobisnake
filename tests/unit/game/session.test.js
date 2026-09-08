@@ -1657,13 +1657,19 @@ describe('KI-05-03 the REPLAY screen entry point', () => {
     renderer.render.mockClear();
     session.advanceSimulation(dt);
 
-    // One simulated tick advanced, drawn through the ordinary renderer (module doc: "renders it with the
-    // existing renderer and HUD"), and the screen's own per-frame progress hook saw it.
+    // One simulated tick advanced, and the screen's own per-frame progress hook saw it.
     expect(session.getReplayTick()).toBe(1);
-    expect(renderer.render).toHaveBeenCalled();
     expect(ui.updateReplayProgress).toHaveBeenCalledWith(
       expect.objectContaining({ tick: 1, phase: 'PLAYING', isPlaying: true }),
     );
+    // KI-05-08 (#317): and it does **not** draw. This used to assert `renderer.render` had been called,
+    // which was asserting the defect: `advanceSimulation` is `runUpdate` alone, and on a real frame
+    // `loop.advance` calls `drawFrame` immediately afterwards, so a render here was the first of two — and
+    // the second, having no replay branch, drew the empty arena over the replay. The render belongs to the
+    // loop now; `KI-05-08 the replay renders once per frame` drives a genuine frame and asserts the count
+    // and the snapshot. Module doc's "renders it with the existing renderer and HUD" still holds — through
+    // `drawFrameWithDt`, which is the existing renderer path.
+    expect(renderer.render).not.toHaveBeenCalled();
   });
 
   it('KI-05-03: driving the replay automatically through runUpdate still accepts no player input', () => {
@@ -1717,6 +1723,100 @@ function driveReplayToEnd(session) {
  * that just ended (MATCH_OVER never resets it), is what proves AC1 means "exactly that round" and not "a round
  * with the same seed" (tech-lead note on issue #222).
  */
+describe('KI-05-08 the replay renders once per frame (#317)', () => {
+  /**
+   * Drives one **genuine loop frame** — `loop.advance`, which runs `update` and then `render` — by capturing
+   * the frame callback the session hands `requestFrame` and calling it.
+   *
+   * This is the seam nothing had used before, and the reason #317 reached `main`. Every other test here
+   * drives frames with `session.advanceSimulation`, which is `runUpdate` **only**: it never lets the loop's
+   * own `drawFrame` run afterwards, so a state that renders inside its `runUpdate` case looks correct from a
+   * unit test and from an e2e spec alike, and is overdrawn on every real browser frame.
+   *
+   * @param {object} [overrides] - forwarded to `buildSession`
+   */
+  function buildFrameDrivenSession(overrides = {}) {
+    /** @type {(timestampMs?: number) => void} */
+    let onFrame = () => {};
+    const built = buildSession({
+      requestFrame: (/** @type {any} */ cb) => {
+        onFrame = cb;
+        return 1;
+      },
+      cancelFrame: () => {},
+      ...overrides,
+    });
+    built.session.start();
+    // The loop treats its first frame as zero-length (nothing to measure against), so the caller gets a
+    // stepper that has already burned it and delivers real time from here on.
+    onFrame(0);
+    let elapsedMs = 0;
+    return {
+      ...built,
+      /** @param {number} seconds */
+      frame(seconds) {
+        elapsedMs += seconds * 1000;
+        onFrame(elapsedMs);
+      },
+    };
+  }
+
+  it('KI-05-08 (#317): a REPLAY frame renders exactly once, with the replay snapshot', () => {
+    const { session, renderer, frame } = buildFrameDrivenSession({ seed: 1 });
+    session.machine.dispatch(GAME_EVENTS.SELECT_REPLAY);
+    expect(session.loadReplay(JSON.stringify(NO_INPUT_ROUND))).toEqual({ ok: true });
+    session.playReplay();
+
+    renderer.render.mockClear();
+    frame(1 / 60);
+
+    // Once — not twice. Before this ticket `runUpdate`'s REPLAY case drew the replay and `loop.advance` then
+    // drew `drawFrame` over it, so this was 2.
+    expect(renderer.render).toHaveBeenCalledTimes(1);
+
+    // And the one render is the replay, not the empty arena that used to win. The monkey's probe read
+    // `getRenderedSnapshot()` as EMPTY_SNAPSHOT with the replay two snakes deep at tick 20 (#317).
+    const [drawn] = renderer.render.mock.calls[0];
+    expect(drawn.snakes).toHaveLength(2);
+    expect(drawn).toEqual(session.getReplaySnapshot());
+    expect(session.getReplayTick()).toBeGreaterThan(0);
+  });
+
+  it('KI-05-08 (#317): entered from MATCH_OVER, the frame draws the replay and not the finished round', () => {
+    // The other half of #317, and the one a `sim !== null` check alone would still get wrong: reaching
+    // REPLAY from MATCH_OVER leaves the finished round's `sim` in place, so the last round's frozen final
+    // frame — not the empty arena — was what drew over the replay.
+    const { session, renderer, target, frame } = buildFrameDrivenSession({ seed: 1 });
+    playTo(session, { bestOf: 1 });
+    crashPlayerOne(session, target);
+    runFrames(session, SETTINGS.scoreboardSeconds + 0.1, 4);
+    expect(session.getState()).toBe(STATES.MATCH_OVER);
+    expect(session.getSim()).not.toBeNull();
+
+    session.machine.dispatch(GAME_EVENTS.SELECT_REPLAY);
+    expect(session.loadReplay(JSON.stringify(NO_INPUT_ROUND))).toEqual({ ok: true });
+    session.playReplay();
+
+    renderer.render.mockClear();
+    frame(1 / 60);
+
+    expect(renderer.render).toHaveBeenCalledTimes(1);
+    const [drawn] = renderer.render.mock.calls[0];
+    expect(drawn).toEqual(session.getReplaySnapshot());
+    expect(drawn).not.toEqual(session.getSim().getState());
+  });
+
+  it('KI-05-08: a REPLAY frame with nothing loaded still renders exactly once', () => {
+    const { session, renderer, frame } = buildFrameDrivenSession({ seed: 1 });
+    session.machine.dispatch(GAME_EVENTS.SELECT_REPLAY);
+
+    renderer.render.mockClear();
+    frame(1 / 60);
+
+    expect(renderer.render).toHaveBeenCalledTimes(1);
+  });
+});
+
 describe('KI-05-04 WATCH LAST ROUND from the match-over screen', () => {
   it('KI-05-04 AC1: WATCH LAST ROUND replays exactly the round that just ended, tick for tick', () => {
     const { session, ui, target } = buildSession({ seed: 41 });
