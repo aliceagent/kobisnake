@@ -90,7 +90,7 @@ What counts as failing is this document's own **Pass condition** cells, never a 
 | A3 Shrink speed | Ask "could you see where the laser will be next?" | Yes; nobody dies to a step they could not see coming. |
 | A4 Climax | Ask "was the ending exciting or frustrating?" | ≥ 4/5 rounds "exciting". |
 | Bot stat | 500 greedyBot vs survivorBot rounds. | ≥ 85 % of rounds end by death (not timeout); draw rate ≤ 3 %. |
-| A5 Pacing presets | Session 2 only, `?tuning=1`: play a Best-of-3 on each of the three **Pacing** chips — **`round 75 s`**, **`laser at 0:40`**, **`90 s / 0:30 (shipping)`** — in that order, then ask which felt best and why. | A clear majority preference, or an explicit "cannot tell them apart". This is the question `docs/qa/playtests/round-pacing.md` measured but could not answer (`DESIGN-DECISIONS §1` row 30): the bots say `roundDuration` moves the climax most and `laserStartTime` moves it more honestly, and only humans can choose between them. A chip applies from the **next** round, so click it before the countdown. |
+| A5 Pacing presets | Session 2 only, with ?tuning=1: play a Best-of-3 on each of the three Pacing chips — round 75 s, laser at 0:40, and 90 s / 0:30 (shipping). A chip applies from the next round, so click it before the countdown. | A clear majority prefer one chip, or an explicit "cannot tell them apart". |
 
 ## 6. Round length
 | Q | Pass condition |

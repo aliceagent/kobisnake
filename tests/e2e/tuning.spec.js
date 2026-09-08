@@ -42,6 +42,28 @@ async function setSlider(page, key, value) {
   );
 }
 
+/**
+ * Clicks a preset chip **from inside the page**, by its exact label.
+ *
+ * Real `locator.click()` costs hundreds of milliseconds of wall time each, and the page's own rAF loop keeps
+ * running through it — long enough for a snake to cross the arena and end the round before the test meant it
+ * to. That is fine for the tests that click one chip and then start a match, but fatal to one measuring
+ * *when* an override takes effect. `setSlider` above dispatches through the DOM for exactly this reason; this
+ * is the same trade for a button, and the real-click path is still covered by the chip test that precedes it.
+ *
+ * @param {import('@playwright/test').Page} page @param {string} label
+ */
+async function clickPreset(page, label) {
+  await page.evaluate((label) => {
+    const global = /** @type {any} */ (globalThis);
+    const button = [...global.document.querySelectorAll('.tuning-preset-button')].find(
+      (/** @type {any} */ candidate) => candidate.textContent === label,
+    );
+    if (!button) throw new Error(`no preset button labelled ${label}`);
+    button.click();
+  }, label);
+}
+
 test.describe('KS-07-01 tuning overlay', () => {
   test('AC3: the overlay is absent (no DOM node) from ?test=1 without ?tuning=1, and from a plain load', async ({
     page,
@@ -150,7 +172,7 @@ test.describe('KS-07-01 tuning overlay', () => {
     );
     expect(before).toBe(90); // DESIGN-DECISIONS §2.1 shipping default
 
-    await page.getByRole('button', { name: 'round 75 s', exact: true }).click();
+    await clickPreset(page, 'round 75 s');
     const midRound = await page.evaluate(
       () => /** @type {any} */ (globalThis).__kobi.sim.settings.roundDuration,
     );

@@ -413,6 +413,36 @@ export const PLAYTEST_QUESTIONS = [
     choices: null,
     trigger: endOfSession,
   },
+  {
+    // KI-04-03: the question `docs/qa/playtests/round-pacing.md` measured but could not answer. The matrix
+    // says `roundDuration` moves the climax fraction most and `laserStartTime` moves it without shortening
+    // the round; which of those a *player* prefers is not something 14 509 bot rounds can report, so the
+    // design lead deferred the value to this session (#229, `DESIGN-DECISIONS §1` row 30) and shipped both
+    // candidates as tuning-overlay chips instead of changing `settings.js`.
+    //
+    // `end-of-session`, not `laser-phase-seen`: the procedure is three whole Best-of-3 matches compared
+    // against each other, so it cannot be asked between two rounds the way A1-A4 are.
+    //
+    // **Last in the bank on purpose, despite being a §5 question.** `selectDueQuestions` offers in this
+    // array's order, so position is meaning: asking A5 earlier would push a question out of its gap
+    // (`MAX_QUESTIONS_PER_GAP` is 2), and worse, A5 makes the players spend a whole Best-of-3 on a 75 s
+    // round — after which `R1` ("does 90 s feel right?") is no longer a question about the shipping
+    // round length. A5 has to come after every question its own procedure would colour.
+    id: 'A5',
+    section: 5,
+    sectionTitle: 'Arena closing',
+    question: 'Pacing presets',
+    procedure:
+      'Session 2 only, with ?tuning=1: play a Best-of-3 on each of the three Pacing chips — round 75 s, ' +
+      'laser at 0:40, and 90 s / 0:30 (shipping). A chip applies from the next round, so click it before ' +
+      'the countdown.',
+    passCondition: 'A clear majority prefer one chip, or an explicit "cannot tell them apart".',
+    answerType: ANSWER_TYPES.CHOICE,
+    // The three chip labels verbatim, plus the answer the pass condition explicitly allows — a session that
+    // genuinely cannot separate them must be able to say so rather than being forced to pick one.
+    choices: ['round 75 s', 'laser at 0:40', '90 s / 0:30 (shipping)', 'cannot tell them apart'],
+    trigger: endOfSession,
+  },
 ];
 
 /**
@@ -458,7 +488,10 @@ export function triggerRequiresLaserPhase(trigger) {
 export function isTriggerDue(trigger, facts) {
   switch (trigger.kind) {
     case TRIGGER_KINDS.AFTER_ROUND:
-      return facts.roundsPlayed >= trigger.roundCount && (!trigger.requiresLaserPhase || facts.laserPhaseSeen);
+      return (
+        facts.roundsPlayed >= trigger.roundCount &&
+        (!trigger.requiresLaserPhase || facts.laserPhaseSeen)
+      );
     case TRIGGER_KINDS.LASER_PHASE_SEEN:
       return facts.laserPhaseSeen;
     case TRIGGER_KINDS.END_OF_SESSION:
