@@ -37,6 +37,9 @@ yet: `package.json` is at `0.1.0`, Sprint 18 cuts `v1.0.0`, and everything below
   sleep, a driver reset, a tab the browser reclaimed memory from — the game now pauses instead of leaving a
   frozen picture, and picks the round up where it stopped, with the same `READY?` count-in a normal unpause
   gets. Before this, the only way out was reloading the page, which lost the match (#287).
+- **A plain screen for when it truly cannot be fixed.** If graphics were never available, if a lost picture
+  never comes back after a few seconds, or if something goes wrong while the game is starting up, the screen
+  now says so in plain words and offers a RELOAD button — instead of a blank page or a frozen one (#284).
 
 ### Changed
 

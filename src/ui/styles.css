@@ -932,6 +932,53 @@ body {
    script may be listening for still fires, just effectively instantly, which is the standard-practice
    pattern for this rule (as opposed to `none`, which would leave anything gated on that event waiting
    forever). */
+/* KI-06-02: the last-resort screen (`src/ui/screens/error.js`) — WebGL never available, an unrecoverable
+   context loss, or an unexpected throw during startup. Not a `GameState` (that module's own doc comment says
+   why), so `main.js` mounts it directly on `#ui` rather than routing it through `ui.js`'s `show()`.
+   `.error-screen` reuses `.menu-screen` / `.menu-panel` / `.menu-title` / `.menu-description` wholesale (the
+   tech-lead note: "this screen should look like it belongs to the same game, not like a browser error page")
+   and adds only the one rule those do not already carry: an explicit `z-index`, since this screen can be
+   created and shown before or after every other screen depending on *when* startup failed, and nothing else
+   in this stylesheet sets one — a `z-index: auto` sibling stacks by DOM order alone, which this screen cannot
+   promise to win. */
+.error-screen {
+  z-index: 1;
+}
+
+/* The one real `<button>` in this file (tech-lead note: "RELOAD is a real control... so a click works").
+   Every other screen's focusable row is a plain `.menu-item` div driven by `focus.js`'s keyboard model
+   (`ARCHITECTURE §8`); this screen has no menu to navigate, only the one action, and reads a native button's
+   own hover/focus affordances for free. Sized and weighted like `.menu-item--primary` above — the "one thing
+   to do" a player is meant to reach for — but reset to plain HTML button chrome first (`border: none`,
+   `font: inherit`) since the browser's own default button styling is not the toy-panel look the rest of this
+   file establishes. */
+.error-reload-button {
+  width: 100%;
+  margin-top: 0.5rem;
+  padding: 1rem 1.5rem;
+  border: none;
+  border-radius: 0.75rem;
+  background: rgba(255, 255, 255, 0.14);
+  color: #ffffff;
+  font: inherit;
+  font-size: 1.25rem;
+  font-weight: 800;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  text-align: center;
+  cursor: pointer;
+}
+
+/* Same focus-ring treatment `.menu-item--focused` uses above (AC4 of KS-05-04, "one visible focus ring every
+   screen shares") — `:focus-visible` rather than a class, since this is a real button a player can also
+   `Tab` to, and hover gets the same lighter background a click is about to produce. */
+.error-reload-button:hover,
+.error-reload-button:focus-visible {
+  background: rgba(255, 255, 255, 0.26);
+  outline: 0.2rem solid #ffffff;
+  outline-offset: 0.15rem;
+}
+
 @media (prefers-reduced-motion: reduce) {
   #ui *,
   #ui *::before,
