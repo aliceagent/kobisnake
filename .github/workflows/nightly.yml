@@ -215,3 +215,67 @@ jobs:
             test-results/
           retention-days: 30
           if-no-files-found: warn
+
+  # KI-17-03 (`docs/sprints/improvement-17-mutation-testing.md`), beside the `perf` job above and for the
+  # same reason: it is the expensive gate, and expensive gates run nightly rather than on every PR.
+  #
+  # ## What this gate is for
+  #
+  # Coverage of `src/core` has been 100 % since Sprint 02 and did not stop six tests that asserted nothing
+  # from reaching `main` (#111, #112, #115, #116, #142, #154). This job changes the code 1300-odd ways and
+  # fails if too few of those changes are noticed by a test. `QA-STRATEGY §9` is the long version.
+  #
+  # ## Why the threshold lives in `stryker.config.mjs` and not here
+  #
+  # `thresholds.break` is what makes `npm run test:mutation` exit non-zero, so the number that fails this job
+  # is the same number that fails the command a person runs locally. A second copy of it in this file would
+  # be a second thing to forget to update, and the first time the two disagreed the nightly would be either
+  # a liar or a nuisance. The job runs the command and reports what the command decided.
+  #
+  # ## The survivors are named, not just counted
+  #
+  # A red mutation job whose only output is "85.61 % is below 95 %" tells nobody what to do. Job logs and
+  # artifacts are unreadable from an agent session and re-running a job is a 403 (#172), so the survivor list
+  # goes into the **job summary**, which is readable — `scripts/mutation-report.mjs` renders the same
+  # Markdown that `docs/qa/playtests/mutation-baseline.md` is generated from, so a reviewer diffs the summary
+  # against the committed baseline and sees exactly which mutants are new.
+  mutation:
+    name: mutation (src/core)
+    runs-on: ubuntu-latest
+    # The `src/core` run is minutes, not hours, but it is the longest job in this workflow and a hung
+    # Stryker worker should not hold a runner for six hours. Comfortably above the measured run; well below
+    # the default.
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+      - run: npm ci
+
+      # No browser install: `src/core` is pure simulation that runs in Node, which is the whole reason it is
+      # the affordable target for an exhaustive mutation run (`stryker.config.mjs`).
+      - name: Mutation score for src/core (KI-17-03)
+        run: npm run test:mutation
+
+      # `if: always()`: a red run's survivor list is the one worth reading, which is the entire point of
+      # putting it somewhere an agent session can actually read.
+      - name: Survivors and score into the job summary
+        if: always()
+        run: |
+          if [ -f reports/mutation/mutation.json ]; then
+            node scripts/mutation-report.mjs \
+              --in reports/mutation/mutation.json \
+              --title "Mutation run — \`src/core\` @ ${GITHUB_SHA:0:7}" >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo "No mutation report was produced — the run failed before reporting." >> "$GITHUB_STEP_SUMMARY"
+          fi
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: mutation-report
+          path: reports/mutation/
+          retention-days: 30
+          if-no-files-found: warn
