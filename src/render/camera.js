@@ -28,6 +28,12 @@ const NEAR_PLANE = 0.1;
 const FAR_PLANE = 500;
 
 /**
+ * The aspect the camera is built at when nothing says otherwise: 16:9, the shape `DESIGN-DECISIONS §1 row 24`
+ * confirmed the picture at. Also {@link GameplayCamera.setAspect}'s last-resort fallback.
+ */
+const DEFAULT_ASPECT = 16 / 9;
+
+/**
  * Frequencies of the two decaying sinusoids the shake is built from, in hertz. Two different, non-harmonic
  * frequencies on the two screen axes read as a rattle rather than as a diagonal wobble.
  */
@@ -95,7 +101,7 @@ export class GameplayCamera extends THREE.PerspectiveCamera {
    * @param {boolean} [options.reducedFx] - defaults to `prefersReducedMotion()`: `?reducedFx=1` in the URL,
    *   or (KI-15-03) an OS/browser `prefers-reduced-motion: reduce` preference
    */
-  constructor({ settings = SETTINGS, grid, aspect = 16 / 9, reducedFx } = {}) {
+  constructor({ settings = SETTINGS, grid, aspect = DEFAULT_ASPECT, reducedFx } = {}) {
     super(settings.camera.fov, aspect, NEAR_PLANE, FAR_PLANE);
 
     const resolvedGrid = grid ?? settings.grid;
@@ -150,13 +156,27 @@ export class GameplayCamera extends THREE.PerspectiveCamera {
 
   /**
    * Re-frame for a new viewport shape. Called on every resize (`ARCHITECTURE §7`): the vertical FOV is fixed,
-   * so a narrower viewport can only be fitted by standing further back.
+   * so a narrower viewport can only be fitted by standing further back. This is the whole of
+   * `DESIGN-DECISIONS §1 row 31`'s framing rule as far as this class is concerned — the aspect goes in, the
+   * distance comes out, and nothing else about the camera moves.
+   *
+   * A non-finite aspect is refused rather than propagated (KI-16-02). A canvas that is not laid out yet, or
+   * one in a minimised or hidden window, measures `0 × 0`, and `0 / 0` is `NaN`: feeding that to
+   * `updateProjectionMatrix` poisons the projection matrix, and every later frame — at a perfectly ordinary
+   * size — then draws nothing at all, with no error anywhere to say why. The previous aspect is the honest
+   * fallback: it is the last shape this camera was actually asked for.
    *
    * @param {number} aspect - viewport width / height
    * @returns {this}
    */
   setAspect(aspect) {
-    this.aspect = Math.max(aspect, Number.EPSILON);
+    if (Number.isFinite(aspect)) {
+      this.aspect = Math.max(aspect, Number.EPSILON);
+    } else if (!Number.isFinite(this.aspect)) {
+      // Nothing sane to fall back *to* — the constructor was handed a non-finite aspect as well, so
+      // `super()` already stored it. Use the design's own shape rather than leaving the camera poisoned.
+      this.aspect = DEFAULT_ASPECT;
+    }
     this.frame();
     return this;
   }

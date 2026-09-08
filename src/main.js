@@ -163,6 +163,13 @@ if (isPlaytestEnabled) {
 session.start();
 
 // The sprint's QA plan resizes the window (down to 300×300 and back) and expects the camera to re-fit.
+//
+// KI-16-02, a declared deviation from that ticket's own `Files:` list (this file is not on it): the listener
+// now calls `session.resize()` rather than `renderer.resize()` directly. Re-framing the camera is only half
+// of handling a resize — the new drawing buffer also has to be drawn into before the browser can show a
+// stretched one, and the HUD's projected power-up tags have to be repositioned — and the session is the only
+// thing that holds a snapshot, the HUD and the renderer together. It advances no simulated time; see its own
+// doc comment. `renderer.resize()` is still the function that does the re-framing, one call further in.
 window.addEventListener('resize', () => {
-  renderer.resize();
+  session.resize();
 });

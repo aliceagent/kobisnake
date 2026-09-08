@@ -18,11 +18,59 @@ import { createSnakeView } from './snakeView.js';
  *
  * Pixel ratio is capped because a 3× retina display costs nine times the pixels of a 1× one for a picture
  * made of big flat bricks that gains almost nothing from it (`ARCHITECTURE §7`, §12).
+ *
+ * **Sizing (KI-16-02).** The drawing buffer is measured from the **canvas's own CSS box**, never from
+ * `window.innerWidth`/`innerHeight`, and it is sized in whole device pixels. See {@link measureCanvas} and
+ * {@link resizeRendererToCanvas} for why both halves of that matter.
  */
 
 /** @typedef {import('../core/settings.js').Settings} Settings */
 
 const MAX_PIXEL_RATIO = 2;
+
+/**
+ * The canvas's CSS box and the whole-device-pixel drawing buffer that exactly covers it.
+ *
+ * **Measured from the canvas, not from the window** (KI-16-02). `window.innerWidth`/`innerHeight` are the
+ * *window's* content box; what has to be filled without stretching is the *canvas element's* box. The two
+ * agree today only because `styles.css` gives `#game` `width: 100%; height: 100%` inside a `body` with
+ * `overflow: hidden` — a scrollbar, a border, or any future chrome around the canvas breaks that equality
+ * silently, and the symptom is a picture stretched by a few pixels that no test would catch.
+ *
+ * **Whole device pixels, rounded rather than truncated.** three's own `setSize` computes the buffer as
+ * `floor(cssSize × pixelRatio)`, which is exact while the ratio is an integer — the 1280×720 CSS box at DPR 2
+ * that `docs/qa/playtests/viewports.md` measures really does get a 2560×1440 buffer — but is short by up to a
+ * device pixel once the ratio is fractional, which is precisely what browser zoom produces (125 % and 150 %
+ * are DPR 1.25 and 1.5). A buffer one device pixel narrower than its box is then scaled up to fit it, and the
+ * result is a softly blurred picture with nothing to point at. Sizing the buffer here and leaving three's own
+ * ratio at 1 keeps `setSize` from re-deriving — and re-truncating — a number this function has already
+ * computed exactly.
+ *
+ * A canvas that is not laid out yet, or one in a minimised window, measures `0 × 0`; that is reported
+ * faithfully rather than clamped, and {@link resizeRendererToCanvas} is what decides not to act on it.
+ *
+ * @param {HTMLCanvasElement} canvas
+ * @param {number} [devicePixelRatio] - defaults to `window.devicePixelRatio`; injectable for tests
+ * @returns {{cssWidth: number, cssHeight: number, bufferWidth: number, bufferHeight: number, pixelRatio: number}}
+ */
+export function measureCanvas(canvas, devicePixelRatio = window.devicePixelRatio) {
+  // `clientWidth`/`clientHeight` are the CSS box in CSS pixels, already excluding any border, and they are
+  // integers — `getBoundingClientRect()` would give sub-pixel widths that cannot be honoured by a buffer
+  // measured in whole pixels anyway.
+  const cssWidth = canvas.clientWidth;
+  const cssHeight = canvas.clientHeight;
+  const pixelRatio = Math.min(
+    Number.isFinite(devicePixelRatio) && devicePixelRatio > 0 ? devicePixelRatio : 1,
+    MAX_PIXEL_RATIO,
+  );
+  return {
+    cssWidth,
+    cssHeight,
+    bufferWidth: Math.round(cssWidth * pixelRatio),
+    bufferHeight: Math.round(cssHeight * pixelRatio),
+    pixelRatio,
+  };
+}
 
 /** Shadow map size for the single shadow-casting key light (`ARCHITECTURE §7`). */
 const SHADOW_MAP_SIZE = 2048;
@@ -40,10 +88,7 @@ const DEFAULT_PLAYER_COLORS = ['red', 'blue'];
  */
 export function createRenderer(canvas) {
   const renderer = new THREE.WebGLRenderer({ canvas, antialias: true });
-  renderer.setPixelRatio(Math.min(window.devicePixelRatio, MAX_PIXEL_RATIO));
-  // `false` keeps three from writing an inline width/height style onto the canvas; the CSS in index.html
-  // owns the element's size and the renderer only owns the drawing buffer.
-  renderer.setSize(window.innerWidth, window.innerHeight, false);
+  resizeRendererToCanvas(renderer, canvas);
   renderer.shadowMap.enabled = true;
   // ARCHITECTURE §7 asks for PCFSoft; three deprecated PCFSoftShadowMap and now silently falls back to
   // PCFShadowMap, printing a console warning. QA-STRATEGY §8 wants a console with zero warnings, so ask for
@@ -53,21 +98,34 @@ export function createRenderer(canvas) {
 }
 
 /**
- * Match the drawing buffer and the camera to the current window size. Safe to call on every resize event.
+ * Match the drawing buffer to the canvas's current CSS box, in whole device pixels. Safe to call on every
+ * resize event, and cheap to call when nothing has changed: three's `setSize` is a no-op-ish assignment, but
+ * the zero-size guard below means a hidden or unlaid-out canvas cannot destroy the buffer either.
+ *
+ * Returns the aspect ratio the canvas now has, so the caller can re-frame the camera — or `null` when the
+ * canvas has no area to measure and nothing should be re-framed at all. A minimised window reports `0 × 0`,
+ * and resizing the drawing buffer to zero there would mean the *restore* is what has to repair it, with a
+ * blank frame in between; leaving the buffer exactly as it was costs nothing and has nothing to repair.
  *
  * @param {THREE.WebGLRenderer} renderer
- * @param {THREE.PerspectiveCamera} camera
- * @returns {number} the new aspect ratio, so the caller can re-frame the camera
+ * @param {HTMLCanvasElement} canvas
+ * @param {number} [devicePixelRatio] - defaults to `window.devicePixelRatio`; injectable for tests
+ * @returns {number | null} the canvas's new aspect ratio, or `null` when it has no area
  */
-export function resizeRendererToWindow(renderer, camera) {
-  const width = window.innerWidth;
-  const height = window.innerHeight;
-  const aspect = width / Math.max(height, 1);
-  renderer.setPixelRatio(Math.min(window.devicePixelRatio, MAX_PIXEL_RATIO));
-  renderer.setSize(width, height, false);
-  camera.aspect = aspect;
-  camera.updateProjectionMatrix();
-  return aspect;
+export function resizeRendererToCanvas(renderer, canvas, devicePixelRatio) {
+  const { cssWidth, cssHeight, bufferWidth, bufferHeight } = measureCanvas(
+    canvas,
+    devicePixelRatio,
+  );
+  if (bufferWidth <= 0 || bufferHeight <= 0) return null;
+
+  // The buffer size is already in whole device pixels (see `measureCanvas`), so three is told the ratio is 1
+  // and handed that size directly rather than being asked to multiply and truncate it a second time.
+  renderer.setPixelRatio(1);
+  // `false` keeps three from writing an inline width/height style onto the canvas; `styles.css` owns the
+  // element's size and the renderer only owns the drawing buffer.
+  renderer.setSize(bufferWidth, bufferHeight, false);
+  return cssWidth / cssHeight;
 }
 
 /**
@@ -184,7 +242,7 @@ export function createGameplayScene({
  * @property {import('./camera.js').GameplayCamera} camera
  * @property {import('./snakeView.js').SnakeView[]} snakes
  * @property {(snapshot: object, dt?: number) => void} render
- * @property {() => void} resize
+ * @property {() => boolean} resize
  * @property {(player: number) => THREE.Vector3} getHeadWorldPosition
  * @property {() => number} getDrawCalls
  * @property {(x: number, y: number, z: number) => {x: number, y: number, z: number}} projectToNdc - KI-16-01:
@@ -207,7 +265,10 @@ export function createGameplayScene({
  */
 export function createGameplayRenderer(canvas, options = {}) {
   const renderer = createRenderer(canvas);
-  const aspect = window.innerWidth / Math.max(window.innerHeight, 1);
+  // The canvas's own box, for the same reason `measureCanvas` uses it. `?? undefined` lets the camera's own
+  // 16:9 default stand when the canvas has no area yet, rather than framing for an aspect of zero.
+  const measured = measureCanvas(canvas);
+  const aspect = measured.cssHeight > 0 ? measured.cssWidth / measured.cssHeight : undefined;
   const composition = createGameplayScene({ ...options, aspect });
   const { scene, camera, snakes } = composition;
 
@@ -224,9 +285,22 @@ export function createGameplayRenderer(canvas, options = {}) {
       composition.update(snapshot, dt);
       renderer.render(scene, camera);
     },
+    /**
+     * Match the drawing buffer and the camera to the canvas's current box (KI-16-02).
+     *
+     * Deliberately does **not** draw. Whether a resize should produce a frame, and which frame, is the
+     * session's business — it is the only thing that knows what the game currently looks like — so
+     * `session.js`'s own `resize()` calls this and then draws exactly one frame with no simulated time
+     * attached (KI-16-02 AC3). A renderer that drew here would draw the *previous* snapshot, and would do it
+     * on the menu screens too.
+     *
+     * @returns {boolean} whether the canvas had an area to re-frame for; `false` means nothing changed
+     */
     resize() {
-      const nextAspect = resizeRendererToWindow(renderer, camera);
+      const nextAspect = resizeRendererToCanvas(renderer, canvas);
+      if (nextAspect === null) return false;
       camera.setAspect(nextAspect);
+      return true;
     },
     /**
      * Where a player's head was last drawn, in world units. This is what `__kobi.getHeadWorldPosition`
@@ -259,6 +333,15 @@ export function createGameplayRenderer(canvas, options = {}) {
      * @returns {{x: number, y: number, z: number}}
      */
     projectToNdc(x, y, z) {
+      // KI-16-02: bring the camera's world matrix up to date first. `project()` reads
+      // `camera.matrixWorldInverse`, which only `updateMatrixWorld()` refreshes — and neither
+      // `GameplayCamera.frame()` (which moves the camera on every resize) nor `update()` (which moves it for
+      // shake and the laser-warning zoom pulse) calls it. Ordinarily `renderer.render()` does, so a caller
+      // that projects straight after a rendered frame is fine; a caller that projects *between* a resize and
+      // the next frame would silently get the pre-resize pose, which is exactly the window this ticket's AC3
+      // measures across. `session.js`'s `powerUpTagsFor` already guards its own projection the same way and
+      // for the same reason.
+      camera.updateMatrixWorld();
       const projected = new THREE.Vector3(x, y, z).project(camera);
       return { x: projected.x, y: projected.y, z: projected.z };
     },
