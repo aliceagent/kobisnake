@@ -5,6 +5,7 @@ import { STATES } from '../../game/gameStateMachine.js';
 import { snakeColorHex } from '../../render/materials.js';
 import { MIN_COLOUR_DIFFERENCE, worstCaseColourDifference } from '../../render/colourVision.js';
 import { createFocusModel } from '../focus.js';
+import { matchSetup } from '../strings.js';
 
 /**
  * The match setup screen (`DESIGN-DECISIONS §3` "Match setup (GDD image 15)", ticket KS-05-04). Grey-box
@@ -40,22 +41,25 @@ import { createFocusModel } from '../focus.js';
  * values this row offers (#217's measurement, ruled on #210). The row's own left-hand label (`PLAYER 1` /
  * `PLAYER 2`, placed directly above that player's existing `PLAYER 1 COLOUR` / `PLAYER 2 COLOUR` row) is
  * **not** copy row 27 approves — flagged as a
- * question on #210 in this ticket's own PR, the same way #184 is flagged for {@link COLOUR_NOTE_COPY} below;
- * nothing in this file or its tests reads that label text, only the row's position, so a ruling can change it
- * with no other edit. `controlsCardLabel` below is extended (not replaced) with a third, optional `isCpu`
- * argument so its two existing two-argument call sites keep their exact behaviour.
+ * question on #210 in this ticket's own PR; nothing in this file or its tests reads that label text, only the
+ * row's position, so a ruling can change it with no other edit. `controlsCardLabel` below is extended (not
+ * replaced) with a third, optional `isCpu` argument so its two existing two-argument call sites keep their
+ * exact behaviour.
  *
  * **KI-15-02 colour-safe pairing note.** {@link checkColourSafety} below is the same pure-function pattern as
  * {@link pickPlayerColor}: given `(matchSettings, ownedColors)` it answers whether the two chosen colours
  * clear KI-15-01's `worstCaseColourDifference`/`MIN_COLOUR_DIFFERENCE` check (`colourVision.js`,
  * `DESIGN-DECISIONS §2.7`) and, when they do not, which owned colour is the best passing alternative for
  * player 2. It never blocks START MATCH — it only decides whether the note below the colour rows is shown.
- * **Its two sentences are not approved copy.** `DESIGN-DECISIONS §3` has no entry for this note; the wording
- * below is proposed on issue #184 (this ticket's own kick-off comment there) and awaiting the design lead's
- * ruling, the same way #150 and #182's copy was ruled on before it shipped. `COLOUR_NOTE_COPY` is the one
- * place either sentence is written, precisely so the ruling is a one-line change here, and every assertion
- * elsewhere (`tests/e2e`, `tests/unit/ui/matchSetup.test.js`) binds to structure — whether the note element is
- * present and visible, and which colour name it recommends — never to the sentence itself.
+ * Issue #184 has since been answered and `DESIGN-DECISIONS §3` now carries "The colour-safe pairing note on
+ * match setup" as an approved bullet, read from the catalogue (`matchSetup.colourNote.note`,
+ * `src/ui/strings.js`) since KI-20-02. `COLOUR_NOTE_COPY.suggestion` (the note's second sentence, naming the
+ * recommended colour) is the one exception: §3's approved form differs from what this screen has always
+ * rendered — capital `PLAYER` there, lower-case `player` here, a computed player number there, a hard-coded
+ * `2` here — and that discrepancy is still open on #212/#214, not this ticket's to resolve. See
+ * {@link COLOUR_NOTE_COPY}'s own doc comment for why that one literal is a deliberate KI-20-02 AC3 exception.
+ * Every assertion elsewhere (`tests/e2e`, `tests/unit/ui/matchSetup.test.js`) binds to structure — whether the
+ * note element is present and visible, and which colour name it recommends — never to the sentence itself.
  */
 
 /** @typedef {import('../focus.js').MenuAction} MenuAction */
@@ -228,30 +232,25 @@ export function changePlayerKind(matchSettings, player, direction) {
 }
 
 /**
- * KI-12-04's row label, **provisional, not approved copy** — see this module's own doc comment above for why
- * (row 27 approves this row's *value*, `HUMAN`/`CPU EASY`/`CPU NORMAL`/`CPU HARD`, not its left-hand label).
- * Proposed on issue #210 (this ticket's own kick-off comment there), the same way #184's
- * {@link COLOUR_NOTE_COPY} is proposed below; ruled on by the design lead the same way. The minimal extension
- * of this screen's own existing convention (`PLAYER 1 COLOUR`, and the controls card's `PLAYER 1 · RED —
- * ...`), so this is the one place that ruling needs to land.
+ * KI-15-02: the colour-pairing note's two sentences.
  *
- * @param {1 | 2} player
- * @returns {string}
- */
-function playerKindRowLabel(player) {
-  return `PLAYER ${player}`;
-}
-
-/**
- * KI-15-02: the colour-pairing note's two sentences. **Provisional, not approved copy** — see this module's
- * own doc comment above for why. Proposed on issue #184 (this ticket's kick-off comment there); ruled on by
- * the design lead the same way #150 and #182's strings were. `DESIGN-DECISIONS §3` gets an entry the moment
- * #184 is answered, and this is the one place that answer needs to land.
+ * `note` is approved copy since KI-20-02 (`DESIGN-DECISIONS §3`, "The colour-safe pairing note on match
+ * setup") and reads from the catalogue below (`matchSetup.colourNote.note`).
+ *
+ * `suggestion` is a **deliberate exception to this ticket's AC3** — tracked on #214, not #184 (#184 is
+ * answered; §3 now carries the note). §3's approved form is `matchSetup.colourNote.suggestion` in the
+ * catalogue: capital `PLAYER`, with the player number computed rather than hard-coded — but that is not what
+ * this screen has ever rendered. This screen has always rendered lower-case `player 2`, hard-coded, and the
+ * design lead has not yet ruled on which one is right (#212/#214). KI-20-02 is a refactor whose guarantee is
+ * that no rendered pixel moves, so this one literal stays exactly as it is — not read from the catalogue —
+ * until that ruling lands and a follow-up PR (outside KI-20-02) re-records whichever form is correct, with a
+ * new baseline. Do not "fix" this by pointing it at `matchSetup.colourNote.suggestion`.
  *
  * @type {{ note: string, suggestion: (colorName: string) => string }}
  */
 const COLOUR_NOTE_COPY = {
-  note: 'These two colours look alike to some players.',
+  note: matchSetup.colourNote.note,
+  // #214 exception (see above) — left exactly as this screen has always rendered it.
   suggestion: (colorName) => `Try ${colorName.toUpperCase()} for player 2.`,
 };
 
@@ -303,11 +302,6 @@ export function checkColourSafety(matchSettings, ownedColors, settings = SETTING
   return { failing: true, recommendedColor };
 }
 
-/** @param {string} name @returns {string} */
-function capitalize(name) {
-  return name.length === 0 ? name : name.charAt(0).toUpperCase() + name.slice(1);
-}
-
 /** @param {string} track @returns {string} */
 function musicLabel(track) {
   const index = MUSIC_TRACKS.indexOf(track);
@@ -315,23 +309,13 @@ function musicLabel(track) {
 }
 
 /**
- * KI-12-04: the row's own display text for one player's kind — `'HUMAN'` bare, or `CPU ${level}` for the
- * three CPU levels. These four strings, character for character, are `DESIGN-DECISIONS §1` row 27's
- * approved copy; nothing else may be returned here (`kind` is always a {@link PlayerKind}, never a fourth
- * value — see that type's own doc comment).
- *
- * @param {PlayerKind} kind
- * @returns {string}
- */
-function playerKindLabel(kind) {
-  return kind === 'HUMAN' ? 'HUMAN' : `CPU ${kind}`;
-}
-
-/**
  * The controls-card copy for one player (`DESIGN-DECISIONS §3`, approved verbatim at the shipping defaults:
  * `controlsCardLabel(1, 'red')` === `'PLAYER 1 · RED — W A S D'`, `controlsCardLabel(2, 'blue')` ===
  * `'PLAYER 2 · BLUE — ARROW KEYS'`). `colorName` is always the *live* colour word — see the module doc
- * comment for why a literal would go stale on this particular screen.
+ * comment for why a literal would go stale on this particular screen. Delegates to the catalogue's
+ * `matchSetup.controlsCard` (byte-identical logic) since KI-20-02, kept as its own exported function under
+ * this name because `tests/unit/ui/matchSetup.test.js` and `tests/e2e/controls-card.spec.js` import it from
+ * this path.
  *
  * **KI-12-04:** `isCpu` swaps the key list for the literal `'CPU'` (`DESIGN-DECISIONS` row 27's own wording,
  * quoted in this ticket's spec: `The controls card ... shows "CPU" instead of keys for a computer player.`).
@@ -344,8 +328,7 @@ function playerKindLabel(kind) {
  * @returns {string}
  */
 export function controlsCardLabel(player, colorName, isCpu = false) {
-  const keys = isCpu ? 'CPU' : player === 1 ? 'W A S D' : 'ARROW KEYS';
-  return `PLAYER ${player} · ${colorName.toUpperCase()} — ${keys}`;
+  return matchSetup.controlsCard(player, colorName, isCpu);
 }
 
 /**
@@ -368,7 +351,7 @@ export function createMatchSetupScreen(root) {
 
   const title = doc.createElement('div');
   title.className = 'menu-title';
-  title.textContent = 'MATCH SETUP';
+  title.textContent = matchSetup.title;
   panel.appendChild(title);
 
   // KI-10-02: the controls card. Purely presentational — no `FocusableItem`, so it adds no row to `rows`/
@@ -416,17 +399,16 @@ export function createMatchSetupScreen(root) {
     return { row, value };
   }
 
-  const matchLength = buildRow('MATCH LENGTH');
-  const powerUps = buildRow('POWER-UPS');
-  const music = buildRow('MUSIC');
+  const matchLength = buildRow(matchSetup.matchLengthLabel);
+  const powerUps = buildRow(matchSetup.powerUpsLabel);
+  const music = buildRow(matchSetup.musicLabel);
   // KI-12-04: the row label itself (as opposed to its HUMAN/CPU EASY/CPU NORMAL/CPU HARD *value*, which row
-  // 27 approves verbatim) is not approved copy — flagged as a question on #210 in this ticket's own PR. `
-  // playerKindRowLabel` is the one place that ruling needs to land, the same one-constant seam
-  // `COLOUR_NOTE_COPY` below already uses for its own unruled sentence.
-  const p1Kind = buildRow(playerKindRowLabel(1));
-  const p1Color = buildRow('PLAYER 1 COLOUR');
-  const p2Kind = buildRow(playerKindRowLabel(2));
-  const p2Color = buildRow('PLAYER 2 COLOUR');
+  // 27 approves verbatim) is not approved copy — flagged as a question on #210 in this ticket's own PR.
+  // `matchSetup.playerKindRowLabel` (`src/ui/strings.js`) is the one place that ruling needs to land.
+  const p1Kind = buildRow(matchSetup.playerKindRowLabel(1));
+  const p1Color = buildRow(matchSetup.playerColourRowLabel(1));
+  const p2Kind = buildRow(matchSetup.playerKindRowLabel(2));
+  const p2Color = buildRow(matchSetup.playerColourRowLabel(2));
 
   // KI-15-02: the colour-safety note. Presentational only, like the KI-10-02 controls card above — no
   // `FocusableItem`, so it adds no row to `rows`/`focus` below and can never take focus or block START MATCH
@@ -443,7 +425,7 @@ export function createMatchSetupScreen(root) {
 
   const startRow = doc.createElement('div');
   startRow.className = 'menu-item menu-item--action';
-  startRow.textContent = 'START MATCH';
+  startRow.textContent = matchSetup.startMatch;
   panel.appendChild(startRow);
 
   container.appendChild(panel);
@@ -542,13 +524,13 @@ export function createMatchSetupScreen(root) {
     const { matchSettings } = props;
     const p1IsCpu = matchSettings.playerKinds[1] !== 'HUMAN';
     const p2IsCpu = matchSettings.playerKinds[2] !== 'HUMAN';
-    matchLength.value.textContent = `BEST OF ${matchSettings.bestOf}`;
-    powerUps.value.textContent = matchSettings.powerUpsEnabled ? 'ON' : 'OFF';
+    matchLength.value.textContent = matchSetup.matchLengthValue(matchSettings.bestOf);
+    powerUps.value.textContent = matchSetup.powerUpsValue(matchSettings.powerUpsEnabled);
     music.value.textContent = musicLabel(matchSettings.musicTrack);
-    p1Kind.value.textContent = playerKindLabel(matchSettings.playerKinds[1]);
-    p2Kind.value.textContent = playerKindLabel(matchSettings.playerKinds[2]);
-    p1Color.value.textContent = capitalize(matchSettings.colors[1]).toUpperCase();
-    p2Color.value.textContent = capitalize(matchSettings.colors[2]).toUpperCase();
+    p1Kind.value.textContent = matchSetup.playerKindValue(matchSettings.playerKinds[1]);
+    p2Kind.value.textContent = matchSetup.playerKindValue(matchSettings.playerKinds[2]);
+    p1Color.value.textContent = matchSetup.playerColourValue(matchSettings.colors[1]);
+    p2Color.value.textContent = matchSetup.playerColourValue(matchSettings.colors[2]);
     renderControlsRow(controlsP1Row, 1, matchSettings.colors[1], p1IsCpu);
     renderControlsRow(controlsP2Row, 2, matchSettings.colors[2], p2IsCpu);
     renderColourNote();
