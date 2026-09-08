@@ -19,6 +19,11 @@ npm run lint && npm run typecheck && npm run test:unit && npm run build
 |---|---|
 | | |
 
+## Copy (Improvement 20)
+<!-- Every user-visible string lives in `src/ui/strings.js`. Answer both. -->
+- [ ] This PR **adds or alters a user-visible string**. If ticked: the change is a diff of `src/ui/strings.js`, no screen module carries a new literal, and each new key is marked approved (it is quoted in `DESIGN-DECISIONS §3`) or **unapproved** and listed below for the design lead.
+- New or altered keys, and their approval state: <!-- e.g. `matchOver.tie` — approved (§3) · `stats.heading` — UNAPPROVED, ruling wanted -->
+
 ## Out-of-scope findings
 <!-- Filed as issues: #... -->
 

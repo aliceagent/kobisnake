@@ -67,6 +67,21 @@ QA: the tests this ticket must add or make pass
 - Every PR: description uses the template, links the issue, includes the fast-check output, and for visual work
   includes a screenshot from the Vercel preview next to the reference image crop it is matching.
 
+### 3.1 Copy is a catalogue diff (Improvement 20)
+
+**Every word the player reads lives in `src/ui/strings.js`, and that file is the source of truth.** A ticket
+that needs a sentence the game does not have yet does not write one into a screen module and does not wait for
+one to appear in `DESIGN-DECISIONS §3`: it adds the key to the catalogue, marked unapproved, renders it, and
+files the wording against the catalogue so the design lead can rule on a one-file diff instead of a screenshot.
+The design lead approves copy by approving that diff — a `player-visible` PR whose whole content is the
+catalogue reads as the sentence itself, in order, beside the sentences already shipping — and `§3` becomes the
+*rationale* for the wording rather than the place the wording is kept: it records why a line reads as it does,
+the catalogue records what the line is, and a test parses `§3` so an approved string can never silently drift
+from the file that renders it. A missing string is therefore a catalogue issue and a lint failure, never a
+stalled ticket; a changed string is a catalogue diff, never a search through five screen modules; and an
+engineer never decides what a sentence should say, which is the rule this replaces nothing about
+(`CLAUDE.md`: "never invent a mechanic, screen, option or rule that is not in the ticket").
+
 ## 4. Git and GitHub conventions
 
 - Repository: `aliceagent/kobisnake`. Default branch `main` is protected: PR required, CI required, linear
