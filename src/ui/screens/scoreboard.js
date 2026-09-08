@@ -1,5 +1,6 @@
 // @ts-check
 import { STATES } from '../../game/gameStateMachine.js';
+import { scoreboard } from '../strings.js';
 
 /**
  * The between-round scoreboard (`ROUND_OVER`, ticket KS-05-04). Renders the GDD example format verbatim:
@@ -24,6 +25,12 @@ import { STATES } from '../../game/gameStateMachine.js';
  * player is told the rule is about to bite *before* it does, on the same DRAW screen that already exists.
  * `session.js` computes `consecutiveDraws` after `match.recordRound` has already run for this round, so by the
  * time this screen is asked to render, the count it is given already accounts for the draw just played.
+ *
+ * Since KI-20-02 the line-building logic reads from the catalogue's `scoreboard` group (`src/ui/strings.js`,
+ * imported as `{ scoreboard }`, this screen's own group, never the `STRINGS` aggregate — see that module's
+ * own doc comment on why). {@link DRAW_TEXT} and {@link DRAW_WARNING_TEXT} stay exported under their original
+ * names, now re-derived from `scoreboard.drawReplay`/`scoreboard.drawWarning`, because `tests/unit/ui/scoreboard.test.js`
+ * and `tests/e2e/match-flow.spec.js` both import them by this path.
  */
 
 /** @typedef {import('../focus.js').MenuAction} MenuAction */
@@ -51,31 +58,21 @@ import { STATES } from '../../game/gameStateMachine.js';
  * @property {() => void} destroy
  */
 
-/** The exact text KS-05-03 AC2 requires for a drawn round. Never invent another spelling. */
-export const DRAW_TEXT = 'DRAW — REPLAY';
+/**
+ * The exact text KS-05-03 AC2 requires for a drawn round. Never invent another spelling. Re-derived from the
+ * catalogue (`scoreboard.drawReplay`) since KI-20-02, kept under this name because it is imported by
+ * `tests/unit/ui/scoreboard.test.js` and `tests/e2e/match-flow.spec.js`.
+ */
+export const DRAW_TEXT = scoreboard.drawReplay;
 
 /**
  * The exact text for the last replay before the draw cap bites (`DESIGN-DECISIONS §1` row 26, sprint file
  * KI-01-02 spec). Shown instead of {@link DRAW_TEXT} when `consecutiveDraws === maxConsecutiveDraws - 1` — the
- * second consecutive draw, so the player is warned before the third one ends the match. A named constant
- * rather than a second inline literal, per the ticket's own instruction.
+ * second consecutive draw, so the player is warned before the third one ends the match. Re-derived from the
+ * catalogue (`scoreboard.drawWarning`) since KI-20-02, kept under this name for the same importers as
+ * {@link DRAW_TEXT}.
  */
-export const DRAW_WARNING_TEXT = 'DRAW — REPLAY · one more and the match is called';
-
-/** @param {string} name @returns {string} */
-function capitalize(name) {
-  return name.length === 0 ? name : name.charAt(0).toUpperCase() + name.slice(1);
-}
-
-/** @param {number} n @returns {string} "1 win" | "2 wins" */
-function winCount(n) {
-  return `${n} win${n === 1 ? '' : 's'}`;
-}
-
-/** @param {number} n @returns {string} "1 more win" | "2 more wins" */
-function moreWins(n) {
-  return `${n} more win${n === 1 ? '' : 's'}`;
-}
+export const DRAW_WARNING_TEXT = scoreboard.drawWarning;
 
 /**
  * Builds the four (or three, on a draw) display lines, in order. Pure and DOM-free so it is directly
@@ -94,9 +91,9 @@ export function buildScoreboardLines({
   maxConsecutiveDraws,
 }) {
   const lines = [
-    `BEST OF ${bestOf}`,
-    `${capitalize(colorNames[1])}: ${winCount(wins[1])}`,
-    `${capitalize(colorNames[2])}: ${winCount(wins[2])}`,
+    scoreboard.bestOfLine(bestOf),
+    scoreboard.colorWinLine(colorNames[1], wins[1]),
+    scoreboard.colorWinLine(colorNames[2], wins[2]),
   ];
   if (result === 'DRAW') {
     // The warning belongs on the *second* consecutive draw — one draw away from the cap — so the player is
@@ -113,7 +110,7 @@ export function buildScoreboardLines({
     return lines;
   }
   const winner = result === 'P1_WIN' ? 1 : 2;
-  lines.push(`${capitalize(colorNames[winner])} needs ${moreWins(winsNeeded[winner])}`);
+  lines.push(scoreboard.decisiveLine(colorNames[winner], winsNeeded[winner]));
   return lines;
 }
 

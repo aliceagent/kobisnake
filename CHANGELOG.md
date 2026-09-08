@@ -33,6 +33,10 @@ yet: `package.json` is at `0.1.0`, Sprint 18 cuts `v1.0.0`, and everything below
   is (#146).
 - **`IT'S A TIE`.** A match that ends level now says so, names no winner, and awards no keys (#147).
 - **A warning before a match is called a draw**, on the scoreboard of the last replay before the cap (#147).
+- **A match survives the graphics dying.** When the browser takes the graphics away — a laptop waking from
+  sleep, a driver reset, a tab the browser reclaimed memory from — the game now pauses instead of leaving a
+  frozen picture, and picks the round up where it stopped, with the same `READY?` count-in a normal unpause
+  gets. Before this, the only way out was reloading the page, which lost the match (#287).
 
 ### Changed
 
