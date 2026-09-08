@@ -470,6 +470,8 @@ export const tuning = /*#__PURE__*/ deepFreeze({
   presetLaserStep: 'Laser step',
   // UNAPPROVED — KS-07-01 (`tuning.js`'s `presetGroup('Speed Boost', ...)`); dev-only, `?tuning=1`.
   presetSpeedBoost: 'Speed Boost',
+  // UNAPPROVED — KI-04-03 (`tuning.js`'s `presetGroup('Pacing', ...)`); dev-only, `?tuning=1`.
+  presetPacing: 'Pacing',
   // UNAPPROVED — KS-07-01 (`tuning.js`'s `copyButton.textContent`); dev-only, `?tuning=1`.
   copyReplayButton: 'Copy replay',
   // UNAPPROVED — KS-07-01 (`tuning.js`'s clipboard-success status text); dev-only, `?tuning=1`.

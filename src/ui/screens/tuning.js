@@ -10,6 +10,7 @@ import {
   buildSettingsOverride,
   defaultTuningValues,
 } from '../../game/tuning.js';
+import { tuning } from '../strings.js';
 
 /**
  * The `?tuning=1` overlay (KS-07-01, `docs/sprints/sprint-07-playtest-gate-1-and-tuning.md`): a small always-
@@ -42,6 +43,13 @@ import {
  * (`.tuning-overlay--collapsed` in `styles.css`) rather than the top-right the expanded panel uses, because
  * the flank alongside the arena is exactly wide enough for the panel but not wide enough to dodge the P2 pill
  * sitting in that same flank's top corner — moving down clears the pill without needing to also narrow it.
+ *
+ * Since KI-20-02 this panel's fixed labels (never the preset button text derived from `speedBoost`/`pacing`
+ * preset data below, which stays here — see `src/ui/strings.js`'s own "what this catalogue does not include")
+ * read from the catalogue's `tuning` group (`src/ui/strings.js`, imported as `{ tuning }`, this screen's own
+ * group, never the `STRINGS` aggregate — see that module's own doc comment on why). Every string here is dev
+ * instrumentation, gated behind `?tuning=1`, never sent for the design lead's copy approval, and covered by
+ * KI-20-03's lint like the rest of `src/ui` all the same.
  */
 
 /** @typedef {import('../../game/tuning.js').SlowTargetMode} SlowTargetMode */
@@ -160,7 +168,7 @@ export function createTuningScreen(root, { onChange, getReplay, clipboard }) {
   /** Reflects `collapsed` onto the container's class and the header's own text/affordance. */
   function renderCollapsed() {
     container.classList.toggle('tuning-overlay--collapsed', collapsed);
-    header.textContent = collapsed ? '▸ TUNING' : '▾ TUNING';
+    header.textContent = tuning.foldHeader(collapsed);
   }
 
   // A click is the fold toggle, not a key: this panel already owns `<input type="range">`, `<select>` and a
@@ -214,7 +222,7 @@ export function createTuningScreen(root, { onChange, getReplay, clipboard }) {
   slowModeRow.className = 'tuning-row';
   const slowModeLabel = doc.createElement('span');
   slowModeLabel.className = 'tuning-row-label';
-  slowModeLabel.textContent = 'SLOW target';
+  slowModeLabel.textContent = tuning.slowTargetLabel;
   const slowModeSelect = /** @type {HTMLSelectElement} */ (doc.createElement('select'));
   slowModeSelect.dataset.tuningSlowMode = 'true';
   for (const mode of SLOW_TARGET_MODES) {
@@ -263,23 +271,23 @@ export function createTuningScreen(root, { onChange, getReplay, clipboard }) {
   // Session 2's laser variants (`docs/sprints/sprint-07-playtest-gate-1-and-tuning.md` KS-07-02): "laser
   // start 25 / 30 / 35 s" and "step interval 2 / 2.5 / 3 s".
   presetGroup(
-    'Laser start',
+    tuning.presetLaserStart,
     LASER_START_TIME_PRESETS.map((seconds) => ({
-      text: `${seconds}s`,
+      text: tuning.presetSeconds(seconds),
       patch: { laserStartTime: seconds },
     })),
   );
   presetGroup(
-    'Laser step',
+    tuning.presetLaserStep,
     LASER_STEP_INTERVAL_PRESETS.map((seconds) => ({
-      text: `${seconds}s`,
+      text: tuning.presetSeconds(seconds),
       patch: { laserStepInterval: seconds },
     })),
   );
   // The sprint's sharpest open question (tech-lead note 2): one button per side of the pair, so it needs no
   // slider dragging under a stopwatch.
   presetGroup(
-    'Speed Boost',
+    tuning.presetSpeedBoost,
     SPEED_BOOST_PRESETS.map((preset) => ({
       text: preset.label,
       patch: { 'speedBoost.multiplier': preset.multiplier, 'speedBoost.duration': preset.duration },
@@ -291,7 +299,7 @@ export function createTuningScreen(root, { onChange, getReplay, clipboard }) {
   // configuration rather than on whatever the previous click left behind. `laserStartTime` has a slider and
   // `applyPatch` refreshes it; `roundDuration` has none by design and simply updates the flat state.
   presetGroup(
-    'Pacing',
+    tuning.presetPacing,
     PACING_PRESETS.map((preset) => ({
       text: preset.label,
       patch: { roundDuration: preset.roundDuration, laserStartTime: preset.laserStartTime },
@@ -307,7 +315,7 @@ export function createTuningScreen(root, { onChange, getReplay, clipboard }) {
   const copyButton = doc.createElement('button');
   copyButton.type = 'button';
   copyButton.className = 'tuning-copy-button';
-  copyButton.textContent = 'Copy replay';
+  copyButton.textContent = tuning.copyReplayButton;
   copyButton.dataset.tuningCopyReplay = 'true';
   footer.appendChild(copyButton);
 
@@ -329,17 +337,17 @@ export function createTuningScreen(root, { onChange, getReplay, clipboard }) {
     const json = JSON.stringify(getReplay(), null, 2);
     replayJsonEl.value = json;
     if (resolvedClipboard === null || typeof resolvedClipboard.writeText !== 'function') {
-      status.textContent = 'Clipboard unavailable — copy the text below';
+      status.textContent = tuning.clipboardUnavailable;
       return;
     }
     resolvedClipboard.writeText(json).then(
       () => {
-        status.textContent = 'Copied!';
+        status.textContent = tuning.copied;
       },
       () => {
         // A denied clipboard permission must not fail silently (tech-lead note 6) — the JSON is already in
         // `replayJsonEl` above regardless of which branch this callback takes.
-        status.textContent = 'Clipboard blocked — copy the text below';
+        status.textContent = tuning.clipboardBlocked;
       },
     );
   });
