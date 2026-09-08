@@ -54,11 +54,14 @@ There is no `test:sim` script: simulation tests live in `tests/sim/` but run und
   `KS-07-06 WALL CLOCK` lines are information; only `stepWaitTicks` can fail the job.
 - **A red CI `browser` job whose `e2e` and `visual` steps both say `success` is not a contradiction.** Both
   carry `continue-on-error: true` in `ci.yml`, and GitHub reports a step's *conclusion* after that override
-  while only its *outcome* records the truth — the API exposes the first and not the second, so the job's own
-  "Fail the job if either suite failed" step is the only thing that changes. It tells you a suite failed and
-  not which one. Job logs and artifacts are unreadable from an agent session and re-running a job is `403`
-  (#172), so the way to find out is to reproduce locally: `npm run test:e2e`, then `npm run test:visual`,
-  one after the other, never together.
+  while only its *outcome* records the truth — and the API exposes the first, not the second. Two things tell
+  you which suite actually failed: the **`e2e failed` / `visual failed` steps** (KI-19-01), which are
+  `skipped` when their suite passed and `failure` when it did not and so name the suite in the jobs API; and
+  the **check-run annotations** (KI-03-05's `--reporter=github`), which name the failing test and its seed.
+  Prefer the annotations when they exist — a suite that dies during `webServer` start-up produces none, and
+  then the step list is all there is. Job logs and artifacts are unreadable from an agent session and
+  re-running a job is `403` (#172), so to go further, reproduce locally: `npm run test:e2e`, then
+  `npm run test:visual`, one after the other, never together.
 
 ## The never list
 - Never load anything from a CDN or external URL. three.js comes from npm and is bundled. The built site makes
