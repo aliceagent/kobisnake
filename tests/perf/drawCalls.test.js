@@ -22,7 +22,7 @@ import {
  */
 
 describe('KI-08-02 · DRAW_CALL_BUDGET', () => {
-  it('KI-08-02: is ARCHITECTURE §12\'s own number, and appears exactly once in the module', () => {
+  it("KI-08-02: is ARCHITECTURE §12's own number, and appears exactly once in the module", () => {
     expect(DRAW_CALL_BUDGET).toBe(120);
   });
 });
@@ -85,7 +85,7 @@ describe('KI-08-02 AC3 · BASELINE_DRAW_CALLS', () => {
     }
   });
 
-  it('KI-08-02 AC3: is frozen (a change to today\'s figures is always a reviewed diff)', () => {
+  it("KI-08-02 AC3: is frozen (a change to today's figures is always a reviewed diff)", () => {
     expect(Object.isFrozen(BASELINE_DRAW_CALLS)).toBe(true);
   });
 });
@@ -140,7 +140,7 @@ describe('KI-08-02 AC2/ruling 7 · buildBudgetFailureMessage', () => {
     expect(message).toContain('laserPhase=CLOSING');
   });
 
-  it('KI-08-02: names ARCHITECTURE §12 as the budget\'s source and tuning-proposal as the way to change it', () => {
+  it("KI-08-02: names ARCHITECTURE §12 as the budget's source and tuning-proposal as the way to change it", () => {
     const message = buildBudgetFailureMessage('mid-round-long-snakes', 140, overBudgetComposition);
     expect(message).toMatch(/design-lead decision/);
     expect(message).toContain('tuning-proposal');
@@ -160,7 +160,7 @@ describe('KI-08-02 · buildDrawCallsReportTable', () => {
     expect(table).toContain('| opening-board | 14 | 8 |');
   });
 
-  it('KI-08-02: reads each row\'s baseline out of BASELINE_DRAW_CALLS and marks an unknown slug with —', () => {
+  it("KI-08-02: reads each row's baseline out of BASELINE_DRAW_CALLS and marks an unknown slug with —", () => {
     // No `menu-main-menu` row here, so the floor falls back to 0 — the delta column then reads as the raw
     // count, which is the honest answer when this run's own floor sample was not part of the input.
     const rows = [

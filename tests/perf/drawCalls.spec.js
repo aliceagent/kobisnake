@@ -151,7 +151,9 @@ function recordAndAssert(slug, sample) {
     `KI-08-02: ${slug} — ${sample.drawCalls} draw calls — ${JSON.stringify(sample.composition)}`,
   );
   const { overBudget } = checkDrawCallBudget(sample.drawCalls);
-  expect(overBudget, buildBudgetFailureMessage(slug, sample.drawCalls, sample.composition)).toBe(false);
+  expect(overBudget, buildBudgetFailureMessage(slug, sample.drawCalls, sample.composition)).toBe(
+    false,
+  );
 }
 
 test.describe.serial('KI-08-02 · draw-call budget', () => {
@@ -164,8 +166,10 @@ test.describe.serial('KI-08-02 · draw-call budget', () => {
       SETTINGS.startingSnakeLength,
       SETTINGS.startingSnakeLength,
     ]);
-    expect(sample.composition.pickupCount, 'powerUpsEnabled: false must isolate this sample from a pedestal')
-      .toBe(0);
+    expect(
+      sample.composition.pickupCount,
+      'powerUpsEnabled: false must isolate this sample from a pedestal',
+    ).toBe(0);
     recordAndAssert('opening-board', sample);
   });
 
@@ -181,18 +185,26 @@ test.describe.serial('KI-08-02 · draw-call budget', () => {
     });
     // AC1's own wording: state the lengths actually reached and assert they are meaningfully longer than
     // spawn, so a regression that stops growth cannot quietly turn this into a second opening-board sample.
-    expect(sample.composition.snakeLengths, 'both snakes must reach the growth target').not.toBeNull();
+    expect(
+      sample.composition.snakeLengths,
+      'both snakes must reach the growth target',
+    ).not.toBeNull();
     for (const length of /** @type {number[]} */ (sample.composition.snakeLengths)) {
-      expect(length, `snake length ${length} vs. spawn ${SETTINGS.startingSnakeLength}`).toBeGreaterThanOrEqual(
-        target,
-      );
+      expect(
+        length,
+        `snake length ${length} vs. spawn ${SETTINGS.startingSnakeLength}`,
+      ).toBeGreaterThanOrEqual(target);
     }
-    expect(sample.composition.pickupCount, 'powerUpsEnabled: false must isolate this sample from a pedestal')
-      .toBe(0);
+    expect(
+      sample.composition.pickupCount,
+      'powerUpsEnabled: false must isolate this sample from a pedestal',
+    ).toBe(0);
     recordAndAssert('mid-round-long-snakes', sample);
   });
 
-  test('KI-08-02 AC1/AC2: laser-warning — the beams lit, lasers.phase left PARKED', async ({ page }) => {
+  test('KI-08-02 AC1/AC2: laser-warning — the beams lit, lasers.phase left PARKED', async ({
+    page,
+  }) => {
     const sample = await measureOnce(page, {
       ...BASE_ARGS,
       scene: 'laser-warning',
@@ -200,8 +212,10 @@ test.describe.serial('KI-08-02 · draw-call budget', () => {
     });
     expect(sample.reached, 'laser-warning: PARKED never left').toBe(true);
     expect(sample.composition.laserPhase).not.toBe('PARKED');
-    expect(sample.composition.pickupCount, 'powerUpsEnabled: false must isolate this sample from a pedestal')
-      .toBe(0);
+    expect(
+      sample.composition.pickupCount,
+      'powerUpsEnabled: false must isolate this sample from a pedestal',
+    ).toBe(0);
     recordAndAssert('laser-warning', sample);
   });
 
@@ -214,27 +228,38 @@ test.describe.serial('KI-08-02 · draw-call budget', () => {
       settingsOverrides: endgameOverrides(SETTINGS),
       policySources: [survivor.toString(), survivor.toString()],
     });
-    expect(sample.composition.laserPhase, 'endgame-6x6: lasers never reached STOPPED (max inset)').toBe(
-      'STOPPED',
+    expect(
+      sample.composition.laserPhase,
+      'endgame-6x6: lasers never reached STOPPED (max inset)',
+    ).toBe('STOPPED');
+    const safeSquareWidth =
+      SETTINGS.grid.width - 2 * /** @type {number} */ (sample.composition.laserInset);
+    expect(safeSquareWidth, 'the safe square at STOPPED must be the 6×6 minimum').toBe(
+      SETTINGS.laserMinArena,
     );
-    const safeSquareWidth = SETTINGS.grid.width - 2 * /** @type {number} */ (sample.composition.laserInset);
-    expect(safeSquareWidth, 'the safe square at STOPPED must be the 6×6 minimum').toBe(SETTINGS.laserMinArena);
-    expect(sample.composition.pickupCount, 'powerUpsEnabled: false must isolate this sample from a pedestal')
-      .toBe(0);
+    expect(
+      sample.composition.pickupCount,
+      'powerUpsEnabled: false must isolate this sample from a pedestal',
+    ).toBe(0);
     recordAndAssert('endgame-6x6', sample);
   });
 
-  test('KI-08-02 AC1: menu-main-menu — the idle title screen; also AC2\'s floor sample (nothing on the board)', async ({
+  test("KI-08-02 AC1: menu-main-menu — the idle title screen; also AC2's floor sample (nothing on the board)", async ({
     page,
   }) => {
     const sample = await measureOnce(page, { ...BASE_ARGS, scene: 'menu-main-menu' });
     expect(sample.reached).toBe(true);
     expect(sample.composition.state).toBe('MAIN_MENU');
-    expect(sample.composition.snakeLengths, 'the floor sample must have nothing on the board').toBeNull();
+    expect(
+      sample.composition.snakeLengths,
+      'the floor sample must have nothing on the board',
+    ).toBeNull();
     recordAndAssert('menu-main-menu', sample);
   });
 
-  test('KI-08-02 AC1: menu-match-setup — reached from MAIN_MENU via SELECT_2P', async ({ page }) => {
+  test('KI-08-02 AC1: menu-match-setup — reached from MAIN_MENU via SELECT_2P', async ({
+    page,
+  }) => {
     const sample = await measureOnce(page, { ...BASE_ARGS, scene: 'menu-match-setup' });
     expect(sample.reached, 'menu-match-setup: MATCH_SETUP was not reached').toBe(true);
     expect(sample.composition.state).toBe('MATCH_SETUP');
@@ -245,7 +270,10 @@ test.describe.serial('KI-08-02 · draw-call budget', () => {
     const sample = await measureOnce(page, { ...BASE_ARGS, scene: 'menu-pause' });
     expect(sample.reached, 'menu-pause: PAUSE was not reached').toBe(true);
     expect(sample.composition.state).toBe('PAUSE');
-    expect(sample.composition.snakeLengths, 'the arena keeps drawing behind the pause panel').not.toBeNull();
+    expect(
+      sample.composition.snakeLengths,
+      'the arena keeps drawing behind the pause panel',
+    ).not.toBeNull();
     recordAndAssert('menu-pause', sample);
   });
 
@@ -256,7 +284,9 @@ test.describe.serial('KI-08-02 · draw-call budget', () => {
     recordAndAssert('menu-round-over', sample);
   });
 
-  test('KI-08-02 AC1: menu-match-over — a Bo1 decided by the same scripted crash', async ({ page }) => {
+  test('KI-08-02 AC1: menu-match-over — a Bo1 decided by the same scripted crash', async ({
+    page,
+  }) => {
     const sample = await measureOnce(page, { ...BASE_ARGS, scene: 'menu-match-over', bestOf: 1 });
     expect(sample.reached, 'menu-match-over: MATCH_OVER was not reached').toBe(true);
     expect(sample.composition.state).toBe('MATCH_OVER');
@@ -266,7 +296,9 @@ test.describe.serial('KI-08-02 · draw-call budget', () => {
     recordAndAssert('menu-match-over', sample);
   });
 
-  test('KI-08-02 AC1: menu-replay — the REPLAY screen\'s load view, nothing loaded', async ({ page }) => {
+  test("KI-08-02 AC1: menu-replay — the REPLAY screen's load view, nothing loaded", async ({
+    page,
+  }) => {
     const sample = await measureOnce(page, { ...BASE_ARGS, scene: 'menu-replay' });
     expect(sample.reached, 'menu-replay: REPLAY was not reached').toBe(true);
     expect(sample.composition.state).toBe('REPLAY');

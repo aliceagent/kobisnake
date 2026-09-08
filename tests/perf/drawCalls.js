@@ -137,7 +137,7 @@ export const SCENES = Object.freeze([
 export const MENU_SCREENS = Object.freeze([
   {
     slug: 'main-menu',
-    why: 'the idle title screen — nothing on the board. Doubles as this run\'s floor sample (ruling 5).',
+    why: "the idle title screen — nothing on the board. Doubles as this run's floor sample (ruling 5).",
   },
   { slug: 'match-setup', why: 'reached from MAIN_MENU via SELECT_2P; still nothing on the board.' },
   {
@@ -154,7 +154,7 @@ export const MENU_SCREENS = Object.freeze([
   },
   {
     slug: 'replay',
-    why: 'the REPLAY screen\'s load view, reached from MAIN_MENU via SELECT_REPLAY with nothing loaded.',
+    why: "the REPLAY screen's load view, reached from MAIN_MENU via SELECT_REPLAY with nothing loaded.",
   },
 ]);
 
@@ -365,10 +365,17 @@ export function sampleSceneInPage(args) {
   }
 
   /** Asks each policy once per grid step and dispatches its move — `driver.js`'s own `runMatchInPage` loop,
-   * inlined because this in-page function may not reference that module. */
+   * inlined because this in-page function may not reference that module.
+   *
+   * `decisionIndex` is counted per player and incremented exactly as `driver.js` does, rather than passed as
+   * a constant. No policy in `tests/agent/policies/` reads it today, so a constant would measure the same
+   * numbers — but it would be a silent divergence from the loop this one is a copy of, and the first policy
+   * that does read it (an opening book, a periodic re-plan) would behave differently here than under the
+   * driver, with nothing to say why. */
   function drivePolicies(
     /** @type {((view: object) => string | null)[]} */ policies,
     /** @type {(string | null)[]} */ lastHeadKeys,
+    /** @type {number[]} */ decisionIndex,
   ) {
     const snapshot = kobi.getSnapshot();
     if (snapshot === null) return;
@@ -380,7 +387,8 @@ export function sampleSceneInPage(args) {
       const headKey = head.x + ',' + head.y;
       if (headKey === lastHeadKeys[i]) continue;
       lastHeadKeys[i] = headKey;
-      const move = policy({ snapshot, playerIndex: i, grid, decisionIndex: 0 });
+      const move = policy({ snapshot, playerIndex: i, grid, decisionIndex: decisionIndex[i] });
+      decisionIndex[i] += 1;
       if (move !== null && move !== undefined) kobi.pressKey(i + 1, move);
     }
   }
@@ -446,6 +454,7 @@ export function sampleSceneInPage(args) {
       stepPastCountdown();
       const policies = [compile(policySources[0]), compile(policySources[1])];
       const lastHeadKeys = [null, null];
+      const decisionIndex = [0, 0];
       let frames = 0;
       let reached = false;
       while (frames < maxFrames) {
@@ -453,7 +462,7 @@ export function sampleSceneInPage(args) {
         if (!isLivePlayState(state)) break; // a death or a timeout ended the round on this seed.
         const snapshot = kobi.getSnapshot();
         if (snapshot !== null) {
-          drivePolicies(policies, lastHeadKeys);
+          drivePolicies(policies, lastHeadKeys, decisionIndex);
           if (
             snapshot.snakes.length === 2 &&
             snapshot.snakes.every((/** @type {any} */ snake) => snake.alive) &&
@@ -473,6 +482,7 @@ export function sampleSceneInPage(args) {
       stepPastCountdown();
       const policies = [compile(policySources[0]), compile(policySources[1])];
       const lastHeadKeys = [null, null];
+      const decisionIndex = [0, 0];
       let frames = 0;
       let reached = false;
       while (frames < maxFrames) {
@@ -480,7 +490,7 @@ export function sampleSceneInPage(args) {
         if (!isLivePlayState(state)) break; // a death ended the round before the squeeze finished.
         const snapshot = kobi.getSnapshot();
         if (snapshot !== null) {
-          drivePolicies(policies, lastHeadKeys);
+          drivePolicies(policies, lastHeadKeys, decisionIndex);
           if (snapshot.lasers.phase === 'STOPPED') {
             reached = true;
             break;
@@ -544,7 +554,7 @@ export function buildBudgetFailureMessage(slug, drawCalls, composition) {
     `pickupCount=${composition.pickupCount}, laserPhase=${composition.laserPhase}, ` +
     `laserInset=${composition.laserInset}. If the art genuinely needs more than ${DRAW_CALL_BUDGET} draw ` +
     'calls for this scene, that is a design-lead decision — propose it in a PR labelled `tuning-proposal` ' +
-    '(CLAUDE.md\'s never list); never raise this constant quietly.'
+    "(CLAUDE.md's never list); never raise this constant quietly."
   );
 }
 
