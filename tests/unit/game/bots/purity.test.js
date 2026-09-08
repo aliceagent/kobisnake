@@ -2,6 +2,7 @@
 import { describe, expect, it } from 'vitest';
 import { greedy } from '../../../../src/game/bots/greedy.js';
 import { survivor } from '../../../../src/game/bots/survivor.js';
+import { hard } from '../../../../src/game/bots/levels.js';
 import { PLAY_RULES } from '../../../../src/game/bots/policy.js';
 
 /**
@@ -118,6 +119,9 @@ function boards() {
 const POLICIES = [
   { name: 'greedy', policy: greedy },
   { name: 'survivor', policy: survivor },
+  // KI-12-03: added when `hard` (src/game/bots/levels.js) landed, outside this file's own `Files:` list — see
+  // that PR's description. `hard` shares every constraint `greedy`/`survivor` are proved against here.
+  { name: 'hard', policy: hard },
 ];
 
 describe('KI-12-01 AC2 · a policy cannot mutate the snapshot it is given', () => {
