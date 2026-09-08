@@ -242,10 +242,9 @@ jobs:
   mutation:
     name: mutation (src/core)
     runs-on: ubuntu-latest
-    # The `src/core` run is minutes, not hours, but it is the longest job in this workflow and a hung
-    # Stryker worker should not hold a runner for six hours. Comfortably above the measured run; well below
-    # the default.
-    timeout-minutes: 45
+    # The longest job in this workflow by a wide margin, and a hung Stryker worker should not hold a runner
+    # for six hours. See the `Runner shape` step below for why this is 75 and not the 45 it started as.
+    timeout-minutes: 75
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -253,6 +252,14 @@ jobs:
           node-version: ${{ env.NODE_VERSION }}
           cache: npm
       - run: npm ci
+
+      # `stryker.config.mjs` sets concurrency from the core count, so the core count is the single number
+      # that predicts this job's wall clock — and it is not the number a local run sees. Printed into the
+      # summary so a slow nightly can be read rather than guessed at.
+      - name: Runner shape
+        run: |
+          echo "cores: $(node -p 'require("node:os").cpus().length')" | tee -a "$GITHUB_STEP_SUMMARY"
+          echo "mem: $(free -g | awk '/^Mem:/{print $2}') GB" | tee -a "$GITHUB_STEP_SUMMARY"
 
       # No browser install: `src/core` is pure simulation that runs in Node, which is the whole reason it is
       # the affordable target for an exhaustive mutation run (`stryker.config.mjs`).
