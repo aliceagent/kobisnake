@@ -13,21 +13,25 @@ import { runRound } from './harness.js';
  * no-input human, 500 seeded rounds per side of each matchup (`docs/sprints/improvement-12-cpu-opponent.md`).
  * The committed counterpart is `docs/qa/playtests/cpu-levels.md`.
  *
- * **Status: BLOCKED on #217, still.** AC1 requires the three levels to order themselves — HARD beats NORMAL
- * beats EASY, each by a clear margin — asserted, not just observed. Two of the three orderings hold by a wide
- * margin (NORMAL over EASY, and HARD over EASY) under both of `HARD`'s definitions this ticket has measured.
+ * **Resolved: the ruled fallback ships.** AC1 originally required all three levels to order themselves — HARD
+ * beats NORMAL beats EASY, each by a clear margin — asserted, not just observed. Two orderings hold by a wide
+ * margin under both of `HARD`'s definitions this ticket measured (NORMAL over EASY, HARD over EASY); the third
+ * never did. `HARD`'s first definition (steer into a cell a strictly-longer snake would win a head-on over)
+ * measured 3.5 points *weaker* than NORMAL. The design lead's ruling on #210 redefined `HARD` as NORMAL's own
+ * rules plus eating an apple when it costs no reachable room; re-measured on the identical seats, seeds and
+ * margin, HARD edged NORMAL by +3.1 points — a real, positive, seat-controlled swing from −3.5, and still
+ * nowhere near the 20-point margin. A significance check on that +3.1pp (`docs/qa/playtests/cpu-levels.md`)
+ * put it at p = 0.32 — indistinguishable from a zero gap at this sample size — which is what actually decided
+ * it: not "below the margin" but "not shown to be a real edge at all". Per #210's own pre-authorised fallback
+ * ("if that does not order either, ship two levels... two honest levels beat three with one that lies"), EASY
+ * and NORMAL ship; `HARD` stays exported and fully measured here (KI-12-04 is what wires the menu, not this
+ * file) but is not offered.
  *
- * `HARD`'s first definition (steer into a cell a strictly-longer snake would win a head-on over) measured 3.5
- * points *weaker* than NORMAL, not stronger. The design lead ruled on that finding (#210, quoted in
- * `src/game/bots/levels.js`'s module doc) and redefined `HARD` as NORMAL's own rules plus eating an apple when
- * it costs no reachable room. Re-measured on the *same* seats, seeds and margin: **HARD now edges NORMAL by
- * +3.1 points — a real, positive, seat-controlled improvement over the first definition's −3.5 — but still far
- * short of the 20-point margin AC1 asks for.** `docs/qa/playtests/cpu-levels.md` keeps both measurements, in
- * order, as the record of why the definition changed and what changing it bought.
- *
- * Per the ruling's own explicit instruction this file does not chase the margin further: "measure once, report
- * the number, and if it fails tell me — I will take the fallback to KI-12-04." The assertion below is left
- * exactly as it is required to read, and is expected to fail.
+ * AC1 below is rescoped to what actually ships (`NORMAL` beats `EASY`, and the beginner check); the assertion
+ * that used to require `HARD` to clear the margin over `NORMAL` is not deleted — `CLAUDE.md` forbids weakening
+ * a test to get green — it is replaced by its own negation as a guard: the fallback decision is correct only
+ * for as long as that gap stays sub-margin, so a test asserts exactly that fact, named and commented so a
+ * future change that makes `HARD` meaningfully stronger fails loudly instead of shipping unnoticed.
  *
  * ## Why every matchup is measured in *both* seats
  *
@@ -283,8 +287,8 @@ describe('KI-12-03 CPU levels', () => {
       );
     }
     console.log(
-      'KI-12-03 is BLOCKED on #217: HARD beats NORMAL by a positive but sub-margin gap (see ' +
-        'docs/qa/playtests/cpu-levels.md). Do not tune levels.js to chase the margin — report the number.',
+      'KI-12-03 resolved (#210/#217): HARD vs NORMAL is not distinguishable from a zero gap at this sample ' +
+        'size (see docs/qa/playtests/cpu-levels.md) — EASY and NORMAL ship, HARD stays defined and off the menu.',
     );
     if (FULL_RUN) {
       console.log(
@@ -301,26 +305,40 @@ describe('KI-12-03 CPU levels', () => {
     }
   }, 90_000);
 
-  describe('AC1 the levels order themselves, with a margin', () => {
+  describe('AC1 the shipped levels order themselves, with a margin', () => {
+    // The decision on #210/#217: HARD's measured edge over NORMAL (+3.1pp, 95% CI ±6.3pp, p = 0.32 — see
+    // `docs/qa/playtests/cpu-levels.md`) is indistinguishable from zero at this sample size, so the ruled
+    // fallback ships two levels. AC1 is therefore this: the two levels that *do* ship order themselves by a
+    // clear margin, and the beginner check holds for the weaker of the two.
     it('KI-12-03 AC1: NORMAL beats EASY by at least the ordering margin', () => {
       expect(matchups.normalVsEasy.gapPct).toBeGreaterThanOrEqual(ORDERING_MARGIN_PP);
-    });
-
-    it('KI-12-03 AC1: HARD beats EASY by at least the ordering margin (transitivity)', () => {
-      expect(matchups.hardVsEasy.gapPct).toBeGreaterThanOrEqual(ORDERING_MARGIN_PP);
-    });
-
-    // BLOCKED on #217 (module doc): this is expected to fail, on both of HARD's definitions this ticket has
-    // measured. It is left exactly as every other assertion in this describe block reads — the design lead's
-    // ruling on #210 is explicit that this file does not chase the margin by tuning the eating rule.
-    it('KI-12-03 AC1: HARD beats NORMAL by at least the ordering margin', () => {
-      expect(matchups.hardVsNormal.gapPct).toBeGreaterThanOrEqual(ORDERING_MARGIN_PP);
     });
 
     it('KI-12-03 AC1: EASY loses to an idle player less than a quarter of the time', () => {
       // "Loses" per the module doc: the percentage of EASY-vs-idle rounds (both seats) that resolve as
       // idle's win. A draw is not a loss.
       expect(matchups.easyVsIdle.lowerWinPct).toBeLessThan(25);
+    });
+  });
+
+  describe('HARD: measured, kept, not shipped (#210)', () => {
+    // Still real and still true — HARD is not competitive with EASY, it just isn't distinguishable from
+    // NORMAL. Kept as supporting evidence for the fallback decision, not as a shipped-ordering requirement.
+    it('KI-12-03: HARD beats EASY by at least the ordering margin', () => {
+      expect(matchups.hardVsEasy.gapPct).toBeGreaterThanOrEqual(ORDERING_MARGIN_PP);
+    });
+
+    // The guard the fallback decision depends on staying true. This replaces the AC1 assertion that used to
+    // require HARD to clear the margin over NORMAL — deleting it outright once it failed would have been
+    // exactly the "weaken a test to get green" CLAUDE.md forbids, so it is inverted into the fact the decision
+    // actually rests on: `docs/qa/playtests/cpu-levels.md`'s significance section shows the measured +3.1pp
+    // gap is not distinguishable from zero at n = 1 000 (p = 0.32; resolving a true 3.1pp gap at 80% power
+    // would need ~8 158 rounds per matchup). If a future change to `hard` — or to `survivor`, which it shares
+    // its safety rules with — ever pushes this gap to or past the ordering margin in HARD's favour, that is
+    // no longer noise: HARD has become meaningfully stronger, and the decision to keep it off the menu should
+    // be reopened with KI-12-04's owner, not silently invalidated by a passing test nobody reads.
+    it('KI-12-03 guard: HARD is NOT separated from NORMAL by the ordering margin (HARD stays off the menu — #210)', () => {
+      expect(matchups.hardVsNormal.gapPct).toBeLessThan(ORDERING_MARGIN_PP);
     });
   });
 
