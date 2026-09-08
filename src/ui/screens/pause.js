@@ -1,6 +1,7 @@
 // @ts-check
 import { STATES } from '../../game/gameStateMachine.js';
 import { createFocusModel } from '../focus.js';
+import { pause } from '../strings.js';
 
 /**
  * The pause screen (`PAUSE`, `DESIGN-DECISIONS §2.8`: "Esc during PLAYING opens PAUSE (Resume / Restart
@@ -14,6 +15,11 @@ import { createFocusModel } from '../focus.js';
  * **Space resumes too** (KS-07-00, the owner's playtest, issue #103): `§2.8` now says Space behaves exactly
  * like Esc for pausing. This screen needs no code for it — `session.js` translates Space into the same
  * `BACK` before it reaches here, so both keys arrive as one action and cannot drift apart.
+ *
+ * Copy is the catalogue's `pause` group (`src/ui/strings.js`, KI-20-02) — imported as `{ pause }`, this
+ * screen's own group, never the `STRINGS` aggregate (see that module's own doc comment on why: importing the
+ * aggregate would pull every group, playtest copy included, into this entry-chunk-reachable screen and break
+ * KI-11-05's chunk split, #258).
  */
 
 /** @typedef {import('../focus.js').MenuAction} MenuAction */
@@ -56,22 +62,22 @@ export function createPauseScreen(root) {
 
   const title = doc.createElement('div');
   title.className = 'menu-title';
-  title.textContent = 'PAUSED';
+  title.textContent = pause.title;
   panel.appendChild(title);
 
   const resumeRow = doc.createElement('div');
   resumeRow.className = 'menu-item';
-  resumeRow.textContent = 'RESUME';
+  resumeRow.textContent = pause.resume;
   panel.appendChild(resumeRow);
 
   const restartRow = doc.createElement('div');
   restartRow.className = 'menu-item';
-  restartRow.textContent = 'RESTART MATCH';
+  restartRow.textContent = pause.restartMatch;
   panel.appendChild(restartRow);
 
   const menuRow = doc.createElement('div');
   menuRow.className = 'menu-item';
-  menuRow.textContent = 'QUIT TO MENU';
+  menuRow.textContent = pause.quitToMenu;
   panel.appendChild(menuRow);
 
   container.appendChild(panel);
