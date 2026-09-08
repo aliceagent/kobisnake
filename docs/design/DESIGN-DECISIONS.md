@@ -165,6 +165,14 @@ and `ownedColors` replacing `unlockedColors`. Corrupt or missing data → defaul
 
 These substitute for the GDD images that were not supplied (see `docs/reference/README.md`).
 
+> **Where the strings themselves live (Improvement 20).** Since I20 the copy in this section is the *rationale*
+> for the wording, not the artefact the game reads: every user-visible string lives in `src/ui/strings.js`, and
+> `tests/unit/ui/strings.test.js` parses this section and asserts the two agree character for character, so an
+> approved line here can never drift from the line on screen. New copy is proposed and approved as a diff of
+> that catalogue rather than as an edit here; a string that has no ruling yet ships marked unapproved and is
+> listed for the design lead. Nothing in this section changes — it is still the authority on *why* each line
+> reads as it does, and it is still what a builder reads before writing one.
+
 **First-minute copy (Improvement 10, KI-10-00).** Approved strings, to be used verbatim. Written for an
 eleven-year-old: short words, no jargon, and no exclamation mark doing the work that clarity should.
 
