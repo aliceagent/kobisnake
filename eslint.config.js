@@ -2,6 +2,7 @@
 import js from '@eslint/js';
 import importPlugin from 'eslint-plugin-import';
 import eslintConfigPrettier from 'eslint-config-prettier';
+import { catalogueOnlyCopyRule } from './scripts/lint-strings.mjs';
 
 /**
  * Flat ESLint config (ARCHITECTURE §2: `eslint:recommended` + `eslint-plugin-import`; Prettier owns
@@ -27,6 +28,11 @@ export default [
       // ESLint's flat config does not read `.gitignore`, so they have to be named here too.
       '.stryker-tmp/**',
       'reports/**',
+      // KI-20-03 (#251): deliberately violating (and deliberately incomplete) snippets that
+      // tests/unit/lint/lint-strings.test.js feeds straight to the rule module via ESLint's own `Linter`
+      // class — they are not meant to satisfy `eslint:recommended`/`eslint-plugin-import` as whole files, so
+      // `eslint .` must not lint them as ordinary source.
+      'tests/unit/lint/fixtures/**',
     ],
   },
   js.configs.recommended,
@@ -51,6 +57,22 @@ export default [
         requestAnimationFrame: 'readonly',
         HTMLCanvasElement: 'readonly',
       },
+    },
+  },
+  {
+    // KI-20-03 (`docs/sprints/improvement-20-string-catalogue.md`, tracking #212, ticket #251): every
+    // user-visible string in `src/ui` must come from the catalogue — see `scripts/lint-strings.mjs`'s own
+    // module doc comment for exactly what this rule catches and why, and for the one narrow, commented,
+    // #214-tracked exemption it lets through today. Scoped away from the catalogue's own three files
+    // (`strings.js`, `strings.playtest.js`, `deepFreeze.js`), which are the source of truth this rule
+    // enforces everything else against, not a consumer of it.
+    files: ['src/ui/**/*.js'],
+    ignores: ['src/ui/strings.js', 'src/ui/strings.playtest.js', 'src/ui/deepFreeze.js'],
+    plugins: {
+      'kobi-strings': { rules: { 'catalogue-only-copy': catalogueOnlyCopyRule } },
+    },
+    rules: {
+      'kobi-strings/catalogue-only-copy': 'error',
     },
   },
   {
