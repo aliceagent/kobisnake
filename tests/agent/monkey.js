@@ -222,6 +222,12 @@ export const ROUND_RUNNING_STATES = Object.freeze(['COUNTDOWN', 'PLAYING', 'LASE
  * **This list empties when #317 is fixed**, and nothing else has to change: the budget stops binding, runs
  * carry on through `REPLAY`, and the campaign's coverage of that screen comes back.
  *
+ * One consequence worth stating rather than leaving to be discovered: while a run is over budget in one of
+ * these states no simulated time passes, so the stuck check's clock does not run there either — a `REPLAY`
+ * screen nobody could get out of would not be *reported as stuck* today. It would still be found, by the
+ * campaign noticing that a seed spent its remaining actions in one state, and it becomes detectable again
+ * the moment #317 lands.
+ *
  * @type {readonly string[]}
  */
 export const STATES_THAT_RENDER_UNASKED = Object.freeze(['REPLAY']);
@@ -983,7 +989,12 @@ export async function runMonkeySession(page, options) {
     // make a run depend on the order it was played in.
     await page.setViewportSize({ ...DEFAULT_VIEWPORT });
     await page.goto(`/?test=1&seed=${seed}`);
-    await page.waitForFunction(() => Boolean(/** @type {any} */ (globalThis).__kobi));
+    // Interval polling, like the resize wait below and for the same reason: Playwright's default is to poll
+    // on `requestAnimationFrame`, which the frame pump has replaced with a queue that only fires when the
+    // monkey says so. A `raf`-polled wait would evaluate its predicate once and then never again.
+    await page.waitForFunction(() => Boolean(/** @type {any} */ (globalThis).__kobi), undefined, {
+      polling: 50,
+    });
     loadMs = Date.now() - startedAt;
 
     const stretches = compileStretches(actions);
