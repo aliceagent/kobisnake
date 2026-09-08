@@ -1,0 +1,68 @@
+# KI-19-04: a pull request labelled `player-visible` must also edit CHANGELOG.md.
+#
+# Sprint 18 cuts v1.0.0 and needs a changelog on release day. Reconstructing one from a hundred commits at
+# that point is a bad afternoon; keeping it as the changes land costs a line each. This is the check that
+# makes "keeping it" not depend on remembering.
+#
+# **Its own workflow rather than a job in ci.yml**, for one reason that matters: `types: [labeled, unlabeled]`.
+# A label is usually added *after* CI has already run, so a check that only fires on push would go green on an
+# unlabelled PR and never re-run when the label arrived. `ci.yml` has no reason to re-run on a label, and
+# giving it one would re-run the whole suite - five jobs including a browser - every time anyone touched a
+# label on any PR.
+#
+# **It is deliberately one-directional.** It cannot tell that an unlabelled PR *should* have been labelled;
+# nothing can, short of judging what a change means. So this catches the case where somebody knows the change
+# is player-visible, says so with the label, and forgets the file - and the PR template's own "Player-visible?"
+# question is what prompts the judgement in the first place.
+name: Changelog
+
+on:
+  pull_request:
+    # `labeled`/`unlabeled` are the point; `opened`/`synchronize`/`reopened` keep it honest as the branch moves.
+    types: [opened, synchronize, reopened, labeled, unlabeled]
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  changelog:
+    name: changelog
+    runs-on: ubuntu-latest
+    # Nothing to check on a PR without the label, and skipping keeps the check-run list quiet on the majority
+    # of PRs, which are tooling and tests.
+    if: contains(github.event.pull_request.labels.*.name, 'player-visible')
+    steps:
+      # The files a pull request touches, from the API rather than from a git diff: no checkout, no fetch
+      # depth to get wrong, and no ambiguity about which commit is the base. `gh` and GITHUB_TOKEN are both
+      # already on the runner.
+      - name: CHANGELOG.md is updated
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          files=$(gh api "repos/${{ github.repository }}/pulls/${{ github.event.pull_request.number }}/files" \
+            --paginate --jq '.[].filename')
+          echo "Files in this pull request:"
+          echo "$files" | sed 's/^/  /'
+          echo ""
+          if echo "$files" | grep -qx 'CHANGELOG.md'; then
+            echo "CHANGELOG.md is updated. Nothing to do."
+            exit 0
+          fi
+          echo "::error title=Changelog entry missing::This PR is labelled player-visible but does not touch CHANGELOG.md"
+          cat <<'MESSAGE'
+
+          This pull request carries the `player-visible` label, which says a player would notice this
+          change - so it needs a line in CHANGELOG.md, under `## [Unreleased]`, in the category that fits:
+
+              ### Added     something a player can now do or see that they could not before
+              ### Changed   something that already existed behaving or looking different
+              ### Fixed     something that was wrong
+
+          Write it for the player, not for the reviewer. "The apple is easier to see" rather than
+          "createAppleMaterials now returns two materials", and end with the PR number in brackets.
+
+          If a player would *not* notice this change, the label is the thing to remove, not this check.
+
+          MESSAGE
+          exit 1

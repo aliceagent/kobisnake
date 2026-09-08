@@ -66,6 +66,14 @@ QA: the tests this ticket must add or make pass
 - Do not add a dependency. Propose it in the PR; Opus decides.
 - Every PR: description uses the template, links the issue, includes the fast-check output, and for visual work
   includes a screenshot from the Vercel preview next to the reference image crop it is matching.
+- **Every PR answers "player-visible?"** (KI-19-04). A change is player-visible if it alters what is on screen,
+  what the game does, what a key press causes, or what the game says — not merely because it is large or
+  risky. Tests, CI, tooling and refactors are not. If it is, label the PR `player-visible` and add a line to
+  `CHANGELOG.md` under `[Unreleased]`; `.github/workflows/changelog.yml` fails the PR if the label is there
+  and the file is untouched, and its failure message says exactly what to write. The check is deliberately
+  one-directional: it cannot tell that an *unlabelled* PR should have been labelled, so the label is a
+  judgement the author and the reviewer still have to make. Sprint 18 cuts `v1.0.0` from this file, so a
+  release-day scramble to reconstruct it from 100 commits is exactly what keeping it costs nothing to avoid.
 
 ## 4. Git and GitHub conventions
 
