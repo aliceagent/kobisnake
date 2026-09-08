@@ -166,28 +166,40 @@ function readBatchLog() {
 }
 
 /**
- * The regenerating command (AC1): the distinct seed ranges that were played, in the order each was first
- * run. Deduplicated by `(firstSeed, count)` — a range retried after a transient failure (a container-load
- * hiccup, say) logs one entry per attempt, and a reader reproducing this document only needs the range once,
- * not once per attempt it took to get a clean run.
+ * The distinct seed ranges that were played, in the order each was first run — deduplicated by
+ * `(firstSeed, count)`. A range retried after a transient failure (a container-load hiccup, say) logs one
+ * entry per attempt in {@link readBatchLog}'s raw log, and both the regenerating command (AC1) and the
+ * reported batch count should say "this range was played", once, not "this range was attempted N times" —
+ * a reader reproducing this document only needs to run each range once to get the same cache.
+ *
+ * @returns {{firstSeed: number, count: number}[]}
  */
-function regeneratingCommand() {
-  const batches = readBatchLog();
+function distinctBatches() {
   const seen = new Set();
-  /** @type {string[]} */
-  const parts = [];
-  for (const batch of batches) {
+  /** @type {{firstSeed: number, count: number}[]} */
+  const distinct = [];
+  for (const batch of readBatchLog()) {
     const key = `${batch.firstSeed}:${batch.count}`;
     if (seen.has(key)) continue;
     seen.add(key);
-    parts.push(
-      `KI_SESSION_FUZZ=1 KI_SESSION_FUZZ_FIRST_SEED=${batch.firstSeed} ` +
-        `KI_SESSION_FUZZ_SEED_COUNT=${batch.count} npm run test:agent:sessionfuzz`,
-    );
+    distinct.push(batch);
   }
-  return parts.length === 0
-    ? `KI_SESSION_FUZZ=1 KI_SESSION_FUZZ_TOTAL_SEEDS=${TOTAL_SEEDS} npm run test:agent:sessionfuzz`
-    : parts.join(' && ');
+  return distinct;
+}
+
+/** The regenerating command (AC1), built from {@link distinctBatches}. */
+function regeneratingCommand() {
+  const batches = distinctBatches();
+  if (batches.length === 0) {
+    return `KI_SESSION_FUZZ=1 KI_SESSION_FUZZ_TOTAL_SEEDS=${TOTAL_SEEDS} npm run test:agent:sessionfuzz`;
+  }
+  return batches
+    .map(
+      (batch) =>
+        `KI_SESSION_FUZZ=1 KI_SESSION_FUZZ_FIRST_SEED=${batch.firstSeed} ` +
+        `KI_SESSION_FUZZ_SEED_COUNT=${batch.count} npm run test:agent:sessionfuzz`,
+    )
+    .join(' && ');
 }
 
 /** @returns {Record<string, string>} `DistinctFailure.key` -> `"#123"`, when {@link ISSUE_LINKS_PATH} names a file. */
@@ -239,7 +251,6 @@ test.describe('KI-18-03 · the first campaign', () => {
     console.log(`KI-18-03: all ${TOTAL_SEEDS} seeds cached — compiling the campaign report.`);
     const results = readAllCachedSeeds();
     const wallSeconds = Math.round(results.reduce((total, r) => total + r.wallMs, 0) / 1000);
-    const batches = readBatchLog();
 
     const aggregated = aggregateCampaign({
       meta: {
@@ -247,7 +258,7 @@ test.describe('KI-18-03 · the first campaign', () => {
         command: regeneratingCommand(),
         wallSeconds,
         actionsPerSeed: ACTIONS_PER_SEED,
-        batchCount: batches.length,
+        batchCount: distinctBatches().length,
       },
       results,
     });

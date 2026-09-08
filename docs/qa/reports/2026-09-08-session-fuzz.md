@@ -20,7 +20,7 @@ changed to make a number look better.
 - **Date:** 2026-09-08. As with every other document in this family, this is the one line expected to
   change on a re-run — every number below comes from fixed seeds through a deterministic simulation
   (`ARCHITECTURE §11`), so regenerating this report should reproduce every other line byte for byte.
-- **Wall time:** ~5143s, summed across 12 batched invocations. **Not**
+- **Wall time:** ~5143s, summed across 8 batched invocations. **Not**
   reproducible the way the numbers below are (a busier machine, a different container) — see `meta.command`
   for why it is batched at all: a single ~87-minute Playwright invocation would hold this container's suite
   lock long enough to make the other sessions sharing it wait out `scripts/run-playwright-suite.mjs`'s
@@ -123,7 +123,7 @@ block byte for byte (the date and wall time above are deliberately not included 
   "hiddenSeconds": 15609.289583252115,
   "transitionsRecorded": 66869,
   "actionsPerSeed": 500,
-  "batchCount": 12,
+  "batchCount": 8,
   "stateCoverage": {
     "reached": [
       "COUNTDOWN",
