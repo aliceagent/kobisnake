@@ -95,6 +95,28 @@ const SHAPE = /** @type {'grid' | 'cross'} */ (ENV.KI_PACING_SHAPE ?? 'grid');
  */
 const PACING_RENDER_EVERY_N_FRAMES = 1200;
 
+/**
+ * The frame budget one match gets in this sweep — 1 500 simulated seconds, five times `driver.js`'s
+ * {@link DEFAULT_MAX_FRAMES}.
+ *
+ * The default is 500 s, sized in KI-03-01 for "a Best-of-3 of three full-length 90 s rounds with their
+ * countdowns and scoreboards (≈ 290 s)". That is right for the shipping numbers and wrong here, and the run
+ * that discovered it is the reason this constant exists: at `laserStartTime` 20 s the lasers get only 20 s to
+ * close, never reach the minimum arena, and two careful survivors simply outlive the clock — 80 % of that
+ * cell's rounds end by timeout at the full round length, matches routinely reach four and five rounds, and
+ * three of 150 ran past 500 s mid-match. Truncating those three would have quietly dropped the *longest*
+ * matches out of the very statistic that measures how long a match takes, biasing the wall-clock columns
+ * towards exactly the wrong answer in the one cell where drag is the finding.
+ *
+ * **Why 1 500 s is a real bound rather than a bigger guess.** A Best-of-3 ends at two wins or at three
+ * consecutive draws (`DESIGN-DECISIONS §1` row 26), so the longest match the rules permit alternates two
+ * draws with each decisive round: `D D W₁ D D W₂ D D`, and the ninth round ends it either way — nine rounds,
+ * hard ceiling. Nine rounds of a full 90 s plus their countdown (3.2 s), scoreboard (2.5 s) and crash beat
+ * (≤ 0.6 s) is ≈ 870 s. 1 500 s clears that with room, and stays finite: a match that somehow did not
+ * terminate would still be reported rather than hang.
+ */
+const PACING_MAX_FRAMES = 90_000;
+
 /** @type {Record<string, (view: import('./driver.js').PolicyView) => import('./driver.js').PolicyMove>} */
 const POLICY_BY_NAME = { greedy, survivor };
 
@@ -178,14 +200,39 @@ async function playCell(page, pairing, laserStartTime, roundDuration, seeds) {
         policy2,
         settingsOverrides: { laserStartTime, roundDuration },
         renderEveryNFrames: PACING_RENDER_EVERY_N_FRAMES,
+        maxFrames: PACING_MAX_FRAMES,
       }),
     );
   }
-  const playedMs = Date.now() - startedAt;
+  return { results, playedMs: Date.now() - startedAt, cached: false };
+}
 
+/**
+ * Records a finished cell, **after** it has passed its health check.
+ *
+ * Caching before the check is what the first full run actually did, and it was a trap: the one cell that
+ * failed was written to disk with three truncated matches in it, so every later invocation would have
+ * replayed that corruption straight out of the cache and failed identically, with the evidence looking more
+ * convincing each time. A cell earns its cache entry by being clean.
+ *
+ * That ordering is also what makes it sound to leave `maxFrames` out of the cache key. A cached cell is one
+ * in which **every match reached `MATCH_OVER`**, and the driver's loop breaks the moment it does — so for a
+ * match that finished at frame `f`, every budget larger than `f` produces the identical result. Raising the
+ * budget can therefore never invalidate a cached cell; it can only rescue one that was never cached.
+ *
+ * @param {string} pairing
+ * @param {number} laserStartTime
+ * @param {number} roundDuration
+ * @param {number[]} seeds
+ * @param {import('./driver.js').MatchResult[]} results
+ * @param {number} playedMs
+ */
+function cacheCell(pairing, laserStartTime, roundDuration, seeds, results, playedMs) {
   mkdirSync(cacheDir, { recursive: true });
-  writeFileSync(cachePath, JSON.stringify({ seeds, results, playedMs }));
-  return { results, playedMs, cached: false };
+  writeFileSync(
+    cachePathFor(pairing, laserStartTime, roundDuration),
+    JSON.stringify({ seeds, results, playedMs }),
+  );
 }
 
 test.describe('KI-04-01 · round pacing sweep', () => {
@@ -226,6 +273,9 @@ test.describe('KI-04-01 · round pacing sweep', () => {
         failureReasons(cell.results).join('\n'),
         `${pairing} @ laser ${laserStartTime}s / round ${roundDuration}s`,
       ).toBe('');
+      if (!cell.cached) {
+        cacheCell(pairing, laserStartTime, roundDuration, seeds, cell.results, cell.playedMs);
+      }
       const rounds = cell.results.reduce((total, result) => total + result.rounds.length, 0);
       cells.push({ pairing, laserStartTime, roundDuration, seeds, results: cell.results });
       console.log(
