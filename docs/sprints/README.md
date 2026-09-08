@@ -74,7 +74,7 @@ dropped.
 
 | # | Sprint | Lead | Why it exists | Needs |
 |---|---|---|---|---|
-| [I11](improvement-11-playtest-capture-mode.md) | Playtest capture mode | Opus | Gate 1 has waited on a facilitator since Sprint 07; two people should be able to run a session alone and hand back one file. **Complete 2026-09-07** (#158): `?playtest=1`, the script's own questions between rounds, every round's replay in the export, a script that turns the file into issues; KI-11-05 (dynamic import) follows | — |
+| [I11](improvement-11-playtest-capture-mode.md) | Playtest capture mode | Opus | Gate 1 has waited on a facilitator since Sprint 07; two people should be able to run a session alone and hand back one file. **Complete 2026-09-07** (#158): `?playtest=1`, the script's own questions between rounds, every round's replay in the export, a script that turns the file into issues; KI-11-05 made the modules a dynamic import so a normal load downloads nothing | — |
 | [I12](improvement-12-cpu-opponent.md) | A CPU opponent | Opus | One child cannot play the game that exists; the bots already can (row 27, vetoable) | I03 policies |
 | [I13](improvement-13-fair-play.md) | Fair play: names, handicaps, swap sides | Sonnet | A child and a parent are not evenly matched (row 28, vetoable) | — |
 | [I14](improvement-14-match-history-and-stats.md) | Match history & STATS | Sonnet | Nothing is remembered when a match ends (row 29, vetoable) | I13 names |
