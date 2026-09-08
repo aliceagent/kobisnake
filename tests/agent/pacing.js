@@ -629,6 +629,60 @@ function insetTable(cells) {
 }
 
 /**
+ * The earlier-start arm, read back as a sentence per pairing.
+ *
+ * KI-04-03 ran 45 and 50 s to find where the lever turns over — the ruling's own reason for extending it.
+ * Whether it *does* turn over inside the measured range is a property of the numbers, so this is computed
+ * from them rather than asserted in prose that a later regeneration could silently outlive. It reports the
+ * warning rate at each value, whether the rate is still climbing at the top of the range, and what the round
+ * length did while it climbed — because a lever that raises the climax without lengthening the round is
+ * doing something different from one that merely stretches the round out.
+ *
+ * @param {CellStats[]} cells
+ * @returns {string}
+ */
+function earlierStartReading(cells) {
+  const lines = [];
+  for (const pairing of PAIRINGS) {
+    const arm = cells
+      .filter(
+        (cell) =>
+          cell.pairing === pairing &&
+          cell.roundDuration === SETTINGS.roundDuration &&
+          cell.laserStartTime >= SETTINGS.laserStartTime,
+      )
+      .sort((a, b) => a.laserStartTime - b.laserStartTime);
+    if (arm.length < 2) continue;
+
+    const rate = (/** @type {CellStats} */ cell) => cell.reachedWarningRatePct ?? 0;
+    const first = arm[0];
+    const last = arm[arm.length - 1];
+    const rising = arm.every((cell, i) => i === 0 || rate(cell) >= rate(arm[i - 1]));
+    const saturated = rate(first) >= 99.9;
+
+    const trail = arm
+      .map((cell) => `${cell.laserStartTime} s → ${fmtPct(cell.reachedWarningRatePct)}`)
+      .join(', ');
+
+    const medianFirst = first.roundLength?.medianSeconds ?? null;
+    const medianLast = last.roundLength?.medianSeconds ?? null;
+    const roundNote =
+      medianFirst === null || medianLast === null
+        ? ''
+        : ` Median round over the same span: ${fmtSeconds(medianFirst)} s → ${fmtSeconds(medianLast)} s.`;
+
+    const verdict = saturated
+      ? 'Already at the ceiling at the shipping value, so this arm says nothing about the warning rate here — read the match wall-clock column instead.'
+      : rising
+        ? `**Still climbing at ${last.laserStartTime} s** — the lever does not turn over anywhere in the measured range.`
+        : `Turns over inside the range: the rate stops climbing before ${last.laserStartTime} s.`;
+
+    lines.push(`- **${pairing}:** ${trail}. ${verdict}${roundNote}`);
+  }
+  return lines.join('\n');
+}
+
+/**
  * @param {ReconciliationRow} row
  * @returns {string}
  */
@@ -823,11 +877,24 @@ Every cell: ${meta.seedsPerCell} seeds, Best-of-3, power-ups at the match-setup 
 \`RoundRecord.reachedLaserPhase\` — the beams left \`PARKED\` during the round — and "reached inset ≥ ${CLIMAX_INSET}"
 is \`maxLaserInset >= ${CLIMAX_INSET}\`, a third of the way in, where the board is visibly closing rather than
 merely lit. Match times are whole matches including countdown, crash slow-mo and scoreboard. Rows marked
-*(extension: earlier start)* are the two cells beyond the ticket's grid, for the reason given above; read the
-ticket's own nine rows as the answer to what it asked, and those two as what the tenth question would have
-been.
+*(extension: earlier start)* are the ${EARLIER_LASER_START_TIMES.length} cells beyond the ticket's grid, for
+the reason given above; read the ticket's own nine rows as the answer to what it asked, and those as the
+question it did not ask.
 
 ${perPairing}
+## What the earlier-start arm shows
+
+KI-04-03 extended \`laserStartTime\` to ${listOf(EARLIER_LASER_START_TIMES)} s to find where the lever turns
+over. Reading the arm back, at the shipping round length:
+
+${earlierStartReading(cells)}
+
+Two things follow, and the second matters more than the first. **The climax fraction is bought without
+lengthening the round** — the median round barely moves across the whole arm, because \`laserStartTime\` changes
+*when* the arena starts closing rather than how long the round lasts. And a lever still climbing at the top of
+its measured range has not been bounded: if a value beyond the largest cell here is wanted, it needs measuring,
+not extrapolating.
+
 ## Machine-readable data
 
 The exact numbers above, one object per cell, plus the reconciliation rows. Everything here is a pure function
