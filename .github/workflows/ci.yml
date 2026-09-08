@@ -30,8 +30,8 @@ jobs:
     name: lint
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
         with:
           node-version: ${{ env.NODE_VERSION }}
           cache: npm
@@ -42,8 +42,8 @@ jobs:
     name: typecheck
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
         with:
           node-version: ${{ env.NODE_VERSION }}
           cache: npm
@@ -58,8 +58,8 @@ jobs:
     # — vitest exits non-zero on a missed threshold and the step below is a plain `run:` (no pipe,
     # no continue-on-error), so that failure fails this job for real.
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
         with:
           node-version: ${{ env.NODE_VERSION }}
           cache: npm
@@ -84,7 +84,7 @@ jobs:
       # `if: always()` so a red run (KS-01-04 AC1) still uploads the coverage report that explains
       # it — coverage/ is written by vitest.config.js's v8 provider before the process exits either
       # way, it is only *skipped* if the step above never got to run npm's own script at all.
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         if: always()
         with:
           name: coverage
@@ -95,14 +95,14 @@ jobs:
     name: build
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
         with:
           node-version: ${{ env.NODE_VERSION }}
           cache: npm
       - run: npm ci
       - run: npm run build
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: dist
           path: dist/
@@ -115,8 +115,8 @@ jobs:
     name: browser
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
         with:
           node-version: ${{ env.NODE_VERSION }}
           cache: npm
@@ -134,7 +134,7 @@ jobs:
       # @playwright/test version (bumping the dependency invalidates the cache automatically) means
       # a cache hit skips the download; `--with-deps` still installs the OS packages Chromium needs
       # to run headless on the runner.
-      - uses: actions/cache@v4
+      - uses: actions/cache@v6
         id: playwright-cache
         with:
           path: ~/.cache/ms-playwright
@@ -194,7 +194,7 @@ jobs:
 
       # KS-01-04 AC3: downloadable on failure. `test-results/` carries the traces
       # (`trace: 'retain-on-failure'` in playwright.config.js) and any visual diff images.
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         if: failure()
         with:
           name: playwright-report
@@ -236,8 +236,8 @@ jobs:
     name: perf
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
         with:
           node-version: ${{ env.NODE_VERSION }}
           cache: npm
@@ -250,7 +250,7 @@ jobs:
           echo "version=$version" >> "$GITHUB_OUTPUT"
 
       # Same cache key shape as `browser` and `agent-playtest.yml`, so these three warm one another's binary.
-      - uses: actions/cache@v4
+      - uses: actions/cache@v6
         with:
           path: ~/.cache/ms-playwright
           key: playwright-chromium-${{ runner.os }}-${{ steps.playwright-version.outputs.version }}
@@ -276,7 +276,7 @@ jobs:
           PLAYWRIGHT_HTML_REPORT: playwright-report/perf
         run: npm run test:perf:drawcalls -- --reporter=github,html
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         if: failure()
         with:
           name: playwright-report-perf
@@ -300,8 +300,8 @@ jobs:
     name: supply-chain
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
         with:
           node-version: ${{ env.NODE_VERSION }}
           cache: npm
@@ -374,7 +374,7 @@ jobs:
       # Uploaded on every run, not only `main`: AC3 asks for it on every `main` build, and having the same
       # artifact on the pull request is what lets a reviewer diff what a change does to the dependency set
       # before it becomes a `main` build.
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: sbom
           path: sbom.cyclonedx.json
