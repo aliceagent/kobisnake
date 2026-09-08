@@ -44,15 +44,18 @@ test.describe('KI-15-02 colour-safe pairing', () => {
     await expect(note).toBeHidden();
 
     // Real keyboard navigation, exactly as a player would use it: down to PLAYER 2 COLOUR (MATCH LENGTH ->
-    // POWER-UPS -> MUSIC -> PLAYER 1 COLOUR -> PLAYER 2 COLOUR), then cycle it. With `ownedColors` widened to
-    // `red, blue, green`, blue's next owned colour is green — `red`/`green` is KI-15-01's own recorded 9.88.
+    // POWER-UPS -> MUSIC -> PLAYER 1 (KI-12-04's own HUMAN/CPU row) -> PLAYER 1 COLOUR -> PLAYER 2 (KI-12-04's
+    // row) -> PLAYER 2 COLOUR), then cycle it. With `ownedColors` widened to `red, blue, green`, blue's next
+    // owned colour is green — `red`/`green` is KI-15-01's own recorded 9.88.
+    await page.keyboard.press('ArrowDown');
+    await page.keyboard.press('ArrowDown');
     await page.keyboard.press('ArrowDown');
     await page.keyboard.press('ArrowDown');
     await page.keyboard.press('ArrowDown');
     await page.keyboard.press('ArrowDown');
     await page.keyboard.press('ArrowRight');
 
-    await expect(page.locator('.menu-item-value').nth(4)).toHaveText('GREEN');
+    await expect(page.locator('.menu-item-value').nth(6)).toHaveText('GREEN');
     await expect(note).toBeVisible();
     // Structural, not the sentence: the note names the computed alternative — the only owned colour (`blue`)
     // that still clears the check against `red` — as a `data-` attribute.

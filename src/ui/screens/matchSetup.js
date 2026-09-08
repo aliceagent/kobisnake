@@ -1,5 +1,6 @@
 // @ts-check
 import { SETTINGS } from '../../core/settings.js';
+import { LEVELS } from '../../game/bots/levels.js';
 import { STATES } from '../../game/gameStateMachine.js';
 import { snakeColorHex } from '../../render/materials.js';
 import { MIN_COLOUR_DIFFERENCE, worstCaseColourDifference } from '../../render/colourVision.js';
@@ -7,8 +8,10 @@ import { createFocusModel } from '../focus.js';
 
 /**
  * The match setup screen (`DESIGN-DECISIONS §3` "Match setup (GDD image 15)", ticket KS-05-04). Grey-box
- * only: six rows — MATCH LENGTH, POWER-UPS, MUSIC, PLAYER 1 colour, PLAYER 2 colour, START MATCH — built once
- * on the shared focus model (`../focus.js`) and kept live across re-renders by reading the *current* props out
+ * only: eight rows — MATCH LENGTH, POWER-UPS, MUSIC, PLAYER 1 (kind), PLAYER 1 colour, PLAYER 2 (kind),
+ * PLAYER 2 colour, START MATCH (the two "kind" rows are KI-12-04's own HUMAN/CPU switch, added right above
+ * the colour row of the player they belong to) — built once on the shared focus model (`../focus.js`) and
+ * kept live across re-renders by reading the *current* props out
  * of a shared mutable ref rather than rebuilding the row list every `render()` call: `session.js` calls
  * `show('MATCH_SETUP', {...})` again with a complete new `matchSettings` object every time any row changes
  * (the tech-lead contract, note A), and a rebuilt focus list would have no way to remember which row the
@@ -29,6 +32,19 @@ import { createFocusModel } from '../focus.js';
  * ticket's `Files:` list to change, so there is nothing live to read yet — Improvement 07 (a real binding
  * table) has not landed. See the PR description.
  *
+ * **KI-12-04 the switch.** Each player gains its own row, cycling `HUMAN` / `CPU EASY` / `CPU NORMAL`
+ * (`DESIGN-DECISIONS §1` row 27 — the row's approved *value* strings). {@link changePlayerKind} is the same
+ * pure-function-of-`(matchSettings, player, direction)` pattern {@link pickPlayerColor} already established
+ * on this file, cycling `matchSettings.playerKinds[player]` through {@link PLAYER_KIND_VALUES} — see that
+ * constant's own doc comment for why `HARD` exists in `levels.js` but is deliberately not one of the three
+ * values this row offers (#217's measurement, ruled on #210). The row's own left-hand label (`PLAYER 1` /
+ * `PLAYER 2`, placed directly above that player's existing `PLAYER 1 COLOUR` / `PLAYER 2 COLOUR` row) is
+ * **not** copy row 27 approves — flagged as a
+ * question on #210 in this ticket's own PR, the same way #184 is flagged for {@link COLOUR_NOTE_COPY} below;
+ * nothing in this file or its tests reads that label text, only the row's position, so a ruling can change it
+ * with no other edit. `controlsCardLabel` below is extended (not replaced) with a third, optional `isCpu`
+ * argument so its two existing two-argument call sites keep their exact behaviour.
+ *
  * **KI-15-02 colour-safe pairing note.** {@link checkColourSafety} below is the same pure-function pattern as
  * {@link pickPlayerColor}: given `(matchSettings, ownedColors)` it answers whether the two chosen colours
  * clear KI-15-01's `worstCaseColourDifference`/`MIN_COLOUR_DIFFERENCE` check (`colourVision.js`,
@@ -43,13 +59,23 @@ import { createFocusModel } from '../focus.js';
  */
 
 /** @typedef {import('../focus.js').MenuAction} MenuAction */
+/** @typedef {import('../../game/bots/levels.js').Level} Level */
 /** @typedef {{1: string, 2: string}} PlayerColors */
+/**
+ * `'HUMAN'` or one of `../../game/bots/levels.js`'s own {@link Level} ids — KI-12-04's own addition. Never a
+ * fourth string: `session.js`'s `policyForLevel` throws on anything else, and row 27 names exactly these four
+ * as the row's approved *values* (`'HUMAN'` displays bare; a {@link Level} displays as `CPU ${level}`).
+ * @typedef {'HUMAN' | Level} PlayerKind
+ */
+/** @typedef {{1: PlayerKind, 2: PlayerKind}} PlayerKinds */
 /**
  * @typedef {object} MatchSettings
  * @property {number} bestOf
  * @property {boolean} powerUpsEnabled
  * @property {string} musicTrack
  * @property {PlayerColors} colors
+ * @property {PlayerKinds} playerKinds - KI-12-04: `{1: 'HUMAN', 2: 'HUMAN'}` is the shipping default
+ *   (`DESIGN-DECISIONS §1` row 27, AC1).
  */
 
 /**
@@ -157,6 +183,66 @@ export function pickPlayerColor(matchSettings, player, ownedColors, direction) {
 }
 
 /**
+ * The row's approved cycle order (`DESIGN-DECISIONS §1` row 27): `HUMAN` first (the shipping default), then
+ * the CPU levels this row actually **offers** — `EASY` and `NORMAL` only.
+ *
+ * **`HARD` is deliberately absent, on purpose, permanently — do not "tidy" this back into
+ * `['HUMAN', ...Object.values(LEVELS)]`.** `HARD` still exists and is fully supported in `levels.js` (it is
+ * exported from `LEVELS`, `policyForLevel('HARD')` still returns its policy, and nothing downstream of this
+ * row — {@link changePlayerKind}, `session.js`'s `syncCpuPlayersFromKinds`/`policyForLevel` — rejects it; a
+ * caller that hands `'HARD'` straight to `session.js` (a test, `levels.js`'s own consumers) still works). This
+ * is only about what a *player* is offered to choose. KI-12-03 measured the redefined `HARD` (survivor's
+ * rules plus eating when it is safe) at **+3.1pp against `NORMAL`, 95% CI ±6.3pp, p = 0.32, n = 1000**
+ * (`docs/qa/playtests/cpu-levels.md`, #217) — indistinguishable from zero, not an opponent a player would
+ * feel as stronger. Design-lead ruling on #210: "Two honest levels beat three with one that lies." The gap
+ * between the levels `levels.js` *defines* and the levels this row *offers* is the point of this constant,
+ * not an oversight for a later reader to close.
+ *
+ * `LEVELS.EASY`/`LEVELS.NORMAL` rather than the bare string literals `'EASY'`/`'NORMAL'`, so the two values
+ * this row does offer still can't drift from `levels.js`'s own spelling of them.
+ *
+ * @type {readonly PlayerKind[]}
+ */
+export const PLAYER_KIND_VALUES = Object.freeze(
+  /** @type {PlayerKind[]} */ (['HUMAN', LEVELS.EASY, LEVELS.NORMAL]),
+);
+
+/**
+ * KI-12-04's own row: cycles `player`'s kind through {@link PLAYER_KIND_VALUES} — `HUMAN`, then the two
+ * offered CPU levels, wrapping around. Independent of {@link pickPlayerColor}: a CPU still owns a colour (its
+ * snake still needs one to render), so cycling a player's kind never touches `matchSettings.colors`.
+ *
+ * @param {MatchSettings} matchSettings
+ * @param {1 | 2} player
+ * @param {1 | -1} direction
+ * @returns {MatchSettings}
+ */
+export function changePlayerKind(matchSettings, player, direction) {
+  return {
+    ...matchSettings,
+    playerKinds: {
+      ...matchSettings.playerKinds,
+      [player]: cycleValue(PLAYER_KIND_VALUES, matchSettings.playerKinds[player], direction),
+    },
+  };
+}
+
+/**
+ * KI-12-04's row label, **provisional, not approved copy** — see this module's own doc comment above for why
+ * (row 27 approves this row's *value*, `HUMAN`/`CPU EASY`/`CPU NORMAL`/`CPU HARD`, not its left-hand label).
+ * Proposed on issue #210 (this ticket's own kick-off comment there), the same way #184's
+ * {@link COLOUR_NOTE_COPY} is proposed below; ruled on by the design lead the same way. The minimal extension
+ * of this screen's own existing convention (`PLAYER 1 COLOUR`, and the controls card's `PLAYER 1 · RED —
+ * ...`), so this is the one place that ruling needs to land.
+ *
+ * @param {1 | 2} player
+ * @returns {string}
+ */
+function playerKindRowLabel(player) {
+  return `PLAYER ${player}`;
+}
+
+/**
  * KI-15-02: the colour-pairing note's two sentences. **Provisional, not approved copy** — see this module's
  * own doc comment above for why. Proposed on issue #184 (this ticket's kick-off comment there); ruled on by
  * the design lead the same way #150 and #182's strings were. `DESIGN-DECISIONS §3` gets an entry the moment
@@ -229,17 +315,36 @@ function musicLabel(track) {
 }
 
 /**
+ * KI-12-04: the row's own display text for one player's kind — `'HUMAN'` bare, or `CPU ${level}` for the
+ * three CPU levels. These four strings, character for character, are `DESIGN-DECISIONS §1` row 27's
+ * approved copy; nothing else may be returned here (`kind` is always a {@link PlayerKind}, never a fourth
+ * value — see that type's own doc comment).
+ *
+ * @param {PlayerKind} kind
+ * @returns {string}
+ */
+function playerKindLabel(kind) {
+  return kind === 'HUMAN' ? 'HUMAN' : `CPU ${kind}`;
+}
+
+/**
  * The controls-card copy for one player (`DESIGN-DECISIONS §3`, approved verbatim at the shipping defaults:
  * `controlsCardLabel(1, 'red')` === `'PLAYER 1 · RED — W A S D'`, `controlsCardLabel(2, 'blue')` ===
  * `'PLAYER 2 · BLUE — ARROW KEYS'`). `colorName` is always the *live* colour word — see the module doc
  * comment for why a literal would go stale on this particular screen.
  *
+ * **KI-12-04:** `isCpu` swaps the key list for the literal `'CPU'` (`DESIGN-DECISIONS` row 27's own wording,
+ * quoted in this ticket's spec: `The controls card ... shows "CPU" instead of keys for a computer player.`).
+ * Optional and defaulting to `false` so both of this function's pre-existing two-argument call sites
+ * (`tests/unit/ui/matchSetup.test.js`, `tests/e2e/controls-card.spec.js`) keep their exact behaviour.
+ *
  * @param {1 | 2} player
  * @param {string} colorName
+ * @param {boolean} [isCpu]
  * @returns {string}
  */
-export function controlsCardLabel(player, colorName) {
-  const keys = player === 1 ? 'W A S D' : 'ARROW KEYS';
+export function controlsCardLabel(player, colorName, isCpu = false) {
+  const keys = isCpu ? 'CPU' : player === 1 ? 'W A S D' : 'ARROW KEYS';
   return `PLAYER ${player} · ${colorName.toUpperCase()} — ${keys}`;
 }
 
@@ -283,6 +388,10 @@ export function createMatchSetupScreen(root) {
       powerUpsEnabled: true,
       musicTrack: MUSIC_TRACKS[0],
       colors: { 1: 'red', 2: 'blue' },
+      // KI-12-04 (`DESIGN-DECISIONS §1` row 27, AC1): HUMAN/HUMAN before `session.js` ever hands this screen
+      // a real `matchSettings` — the same "harmless placeholder" role this object's other fields already
+      // play (`session.js`'s own `defaultMatchSettings` is the one a real session actually starts from).
+      playerKinds: { 1: 'HUMAN', 2: 'HUMAN' },
     },
     ownedColors: ['red', 'blue'],
     onChange: () => {},
@@ -310,7 +419,13 @@ export function createMatchSetupScreen(root) {
   const matchLength = buildRow('MATCH LENGTH');
   const powerUps = buildRow('POWER-UPS');
   const music = buildRow('MUSIC');
+  // KI-12-04: the row label itself (as opposed to its HUMAN/CPU EASY/CPU NORMAL/CPU HARD *value*, which row
+  // 27 approves verbatim) is not approved copy — flagged as a question on #210 in this ticket's own PR. `
+  // playerKindRowLabel` is the one place that ruling needs to land, the same one-constant seam
+  // `COLOUR_NOTE_COPY` below already uses for its own unruled sentence.
+  const p1Kind = buildRow(playerKindRowLabel(1));
   const p1Color = buildRow('PLAYER 1 COLOUR');
+  const p2Kind = buildRow(playerKindRowLabel(2));
   const p2Color = buildRow('PLAYER 2 COLOUR');
 
   // KI-15-02: the colour-safety note. Presentational only, like the KI-10-02 controls card above — no
@@ -334,7 +449,16 @@ export function createMatchSetupScreen(root) {
   container.appendChild(panel);
   root.appendChild(container);
 
-  const rows = [matchLength.row, powerUps.row, music.row, p1Color.row, p2Color.row, startRow];
+  const rows = [
+    matchLength.row,
+    powerUps.row,
+    music.row,
+    p1Kind.row,
+    p1Color.row,
+    p2Kind.row,
+    p2Color.row,
+    startRow,
+  ];
 
   // Built once, never rebuilt: each callback reads `props` live at call time, so a re-render (a fresh
   // `matchSettings` object from `session.js`) never has to rebuild the focus list or lose the cursor.
@@ -343,10 +467,12 @@ export function createMatchSetupScreen(root) {
       { onChange: (dir) => props.onChange(changeMatchLength(props.matchSettings, dir)) },
       { onChange: () => props.onChange(togglePowerUps(props.matchSettings)) },
       { onChange: (dir) => props.onChange(changeMusicTrack(props.matchSettings, dir)) },
+      { onChange: (dir) => props.onChange(changePlayerKind(props.matchSettings, 1, dir)) },
       {
         onChange: (dir) =>
           props.onChange(pickPlayerColor(props.matchSettings, 1, props.ownedColors, dir)),
       },
+      { onChange: (dir) => props.onChange(changePlayerKind(props.matchSettings, 2, dir)) },
       {
         onChange: (dir) =>
           props.onChange(pickPlayerColor(props.matchSettings, 2, props.ownedColors, dir)),
@@ -381,9 +507,10 @@ export function createMatchSetupScreen(root) {
    * @param {HTMLElement} el
    * @param {1 | 2} player
    * @param {string} colorName
+   * @param {boolean} isCpu
    */
-  function renderControlsRow(el, player, colorName) {
-    el.textContent = controlsCardLabel(player, colorName);
+  function renderControlsRow(el, player, colorName, isCpu) {
+    el.textContent = controlsCardLabel(player, colorName, isCpu);
     el.className = `controls-card-row controls-card-row--${colorName}`;
   }
 
@@ -413,13 +540,17 @@ export function createMatchSetupScreen(root) {
 
   function renderValues() {
     const { matchSettings } = props;
+    const p1IsCpu = matchSettings.playerKinds[1] !== 'HUMAN';
+    const p2IsCpu = matchSettings.playerKinds[2] !== 'HUMAN';
     matchLength.value.textContent = `BEST OF ${matchSettings.bestOf}`;
     powerUps.value.textContent = matchSettings.powerUpsEnabled ? 'ON' : 'OFF';
     music.value.textContent = musicLabel(matchSettings.musicTrack);
+    p1Kind.value.textContent = playerKindLabel(matchSettings.playerKinds[1]);
+    p2Kind.value.textContent = playerKindLabel(matchSettings.playerKinds[2]);
     p1Color.value.textContent = capitalize(matchSettings.colors[1]).toUpperCase();
     p2Color.value.textContent = capitalize(matchSettings.colors[2]).toUpperCase();
-    renderControlsRow(controlsP1Row, 1, matchSettings.colors[1]);
-    renderControlsRow(controlsP2Row, 2, matchSettings.colors[2]);
+    renderControlsRow(controlsP1Row, 1, matchSettings.colors[1], p1IsCpu);
+    renderControlsRow(controlsP2Row, 2, matchSettings.colors[2], p2IsCpu);
     renderColourNote();
   }
 

@@ -5,6 +5,7 @@ import { createMatch } from '../core/match.js';
 import { createRng } from '../core/rng.js';
 import { RoundSimulation } from '../core/round.js';
 import { SETTINGS, withOverrides } from '../core/settings.js';
+import { policyForLevel } from './bots/levels.js';
 import { createCpuPlayer } from './cpuPlayer.js';
 import { createGameStateMachine, GAME_EVENTS, STATES } from './gameStateMachine.js';
 import { createInput } from './input.js';
@@ -105,10 +106,12 @@ import { createReplayPlayer } from './replayPlayer.js';
  * ## KI-12-02: a CPU player is a seam, not a second input path
  *
  * `cpuPlayers` is a nullable collaborator *per player number*, the same idiom `inputLatency` and
- * `playtestPrompt` already use above: `[null, null]` on every session until {@link setCpuPlayer} is called,
- * which is never, outside a test, until KI-12-04 wires the match-setup switch to it — so a normal HUMAN/HUMAN
- * load allocates nothing here and pays exactly one boolean check (`hasCpuPlayer`) per frame, in
- * {@link driveCpuPlayers}, which is `runUpdate`'s very first line.
+ * `playtestPrompt` already use above: `[null, null]` on every session until {@link setCpuPlayer} is called —
+ * directly (a test, or `__kobi`), or (KI-12-04) indirectly through {@link syncCpuPlayersFromKinds} whenever
+ * `matchSettings.playerKinds` actually changes, from the match-setup row's own `onChange` or a `startMatch`
+ * override. A normal HUMAN/HUMAN load touches neither path at all, so it still allocates nothing here and
+ * still pays exactly one boolean check (`hasCpuPlayer`) per frame, in {@link driveCpuPlayers}, which is
+ * `runUpdate`'s very first line.
  *
  * `driveCpuPlayers` is a peer of `handleDirection`'s own keyboard callers, not a bypass of it: it asks each
  * configured `CpuPlayer` (`cpuPlayer.js`) to `decide()` from the same `sim.getState()` snapshot the HUD
@@ -312,6 +315,18 @@ import { createReplayPlayer } from './replayPlayer.js';
  *   modules it will select — `src/audio/tracks/track1.js` … `track3.js` — and Sprint 12 should not have to
  *   invent a mapping from 1/2/3 onto them.
  * @property {{1: string, 2: string}} colors - a colour name per player, from `SETTINGS.colors`
+ * @property {{1: PlayerKind, 2: PlayerKind}} playerKinds - KI-12-04: `'HUMAN'` or a CPU
+ *   {@link import('./bots/levels.js').Level} per player. `{1: 'HUMAN', 2: 'HUMAN'}` is the shipping default
+ *   (`DESIGN-DECISIONS §1` row 27, AC1) — {@link defaultMatchSettings} below.
+ */
+
+/**
+ * `'HUMAN'` or one of `bots/levels.js`'s own {@link import('./bots/levels.js').Level} ids. Mirrors
+ * `matchSetup.js`'s own `PlayerKind` typedef exactly — this file must not import that one (`src/game/` may
+ * not import `src/ui/`, `ARCHITECTURE §3`), so the two are declared independently and kept in sync by hand,
+ * the same way `MatchSettings` itself is already duplicated (with different property sets) across the two
+ * files rather than shared.
+ * @typedef {'HUMAN' | import('./bots/levels.js').Level} PlayerKind
  */
 
 /**
@@ -476,6 +491,11 @@ function defaultMatchSettings(settings) {
     // owns, not a catalogue — the setup screen owns the catalogue and cycles through it.
     musicTrack: 'track1',
     colors: { 1: 'red', 2: 'blue' },
+    // KI-12-04 (`DESIGN-DECISIONS §1` row 27, AC1): "defaulting to HUMAN for both". A match started without
+    // touching the row must be byte-identical to today's — `startMatchState`'s `playersForMatch()` reads
+    // this to decide `isCpu`, and every value here is `'HUMAN'` until the setup screen's own row (or a
+    // caller's explicit override) says otherwise.
+    playerKinds: { 1: 'HUMAN', 2: 'HUMAN' },
   };
 }
 
@@ -590,6 +610,42 @@ export function createSession({
    * property reads when there is nothing to drive.
    */
   let hasCpuPlayer = false;
+
+  /**
+   * KI-12-04: the one place {@link cpuPlayers}/{@link hasCpuPlayer} are actually written, whether the caller
+   * is the public `setCpuPlayer` (a raw policy, from a test or `__kobi` — KI-12-02's own seam) or
+   * {@link syncCpuPlayersFromKinds} below (a `PlayerKind`, translated through `policyForLevel`). One function
+   * so both paths agree on exactly what "configuring player N" means.
+   *
+   * @param {PlayerNumber} playerNumber
+   * @param {import('./bots/policy.js').Policy | null} policy
+   */
+  function assignCpuPlayer(playerNumber, policy) {
+    cpuPlayers[playerNumber - 1] =
+      policy === null ? null : createCpuPlayer({ playerNumber, policy });
+    hasCpuPlayer = cpuPlayers[0] !== null || cpuPlayers[1] !== null;
+  }
+
+  /**
+   * KI-12-04: reconciles {@link cpuPlayers} with a `matchSettings.playerKinds` change, one player number at a
+   * time, and only for a player number whose kind actually changed — never the other. That is what keeps this
+   * function from fighting a manually configured `setCpuPlayer` call: `cpu.spec.js` calls `setCpuPlayer`
+   * directly and then `startMatch()` with no `playerKinds` override at all, so this function is never even
+   * invoked on that path (see {@link startMatch}'s own `overrides.playerKinds !== undefined` guard below), and
+   * the manual configuration survives untouched. `previousKinds`/`nextKinds` are compared by player number
+   * rather than by object identity, since a fresh `matchSettings` object arrives on every change (this file's
+   * own "one authority on what the match settings are" contract — `showMatchSetup`'s `onChange`, right below).
+   *
+   * @param {{1: PlayerKind, 2: PlayerKind}} previousKinds
+   * @param {{1: PlayerKind, 2: PlayerKind}} nextKinds
+   */
+  function syncCpuPlayersFromKinds(previousKinds, nextKinds) {
+    for (const playerNumber of /** @type {PlayerNumber[]} */ ([1, 2])) {
+      const kind = nextKinds[playerNumber];
+      if (kind === previousKinds[playerNumber]) continue;
+      assignCpuPlayer(playerNumber, kind === 'HUMAN' ? null : policyForLevel(kind));
+    }
+  }
 
   /**
    * KI-11-02's `RoundFacts.laserPhaseSeen`: true once any round has actually armed its lasers, for the whole
@@ -710,6 +766,10 @@ export function createSession({
       ownedColors,
       /** @param {MatchSettings} next */
       onChange(next) {
+        // KI-12-04: the switch's own wiring — reconciled *before* `matchSettings` is overwritten, since
+        // `syncCpuPlayersFromKinds` needs the old value to know which player number (if any) actually
+        // changed kind.
+        syncCpuPlayersFromKinds(matchSettings.playerKinds, next.playerKinds);
         matchSettings = next;
         // Re-rendered from the session's copy rather than the screen's, so there is exactly one authority on
         // what the match settings are and the screen cannot drift from it.
@@ -897,12 +957,22 @@ export function createSession({
     restartRequested = false;
   }
 
-  /** The two players, carrying the colours chosen on the setup screen into the simulation's snapshot. */
+  /**
+   * The two players, carrying the colours chosen on the setup screen into the simulation's snapshot, and
+   * (KI-12-04) whether each is a computer — read by `createMatch` (`core/match.js`) to decide `rewardKeys`
+   * (`§1` row 27: "keys are awarded only when at least one human played"). `RoundSimulation` itself only ever
+   * reads `id`/`color` off a player (`round.js`'s own `this.players = players.map(...)`), so `isCpu` costs it
+   * nothing — it exists for `createMatch` alone.
+   */
   function playersForMatch() {
-    return PLAYER_IDS.map((id, index) => ({
-      id,
-      color: matchSettings.colors[/** @type {PlayerNumber} */ (index + 1)],
-    }));
+    return PLAYER_IDS.map((id, index) => {
+      const playerNumber = /** @type {PlayerNumber} */ (index + 1);
+      return {
+        id,
+        color: matchSettings.colors[playerNumber],
+        isCpu: matchSettings.playerKinds[playerNumber] !== 'HUMAN',
+      };
+    });
   }
 
   /**
@@ -1601,7 +1671,11 @@ export function createSession({
     },
     /** The match settings the setup screen edits — a copy, so a caller cannot edit them behind the screen. */
     getMatchSettings() {
-      return { ...matchSettings, colors: { ...matchSettings.colors } };
+      return {
+        ...matchSettings,
+        colors: { ...matchSettings.colors },
+        playerKinds: { ...matchSettings.playerKinds },
+      };
     },
     /**
      * The seeds this match has used and the match seed they derive from (`AC4`, and the ticket's "round seeds
@@ -1673,6 +1747,15 @@ export function createSession({
       }
       machine.dispatch(GAME_EVENTS.SELECT_2P);
       if (overrides !== undefined) {
+        // KI-12-04: an `overrides.playerKinds` here bypasses the setup screen's own row entirely (this is
+        // the shortcut `tests/e2e`/`tests/visual` use to reach a CPU match in one call), so it needs the same
+        // reconciliation `showMatchSetup`'s `onChange` gives a real row change. Guarded on the key being
+        // present at all — `overrides` with no `playerKinds` (every pre-existing caller, and KI-12-02's own
+        // `cpu.spec.js`, which configures a CPU with `setCpuPlayer` and then calls `startMatch()` bare) must
+        // leave a manually configured `cpuPlayers` completely alone.
+        if (overrides.playerKinds !== undefined) {
+          syncCpuPlayersFromKinds(matchSettings.playerKinds, overrides.playerKinds);
+        }
         matchSettings = { ...matchSettings, ...overrides };
         showMatchSetup();
       }
@@ -1717,16 +1800,16 @@ export function createSession({
      * KI-12-02's seam: makes `playerNumber` (1 or 2) a CPU driven by `policy`, or hands it back to a human
      * when `policy` is `null` — the default for both players on every session
      * (`DESIGN-DECISIONS §1` row 27: "defaulting to HUMAN for both"). This file knows nothing beyond "does
-     * player N have a policy function": KI-12-03 supplies the three named levels and KI-12-04 wires this to
-     * the match-setup switch, and neither needs this file to change.
+     * player N have a policy function": KI-12-03 supplies the three named levels behind `policyForLevel`, and
+     * KI-12-04's own {@link syncCpuPlayersFromKinds} is the match-setup switch's translation from a
+     * `PlayerKind` down to this same call — a test or `__kobi` may still call this directly with a raw
+     * policy, bypassing `matchSettings` entirely, exactly as `tests/e2e/cpu.spec.js` does.
      *
      * @param {PlayerNumber} playerNumber
      * @param {import('./bots/policy.js').Policy | null} policy
      */
     setCpuPlayer(playerNumber, policy) {
-      cpuPlayers[playerNumber - 1] =
-        policy === null ? null : createCpuPlayer({ playerNumber, policy });
-      hasCpuPlayer = cpuPlayers[0] !== null || cpuPlayers[1] !== null;
+      assignCpuPlayer(playerNumber, policy);
     },
     /**
      * The current round's replay, in exactly the shape `tests/sim/replays/*.json` fixtures use (KS-07-01

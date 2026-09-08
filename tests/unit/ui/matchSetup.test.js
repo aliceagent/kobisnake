@@ -1,6 +1,7 @@
 // @ts-check
 import { describe, expect, it } from 'vitest';
 import { SETTINGS } from '../../../src/core/settings.js';
+import { LEVELS } from '../../../src/game/bots/levels.js';
 import {
   MIN_COLOUR_DIFFERENCE,
   worstCaseColourDifference,
@@ -8,8 +9,10 @@ import {
 import { snakeColorHex } from '../../../src/render/materials.js';
 import {
   MUSIC_TRACKS,
+  PLAYER_KIND_VALUES,
   changeMatchLength,
   changeMusicTrack,
+  changePlayerKind,
   checkColourSafety,
   controlsCardLabel,
   pickPlayerColor,
@@ -30,6 +33,7 @@ const BASE_SETTINGS = {
   powerUpsEnabled: true,
   musicTrack: MUSIC_TRACKS[0],
   colors: { 1: 'red', 2: 'blue' },
+  playerKinds: { 1: 'HUMAN', 2: 'HUMAN' },
 };
 
 describe('pickPlayerColor — KS-05-04 AC3 colour swap rule', () => {
@@ -116,6 +120,74 @@ describe('changeMusicTrack', () => {
 });
 
 /**
+ * KI-12-04 · `changePlayerKind` — the switch itself. `DESIGN-DECISIONS §1` row 27 fixes the row's cycle
+ * order (`HUMAN` first, then the offered CPU levels) and its value strings. Only `HUMAN`/`CPU EASY`/
+ * `CPU NORMAL` actually ship on the row — `HARD` is defined in `levels.js` and measured (#217), but the
+ * design lead ruled it off the menu (#210, "Two honest levels beat three with one that lies") because the
+ * redefined level's own +3.1pp margin against `NORMAL` (95% CI ±6.3pp, p = 0.32, n = 1000) is
+ * indistinguishable from zero. `PLAYER_KIND_VALUES` (imported from `matchSetup.js`, not re-derived here) is
+ * the one place that offered list is written; see its own doc comment for why it may never be "tidied" back
+ * into a derivation from the full `LEVELS` catalogue.
+ */
+describe('changePlayerKind — KI-12-04 the switch', () => {
+  // The authoritative source, imported rather than re-derived — a re-assertion of `PLAYER_KIND_VALUES`
+  // itself, not a second guess at what it should be. Every other test in this block cycles through *this*,
+  // so a change to the real constant is what every one of them is actually proving correct.
+  const CYCLE = PLAYER_KIND_VALUES;
+
+  it('KI-12-04 AC1: defaults to HUMAN for both players', () => {
+    expect(BASE_SETTINGS.playerKinds).toEqual({ 1: 'HUMAN', 2: 'HUMAN' });
+  });
+
+  it('KI-12-04: the offered cycle is exactly HUMAN, CPU EASY, CPU NORMAL — HARD is deliberately not on the menu', () => {
+    // Pins the exact list, not just its length: silently re-adding a fourth value (or reordering the three)
+    // fails this test immediately, which is the point (docs/qa/playtests/cpu-levels.md, #217, ruled on #210).
+    expect(PLAYER_KIND_VALUES).toEqual(['HUMAN', 'EASY', 'NORMAL']);
+    // HARD still exists in the catalogue levels.js owns — this is about what the row offers, not what
+    // levels.js supports (checked against the real export, not a second hardcoded 'HARD' string).
+    expect(LEVELS.HARD).toBe('HARD');
+    expect(PLAYER_KIND_VALUES).not.toContain(LEVELS.HARD);
+  });
+
+  it('cycles player 1 forward through HUMAN -> CPU EASY -> CPU NORMAL -> HUMAN, in that order', () => {
+    let settings = { ...BASE_SETTINGS, playerKinds: { 1: 'HUMAN', 2: 'HUMAN' } };
+    for (const expected of [...CYCLE.slice(1), CYCLE[0]]) {
+      settings = changePlayerKind(settings, 1, 1);
+      expect(settings.playerKinds[1]).toBe(expected);
+    }
+  });
+
+  it('cycles backward too', () => {
+    const settings = { ...BASE_SETTINGS, playerKinds: { 1: 'HUMAN', 2: 'HUMAN' } };
+    const prev = changePlayerKind(settings, 1, -1);
+    expect(prev.playerKinds[1]).toBe(CYCLE[CYCLE.length - 1]);
+  });
+
+  it('cycling player 2 never touches player 1, and vice versa', () => {
+    const settings = { ...BASE_SETTINGS, playerKinds: { 1: 'HUMAN', 2: 'HUMAN' } };
+    const next = changePlayerKind(settings, 2, 1);
+    expect(next.playerKinds).toEqual({ 1: 'HUMAN', 2: 'EASY' });
+
+    const other = changePlayerKind(settings, 1, 1);
+    expect(other.playerKinds).toEqual({ 1: 'EASY', 2: 'HUMAN' });
+  });
+
+  it('never touches colors, bestOf, powerUpsEnabled or musicTrack — a CPU still owns a colour', () => {
+    const next = changePlayerKind(BASE_SETTINGS, 1, 1);
+    expect(next.colors).toEqual(BASE_SETTINGS.colors);
+    expect(next.bestOf).toBe(BASE_SETTINGS.bestOf);
+    expect(next.powerUpsEnabled).toBe(BASE_SETTINGS.powerUpsEnabled);
+    expect(next.musicTrack).toBe(BASE_SETTINGS.musicTrack);
+  });
+
+  it('returns a complete new matchSettings object, not a partial patch', () => {
+    const next = changePlayerKind(BASE_SETTINGS, 1, 1);
+    expect(next).not.toBe(BASE_SETTINGS);
+    expect(next.playerKinds).not.toBe(BASE_SETTINGS.playerKinds);
+  });
+});
+
+/**
  * KI-10-02: the controls card (`DESIGN-DECISIONS §3` "Controls card on match setup"). The copy is approved
  * verbatim; the colour word must come from the *live* `matchSettings.colors`, never a hardcoded literal,
  * because this card sits on the very screen that changes those colours (§2.7's swap rule).
@@ -142,6 +214,16 @@ describe('controlsCardLabel — KI-10-02', () => {
   it("KI-10-02 AC1: names each player's own keys", () => {
     expect(controlsCardLabel(1, 'red')).toContain('W A S D');
     expect(controlsCardLabel(2, 'blue')).toContain('ARROW KEYS');
+  });
+
+  it('KI-12-04: a computer player reads "CPU" instead of a key list — the ticket spec, verbatim', () => {
+    expect(controlsCardLabel(1, 'red', true)).toBe('PLAYER 1 · RED — CPU');
+    expect(controlsCardLabel(2, 'blue', true)).toBe('PLAYER 2 · BLUE — CPU');
+  });
+
+  it('KI-12-04: `isCpu` defaults to false — every pre-existing two-argument call keeps its exact behaviour', () => {
+    expect(controlsCardLabel(1, 'red')).toBe(controlsCardLabel(1, 'red', false));
+    expect(controlsCardLabel(2, 'blue')).toBe(controlsCardLabel(2, 'blue', false));
   });
 });
 
