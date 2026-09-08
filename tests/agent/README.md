@@ -49,6 +49,7 @@ The suite fails on any of three things (KI-03-01 AC3), each reported with the **
 |---|---|
 | `driver.js` | Loads the built site at `?test=1&seed=N`, plays a whole match through `__kobi`, returns a plain result object. Also `failureReasons()`, the AC3 gate. |
 | `driver.test.js` | The driver's pure functions, in Node. Runs under `npm run test:unit`. |
+| `driver.spec.js` | The driver's **in-page** half — the claims about `runMatchInPage` that only playing a match can prove, and which `driver.test.js` structurally cannot reach. Added with the fix for [#291](https://github.com/aliceagent/kobisnake/issues/291). |
 | `playtest.spec.js` | The suite `npm run test:agent` runs — ten seeded Bo3 matches, greedy vs survivor. |
 | `policies/` | The play policies (KI-03-02): `greedy.js`, `survivor.js`, `idle.js`, unit-tested in `policies.test.js`. |
 | `policies.spec.js` | KI-03-02's own agent-level measurements — AC1's laser-phase rates, AC2's 0:30 survival rate, and the idle/F1 characterisation scenario. Not part of the ten-match run above. |
@@ -58,6 +59,39 @@ The suite fails on any of three things (KI-03-01 AC3), each reported with the **
 | `pacing.js` | `report.js`'s sibling for I04 (KI-04-01): aggregates a **swept** run into the shape of a round — round-length median and p90, the fraction reaching the laser warning, the fraction reaching each inset, timeout and draw rates, and whole-match wall clock — and renders `docs/qa/playtests/round-pacing.md`. Node-side and pure, like `report.js`. |
 | `pacing.spec.js` | Plays that sweep: `laserStartTime` × `roundDuration` through `withOverrides()`, three pairings, 150 seeded Best-of-3 matches per cell. Gated behind `KI_PACING=1`; run it with `npm run test:agent:pacing`. **Hours, not minutes** — see "Sweeping a setting" below. |
 | `pacing.test.js` | `pacing.js`'s pure functions against hand-built fixtures, plus the diff against the committed document's machine-readable block. Runs under `npm run test:unit`. |
+| `monkey.js` | The session fuzzer (KI-18-01, Improvement 18): a seeded action list, the in-page applier, and the Node-side judgement. See "The monkey" below. |
+| `monkey.spec.js` | KI-18-01's own suite — AC1 and AC2 in `npm run test:agent`, and the AC3 campaign behind `KI_MONKEY=1`. |
+
+## The monkey (Improvement 18)
+
+`monkey.js` fuzzes the game *around* the simulation: from a seed it generates a sequence drawn from every key
+the game listens to plus `blur`, `focus`, `visibilitychange` and `resize`, applies each through the same
+listener a person's action would reach, and after every one checks the invariants and asks whether the game
+can still get out of the state it is in. `tests/sim` has fuzzed the simulation since Sprint 02; nothing had
+ever fuzzed the state machine, the screens, the focus model or the tab lifecycle.
+
+```
+npm run test:agent                       # AC1 and AC2 — the harness's own proofs, seconds
+KI_MONKEY=1 npm run test:agent:monkey    # the campaign: 200 seeds × 500 actions
+KI_MONKEY=1 KI_MONKEY_SEEDS=20 npm run test:agent:monkey   # a pilot
+```
+
+Four things to know before touching it, each of which cost a measurement to learn:
+
+1. **The monkey is the only clock, and it replaces `requestAnimationFrame` to stay that way.** `main.js`
+   starts a real frame loop, and a run is several `page.evaluate` calls with idle wall time between them (a
+   `resize` has to be a `page.setViewportSize` on the Node side), so a live loop would advance the round by
+   however long a round trip took. The frame pump also buys the one thing that would otherwise be
+   unreachable: `loop.js`'s deferred auto-pause, which only fires on a frame `__kobi.advance` never produces.
+2. **A hidden tab is not advanced**, because `loop.js` gives one no frames. The seconds are counted, not
+   played, which is also what keeps the stuck check honest.
+3. **The stuck check counts simulated seconds** — never wall ones. Several agent sessions share this
+   container and a wall-clock check would report a loaded box as a hung game.
+4. **`STATES_THAT_RENDER_UNASKED` is a temporary list tied to [#317](https://github.com/aliceagent/kobisnake/issues/317).**
+   The monkey never asks for a render, so every state costs it 0.00 ms a frame — except `REPLAY`, where
+   `session.js` renders on every update, at 17–33 ms a frame under software WebGL. A run gets a small budget
+   of simulated time there and then stops paying for time to pass on that screen while carrying on with every
+   action. When #317 is fixed the list empties and nothing else changes.
 
 ## Sweeping a setting
 
