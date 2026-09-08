@@ -1,6 +1,7 @@
 // @ts-check
 import { expect, test } from '@playwright/test';
 import { DEFAULT_QUERY } from '../../playwright.config.js';
+import { REPLAY_COPY } from '../../src/ui/screens/replay.js';
 
 /**
  * KOBI Snake is offline by construction (CLAUDE.md "never" list: "the built site makes zero network requests
@@ -13,6 +14,14 @@ import { DEFAULT_QUERY } from '../../playwright.config.js';
  *  - so this file also asserts that not one request — at any point in the page's lifecycle — leaves the
  *    page's own origin, which is exactly what "no CDN, ever" means and is what an added `<script
  *    src="https://…">` violates immediately.
+ *
+ * **KI-05-03 AC2** adds a third check, below, that actually *drives* `src/ui/screens/replay.js`'s paste box
+ * and local-file input before asserting zero requests — not "the offline check still passes by luck" (that
+ * ticket's own tech-lead note), but a check that would fail the moment a `fetch`, a blob URL round trip, or
+ * any other request-shaped call landed in that file. Pasting rubbish, pasting a real replay, and choosing a
+ * real file off disk (`File.text()`, never an upload) are exactly the three things a player can do on that
+ * screen without a network, and this test does all three inside the zero-request window the two checks above
+ * already established the shape of.
  */
 test.describe('KS-01-03 offline', () => {
   test('KS-01-03 AC1: npm run test:e2e passes — zero network requests after load', async ({
@@ -54,6 +63,45 @@ test.describe('KS-01-03 offline', () => {
     await page.goto(DEFAULT_QUERY, { waitUntil: 'load' });
 
     expect(foreignRequests, `requests left ${ownOrigin}: ${foreignRequests.join(', ')}`).toEqual(
+      [],
+    );
+  });
+
+  test('KI-05-03 AC2: pasting, a bad paste, and choosing a local file on the REPLAY screen make zero requests', async ({
+    page,
+  }) => {
+    await page.goto(DEFAULT_QUERY, { waitUntil: 'load' });
+
+    /** @type {string[]} */
+    const requestsAfterLoad = [];
+    page.on('request', (request) => requestsAfterLoad.push(request.url()));
+
+    await page.evaluate(() => {
+      /** @type {any} */ (globalThis).__kobi.stateMachine.dispatch('SELECT_REPLAY');
+    });
+    await expect(page.locator('[data-screen="REPLAY"]')).toBeVisible();
+
+    // A bad paste (AC1's "readable error"), a real replay pasted as text, and a real file chosen straight
+    // off disk — the three ways this screen ever gets a replay, module doc: never `fetch`, never a blob URL.
+    await page.locator('[data-replay-paste]').fill('{not valid json');
+    await page
+      .locator('[data-screen="REPLAY"] .menu-item', { hasText: REPLAY_COPY.watchLabel })
+      .click();
+    await expect(page.locator('.replay-error')).toBeVisible();
+
+    await page
+      .locator('[data-replay-file-input]')
+      .setInputFiles('tests/sim/replays/no-input-round.json');
+    await expect(page.locator('.replay-player')).toBeVisible();
+
+    await page.evaluate(
+      () =>
+        new Promise((resolve) => {
+          requestAnimationFrame(() => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+        }),
+    );
+
+    expect(requestsAfterLoad, `requests fired after load: ${requestsAfterLoad.join(', ')}`).toEqual(
       [],
     );
   });

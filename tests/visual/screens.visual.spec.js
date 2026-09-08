@@ -1,7 +1,13 @@
 // @ts-check
+import { readFileSync } from 'node:fs';
 import { expect, test } from '@playwright/test';
 import { DEFAULT_QUERY } from '../../playwright.config.js';
 import { startMatchAndPauseInPage } from '../e2e/helpers.js';
+
+const NO_INPUT_ROUND = readFileSync(
+  new URL('../sim/replays/no-input-round.json', import.meta.url),
+  'utf8',
+);
 
 /**
  * KS-05-05: one visual baseline per screen (`ARCHITECTURE §8`'s six `data-screen` states), `?seed=1&reducedFx=1`
@@ -49,6 +55,16 @@ import { startMatchAndPauseInPage } from '../e2e/helpers.js';
  * scoreboard carrying the last-replay warning, and the match-over panel on a tie. Both are reached with the
  * same golden no-input `DRAW` the ROUND_OVER baseline above steers *away* from with `pressKey` — here neither
  * player is steered at all, repeated (unsteered) rounds in a row.
+ *
+ * KI-05-03 adds two more, for the REPLAY screen's own two views. Neither needs a freeze: dispatching
+ * `SELECT_REPLAY` directly on `__kobi.stateMachine` (rather than reaching it via the main menu) reaches
+ * REPLAY with the load view showing and nothing loaded, which — like MAIN_MENU/MATCH_SETUP/MATCH_OVER above
+ * — ticks nothing on its own (`session.js`'s `runUpdate` REPLAY case calls `advanceReplayInternal`, which is
+ * a documented no-op with no replay loaded); the player-view baseline loads a fixture and leaves it paused
+ * (a freshly loaded `replayPlayer` never auto-plays), so it is equally still. Per issue #209, a baseline
+ * alone is not proof either view renders — see the two `data-screen`/DOM assertions each test makes before
+ * its screenshot, and this ticket's own unit/e2e coverage for everything the pixel diff cannot see (a whole
+ * element quietly deleted still passes at `maxDiffPixelRatio 0.002`).
  */
 
 test.describe('KS-05-05 screen baselines', () => {
@@ -249,5 +265,44 @@ test.describe('KS-05-05 screen baselines', () => {
     expect(result.match.winner).toBeNull();
 
     await expect(page).toHaveScreenshot('screen-match-over-tie.png');
+  });
+
+  test('KI-05-03 AC: REPLAY screen (load view) matches its baseline', async ({ page }) => {
+    await page.goto(DEFAULT_QUERY);
+
+    const state = await page.evaluate(() => {
+      const kobi = /** @type {any} */ (globalThis).__kobi;
+      kobi.stateMachine.dispatch('SELECT_REPLAY');
+      return kobi.getState();
+    });
+    expect(state).toBe('REPLAY');
+    // #209: the pixel diff alone cannot prove the screen rendered — assert the DOM the baseline is a
+    // picture of, not just that a screenshot was taken.
+    await expect(page.locator('[data-screen="REPLAY"]')).toBeVisible();
+    await expect(page.locator('.replay-load')).toBeVisible();
+    await expect(page.locator('[data-replay-paste]')).toBeVisible();
+
+    await expect(page).toHaveScreenshot('screen-replay-load.png');
+  });
+
+  test('KI-05-03 AC: REPLAY screen (player view, loaded and paused) matches its baseline', async ({
+    page,
+  }) => {
+    await page.goto(DEFAULT_QUERY);
+
+    const state = await page.evaluate((replayText) => {
+      const kobi = /** @type {any} */ (globalThis).__kobi;
+      // Loaded directly through `__kobi.loadReplay` — the same seam `replay.spec.js` (KI-05-02) drives —
+      // rather than through the DOM, so this baseline is about the player view's own look, not a second
+      // proof that pasting works (`replay-screen.spec.js` already owns that).
+      kobi.loadReplay(replayText);
+      kobi.stateMachine.dispatch('SELECT_REPLAY');
+      return kobi.getState();
+    }, NO_INPUT_ROUND);
+    expect(state).toBe('REPLAY');
+    await expect(page.locator('.replay-player')).toBeVisible();
+    await expect(page.locator('[data-replay-readout]')).toHaveText(/TICK 0/);
+
+    await expect(page).toHaveScreenshot('screen-replay-loaded.png');
   });
 });

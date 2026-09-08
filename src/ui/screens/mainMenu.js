@@ -2,6 +2,7 @@
 import { GAME_EVENTS, STATES } from '../../game/gameStateMachine.js';
 import { createFocusModel } from '../focus.js';
 import { createHowToPlayPanel } from './howToPlayPanel.js';
+import { REPLAY_COPY } from './replay.js';
 
 /**
  * The main menu (`docs/reference/README.md` note 1: the GDD's item list is authoritative, not
@@ -34,6 +35,23 @@ import { createHowToPlayPanel } from './howToPlayPanel.js';
  * reason "1 PLAYER" has none: selecting it does not move the state machine at all — it opens
  * `howToPlayPanel.js`'s overlay locally, via the `isHowToPlay` marker below rather than an `event`. See that
  * panel module's own doc comment for why this is not a new `gameStateMachine.js` state.
+ *
+ * **KI-05-03 adds an eighth row, REPLAY, directly after HOW TO PLAY — a declared deviation from that
+ * ticket's own `Files:` list (approved in advance; see the PR description).** That ticket's `Files:` list
+ * names `src/ui/screens/replay.js`, `src/ui/ui.js`, `src/game/gameStateMachine.js` and `src/ui/styles.css`
+ * but not this file, which would leave the new REPLAY state and screen with no way for a player to reach
+ * them at all. Placement follows KI-10-03's own reasoning immediately above, applied to a second enabled row
+ * rather than a first: `1 PLAYER` is permanently disabled at the top and the locked group below holds the
+ * five `COMING SOON` rows, so a new *enabled* row belongs with `2 PLAYERS` and `HOW TO PLAY` — above that
+ * group, not inside it — and after HOW TO PLAY specifically because HOW TO PLAY explains the game a player
+ * is about to join and REPLAY is what a player reaches for only once they already have something to review,
+ * the same before/after ordering the two ideas have everywhere else this game talks about them (GDD,
+ * `DESIGN-DECISIONS`). Unlike HOW TO PLAY, REPLAY *does* carry a `GAME_EVENTS` entry
+ * (`GAME_EVENTS.SELECT_REPLAY`) — selecting it is a real state-machine transition, into the new `REPLAY`
+ * state `gameStateMachine.js` now defines. Its label, `REPLAY_COPY.menuLabel`, is approved copy from the
+ * design lead's ruling on issue #211 (`DESIGN-DECISIONS §3`, "The REPLAY screen") — see `replay.js`'s own
+ * module doc for why it still lives there rather than as a literal here, the same way every other
+ * player-visible string on that screen does.
  */
 
 /** @typedef {import('../focus.js').MenuAction} MenuAction */
@@ -62,6 +80,9 @@ const MENU_ITEMS = Object.freeze([
   // KI-10-03: not disabled, but no `event` — selecting it opens the HOW TO PLAY overlay locally rather than
   // firing a `GAME_EVENTS` transition (see the module doc comment above).
   Object.freeze({ label: 'HOW TO PLAY', isHowToPlay: true }),
+  // KI-05-03: a declared `Files:` deviation (module doc comment above) — the entry point into the REPLAY
+  // screen. `label` is approved copy from issue #211's ruling (`replay.js`'s `REPLAY_COPY.menuLabel`).
+  Object.freeze({ label: REPLAY_COPY.menuLabel, event: GAME_EVENTS.SELECT_REPLAY }),
   Object.freeze({ label: 'PRACTICE', disabled: true, event: GAME_EVENTS.SELECT_PRACTICE }),
   Object.freeze({ label: 'TUTORIAL', disabled: true, event: GAME_EVENTS.SELECT_TUTORIAL }),
   Object.freeze({ label: 'SHOP', disabled: true, event: GAME_EVENTS.SELECT_SHOP }),

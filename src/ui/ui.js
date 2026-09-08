@@ -7,6 +7,7 @@ import { createCountdownScreen } from './screens/countdown.js';
 import { createScoreboardScreen } from './screens/scoreboard.js';
 import { createMatchOverScreen } from './screens/matchOver.js';
 import { createPauseScreen } from './screens/pause.js';
+import { createReplayScreen } from './screens/replay.js';
 
 /**
  * The HTML overlay + HUD + grey-box screen router, mounted inside `root` (`#ui` in `index.html`).
@@ -49,6 +50,11 @@ import { createPauseScreen } from './screens/pause.js';
  * @property {() => void} hide
  * @property {(action: MenuAction) => void} handleMenuAction
  * @property {() => void} destroy
+ * @property {(progress: any) => void} [updateProgress] - KI-05-03: the REPLAY screen's own cheap, once-a-frame
+ *   update path for its tick readout and PLAY/PAUSE label (`replay.js`'s own module doc: "deliberately not
+ *   routed through `render()`"). Optional, like every other screen-specific addition in this file's history
+ *   (`SessionRenderer`'s KS-06-02 members, `SessionHud`'s KS-06-02 setter) — every screen but this one simply
+ *   does not have it, and `updateReplayProgress` below only ever calls it on the one screen that does.
  */
 
 /**
@@ -75,6 +81,12 @@ const HUD_STATES = new Set([STATES.COUNTDOWN, STATES.PLAYING, STATES.LASER_WARNI
  *   PR #115: registers the `?tuning=1` overlay (if any) so `show()` can fold it on the same `HUD_STATES`
  *   check that drives the HUD itself, below. `main.js` is the only caller — this stays `null` (a no-op) on
  *   every build without the tuning flag, so `ui.js` never has to know whether that overlay even exists.
+ * @property {(progress: import('./screens/replay.js').ReplayProgress) => void} updateReplayProgress -
+ *   KI-05-03: forwards to the REPLAY screen's own `updateProgress`, and only while it is the screen actually
+ *   showing — `session.js`'s new `runUpdate` case calls this every frame the machine is in `REPLAY` (this
+ *   ticket's second declared deviation; see the PR description), which is cheap enough to be unconditional
+ *   (a couple of text-node writes, the same cost `ui.hud.setTime`/`setLengths` already pay every replay
+ *   frame) without the full `hideAll()` + `render()` cost `show()` itself carries.
  * @property {() => void} destroy
  */
 
@@ -105,6 +117,7 @@ export function createUi(root) {
     [STATES.ROUND_OVER]: createScoreboardScreen(root),
     [STATES.MATCH_OVER]: createMatchOverScreen(root),
     [STATES.PAUSE]: createPauseScreen(root),
+    [STATES.REPLAY]: createReplayScreen(root),
   };
 
   /** The screen `show()` most recently displayed, or `null` for a state with no grey-box screen (PLAYING,
@@ -151,6 +164,11 @@ export function createUi(root) {
     },
     setTuningScreen(screen) {
       tuningScreen = screen;
+    },
+    updateReplayProgress(progress) {
+      if (activeScreen === screens[STATES.REPLAY]) {
+        activeScreen.updateProgress?.(progress);
+      }
     },
     destroy() {
       hud.destroy();

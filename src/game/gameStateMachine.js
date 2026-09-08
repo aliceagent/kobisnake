@@ -15,7 +15,8 @@
  * 1. **`PAUSE` is the one state whose exit is not in the table.** `RESUME` goes back to *the state pause was
  *    entered from*, which is PLAYING or LASER_WARNING depending on when the player hit Esc. The row is still
  *    a row — its target is the {@link PREVIOUS} sentinel, resolved at dispatch time — so it is still counted
- *    and still covered.
+ *    and still covered. KI-05-03 gives `REPLAY` the identical arrangement for the identical reason (its own
+ *    `BACK` row, AC4): `previousState` below is written on the way into *either* state, not only `PAUSE`.
  * 2. **`LASER_WARNING` is a sub-state of PLAYING, not a replacement for it.** The simulation keeps running
  *    through it (`ARCHITECTURE §6`); the state exists so the UI and, from Sprint 12, the audio can react to
  *    the beams igniting. That is why it carries the same `ROUND_OVER` / `PAUSE` / `AUTO_PAUSE` rows PLAYING
@@ -45,6 +46,7 @@
  *   ROUND_OVER: 'ROUND_OVER',
  *   MATCH_OVER: 'MATCH_OVER',
  *   PAUSE: 'PAUSE',
+ *   REPLAY: 'REPLAY',
  * }}
  */
 export const STATES = Object.freeze({
@@ -60,9 +62,14 @@ export const STATES = Object.freeze({
   ROUND_OVER: 'ROUND_OVER',
   MATCH_OVER: 'MATCH_OVER',
   PAUSE: 'PAUSE',
+  // KI-05-03: the REPLAY screen (`docs/sprints/improvement-05-replay-capture-and-playback.md`). Reached from
+  // MAIN_MENU today; a second entry point (the scoreboard's WATCH LAST ROUND) is KI-05-04's, not this
+  // ticket's, to add — see the `PREVIOUS` note on `RESUME`'s row below for why this state's own `BACK` row
+  // is already written to support more than one entry point without changing again when that lands.
+  REPLAY: 'REPLAY',
 });
 
-/** @typedef {'MAIN_MENU' | 'MATCH_SETUP' | 'TUTORIAL' | 'PRACTICE' | 'SHOP' | 'SETTINGS' | 'COUNTDOWN' | 'PLAYING' | 'LASER_WARNING' | 'ROUND_OVER' | 'MATCH_OVER' | 'PAUSE'} GameState */
+/** @typedef {'MAIN_MENU' | 'MATCH_SETUP' | 'TUTORIAL' | 'PRACTICE' | 'SHOP' | 'SETTINGS' | 'COUNTDOWN' | 'PLAYING' | 'LASER_WARNING' | 'ROUND_OVER' | 'MATCH_OVER' | 'PAUSE' | 'REPLAY'} GameState */
 
 /**
  * Every event the machine understands, exactly as the ticket lists them.
@@ -91,6 +98,7 @@ export const STATES = Object.freeze({
  *   RESUME: 'RESUME',
  *   QUIT_TO_MENU: 'QUIT_TO_MENU',
  *   AUTO_PAUSE: 'AUTO_PAUSE',
+ *   SELECT_REPLAY: 'SELECT_REPLAY',
  * }}
  */
 export const GAME_EVENTS = Object.freeze({
@@ -112,9 +120,13 @@ export const GAME_EVENTS = Object.freeze({
   RESUME: 'RESUME',
   QUIT_TO_MENU: 'QUIT_TO_MENU',
   AUTO_PAUSE: 'AUTO_PAUSE',
+  // KI-05-03: chosen from MAIN_MENU (the ticket's own entry point). Not a player-visible string itself —
+  // this is the internal event name, distinct from whatever label the main-menu row ends up carrying once
+  // issue #211 rules on it (`src/ui/screens/replay.js`'s own constants block).
+  SELECT_REPLAY: 'SELECT_REPLAY',
 });
 
-/** @typedef {'SELECT_2P' | 'SELECT_PRACTICE' | 'SELECT_TUTORIAL' | 'SELECT_SHOP' | 'SELECT_SETTINGS' | 'BACK' | 'START_MATCH' | 'COUNTDOWN_DONE' | 'LASER_WARNING' | 'LASER_WARNING_DONE' | 'ROUND_OVER' | 'NEXT_ROUND' | 'MATCH_OVER' | 'REMATCH' | 'PAUSE' | 'RESUME' | 'QUIT_TO_MENU' | 'AUTO_PAUSE'} GameEvent */
+/** @typedef {'SELECT_2P' | 'SELECT_PRACTICE' | 'SELECT_TUTORIAL' | 'SELECT_SHOP' | 'SELECT_SETTINGS' | 'BACK' | 'START_MATCH' | 'COUNTDOWN_DONE' | 'LASER_WARNING' | 'LASER_WARNING_DONE' | 'ROUND_OVER' | 'NEXT_ROUND' | 'MATCH_OVER' | 'REMATCH' | 'PAUSE' | 'RESUME' | 'QUIT_TO_MENU' | 'AUTO_PAUSE' | 'SELECT_REPLAY'} GameEvent */
 
 /**
  * The target of `PAUSE`'s `RESUME` row: "whichever state pause was entered from" (`AC2`). It is a distinct
@@ -155,6 +167,13 @@ export const PREVIOUS = 'PREVIOUS';
  *   event is deliberate; inventing an eighteenth event for it would be inventing a mechanic.
  * - **`PRACTICE`, `TUTORIAL`, `SHOP` and `SETTINGS` only carry `BACK`.** They are grey placeholders until
  *   Sprints 12–15; their real inner flows arrive with them, as new rows here.
+ * - **`REPLAY` carries `BACK` to {@link PREVIOUS}, the same sentinel `PAUSE`'s `RESUME` uses** (KI-05-03
+ *   AC4: "Esc leaves replay mode and returns where it came from"). Today the only row landing on `REPLAY` is
+ *   `MAIN_MENU`'s `SELECT_REPLAY`, so `PREVIOUS` always resolves to `MAIN_MENU` in this build — but it is
+ *   written as the general "wherever it was entered from" mechanism, not as a `MAIN_MENU` literal, because
+ *   KI-05-04 is expected to add a second entry point (the scoreboard's WATCH LAST ROUND) without this row
+ *   changing again. See {@link createGameStateMachine}'s `previousState` bookkeeping, which now remembers the
+ *   state on the way into `REPLAY` exactly as it already did for `PAUSE`.
  *
  * @type {Readonly<Record<GameState, Readonly<Partial<Record<GameEvent, GameState | 'PREVIOUS'>>>>>}
  */
@@ -165,6 +184,7 @@ export const TRANSITIONS = Object.freeze({
     [GAME_EVENTS.SELECT_TUTORIAL]: STATES.TUTORIAL,
     [GAME_EVENTS.SELECT_SHOP]: STATES.SHOP,
     [GAME_EVENTS.SELECT_SETTINGS]: STATES.SETTINGS,
+    [GAME_EVENTS.SELECT_REPLAY]: STATES.REPLAY,
     [GAME_EVENTS.BACK]: STATES.MAIN_MENU,
   }),
   [STATES.MATCH_SETUP]: Object.freeze({
@@ -211,6 +231,11 @@ export const TRANSITIONS = Object.freeze({
     [GAME_EVENTS.BACK]: PREVIOUS,
     [GAME_EVENTS.REMATCH]: STATES.COUNTDOWN,
     [GAME_EVENTS.QUIT_TO_MENU]: STATES.MAIN_MENU,
+  }),
+  // KI-05-03: the only way out is BACK, to wherever REPLAY was entered from (AC4) — see the table's own doc
+  // note above and `previousState`'s bookkeeping below.
+  [STATES.REPLAY]: Object.freeze({
+    [GAME_EVENTS.BACK]: PREVIOUS,
   }),
 });
 
@@ -301,8 +326,9 @@ export function createGameStateMachine({
   /** @type {GameState} */
   let state = initial;
   /**
-   * The state `PAUSE` was entered from — `RESUME`'s destination (`AC2`). Cleared on the way out of PAUSE so
-   * that a stale value can never be resumed into: after `QUIT_TO_MENU` from a pause there is no "prior
+   * The state `PAUSE` (or, since KI-05-03, `REPLAY`) was entered from — `RESUME`'s destination (`AC2`) and
+   * `REPLAY`'s own `BACK` destination (KI-05-03 AC4). Cleared on the way out of either so that a stale value
+   * can never be resumed into: after `QUIT_TO_MENU` from a pause, or `BACK` from a replay, there is no "prior
    * state" any more, and `getPreviousState()` says so by answering `null`.
    * @type {GameState | null}
    */
@@ -370,8 +396,9 @@ export function createGameStateMachine({
 
     onExit[from]?.(context);
     // Pause's memory is written on the way in and cleared on every other move, so `getPreviousState()` is
-    // only ever non-null while the machine is actually paused.
-    previousState = target === STATES.PAUSE ? from : null;
+    // only ever non-null while the machine is actually paused — and, since KI-05-03, the identical rule for
+    // REPLAY (AC4's own "returns where it came from").
+    previousState = target === STATES.PAUSE || target === STATES.REPLAY ? from : null;
     state = target;
     onEnter[target]?.(context);
 
