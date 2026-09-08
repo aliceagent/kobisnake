@@ -52,6 +52,52 @@ const RENDER_THRESHOLD = STRICT ? 75 : 0;
  */
 const LOCAL_MAX_WORKERS = Math.max(1, Math.floor(cpus().length / 2));
 
+/**
+ * KI-19-06 — **why there are two commands, and why coverage does not run over the whole suite.**
+ *
+ * `npm run test:unit` runs every test with coverage **off**. `npm run test:coverage` runs the coverage
+ * thresholds over `tests/unit` and `tests/agent`. Both are gates; neither is optional; the thresholds below
+ * are unchanged.
+ *
+ * The split exists because a run with coverage on took long enough that Vitest's own worker-to-main RPC
+ * timed out, and the suite then **exited non-zero with every test passing**:
+ *
+ * ```
+ *  Test Files  66 passed (66)  ·  Tests  1121 passed (1121)  ·  Errors  1 error
+ *  Error: [vitest-worker]: Timeout calling "onTaskUpdate"
+ * ```
+ *
+ * That window is birpc's `DEFAULT_TIMEOUT`, **60 seconds**, and Vitest exposes no config for it. Measured on
+ * one container, whole suite:
+ *
+ * | Run | Wall clock | Exit |
+ * |---|---|---|
+ * | coverage off | 69 s | 0 |
+ * | coverage on | 187 s | **1**, tests all passing |
+ * | coverage on, `--maxWorkers=1`, idle box | — | **1** |
+ * | coverage on, over `tests/unit` + `tests/agent` only | **20 s** | 0 |
+ *
+ * So it is not contention, not worker fan-out and not any one slow test — it is coverage over the whole
+ * suite, and the thing that fixes it is not measuring coverage from tests that do not produce it. The slow
+ * files are all in `tests/sim` (`tuningMatrix` 28 s, `laserStats` 19 s, `powerupFuzz` 16 s, and more): they
+ * play thousands of rounds through code that `tests/unit` already covers line by line, so they cost most of
+ * the run and add 0.21 % to the aggregate. Coverage without them is 99.5 % against 99.71 % with them, and
+ * every per-file floor below is still met with room — the lowest file is 94.9 % against a 75 % floor.
+ *
+ * **This is a change to what coverage is measured *from*, never to what is required.** Every test still runs,
+ * on every push, in `npm run test:unit`. What changed is that a `tests/sim` fuzz run is no longer asked to
+ * justify itself as a coverage source, and the gate no longer depends on finishing inside a 60-second window
+ * nobody can configure. The corollary is worth stating plainly: a `src/` file whose only coverage came from
+ * `tests/sim` would now fall below its floor and fail this gate. That is the intended reading — a rule in
+ * `src/core` deserves a unit test — and if it ever fires, the answer is to write that test, not to widen
+ * this glob.
+ *
+ * `COVERAGE_STRICT` stays an opt-in rather than becoming the default, deliberately: with it always on, an
+ * ordinary `npx vitest run tests/unit/core/grid.test.js` would fail every threshold for every file it did
+ * not touch, which is a worse trap than the one it would close. `test:coverage` sets it, and that is the
+ * only command that needs it.
+ */
+
 export default defineConfig({
   test: {
     // See LOCAL_MAX_WORKERS above. `undefined` on CI leaves Vitest's own default in place rather than

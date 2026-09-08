@@ -22,18 +22,25 @@ Node 20 (`.nvmrc`). Run `npm install` once per worktree — `node_modules` is no
 | `npm run lint` | ESLint (flat config) |
 | `npm run format` | Prettier `--write .` — always safe; `.prettierignore` excludes `docs/**` and `*.md` |
 | `npm run typecheck` | `tsc --noEmit -p jsconfig.json` |
-| `npm run test:unit` | Vitest — runs `tests/unit/**` **and** `tests/sim/**` together; coverage always on |
+| `npm run test:unit` | Vitest — every test (`tests/unit/**`, `tests/sim/**`, `tests/agent/**/*.test.js`), **coverage off** |
+| `npm run test:coverage` | Vitest — the per-file coverage thresholds over `tests/unit` + `tests/agent`; sets `COVERAGE_STRICT` itself |
 | `npm run test:e2e` | Playwright — `tests/e2e/**`, including the offline/zero-network-request check |
 | `npm run test:visual` | Playwright — `tests/visual/**` against `tests/visual/__baselines__/` |
 
 There is no `test:sim` script: simulation tests live in `tests/sim/` but run under `npm run test:unit`.
 
 **Several worktrees share one container, and the test tooling knows it (KI-19-00):**
-- **A green summary with a red exit is the runner, not a test; re-run once.** `npm run test:unit` can print
-  `718 passed` and still exit non-zero, with `Error: [vitest-worker]: Timeout calling "onTaskUpdate"` — that is
-  Vitest's own progress RPC starved by a busy box (#181), not a failing test. Re-run once; if it exits red a
-  second time, or the summary is not green, it is real. Never reach for
-  `dangerouslyIgnoreUnhandledErrors` to make it go away: a clean exit bought by muting unhandled errors hides
+- **A green summary with a red exit is the runner, not a test — read the error, do not count re-runs.**
+  A run can print `1121 passed` and still exit non-zero with
+  `Error: [vitest-worker]: Timeout calling "onTaskUpdate"`. That is Vitest's own worker-to-main RPC missing
+  birpc's unconfigurable 60-second window, not a failing test, **however many times it reproduces**.
+  KI-19-00 first wrote this rule as "re-run once; if it is red a second time it is real", and that was
+  wrong: once the suite grew past that window the same failure reproduced on every run and on CI, and it was
+  still not a test. The reliable tell is the error text, not the repeat count — if every test passed and the
+  only errors name `onTaskUpdate`, no test failed.
+  KI-19-06 removed the cause by taking coverage off `npm run test:unit` (`vitest.config.js` has the
+  measurements), so this should now be rare; if you meet it, say so on an issue rather than living with it.
+  Never reach for `dangerouslyIgnoreUnhandledErrors`: a clean exit bought by muting unhandled errors hides
   the real ones too.
 - **The preview port is derived from your checkout's path**, not fixed at 4173 (#170), so a `vite preview`
   from another worktree can never be reused and an orphan can never block your `--strictPort`. `npm run
@@ -74,10 +81,11 @@ There is no `test:sim` script: simulation tests live in `tests/sim/` but run und
 - Branch `s{NN}/{ticket-id}-{slug}`; PR title `KS-NN-TT: description`; one ticket per PR; squash merge.
 - Every acceptance criterion in your ticket gets a test named after it (`KS-04-02 AC3: …`) unless the ticket
   says "manual".
-- Before pushing run: `npm run lint && npm run typecheck && COVERAGE_STRICT=1 npm run test:unit && npm run build`,
-  and paste the output in the PR. **`COVERAGE_STRICT=1` matters**: CI's `unit` job sets it and nothing else does,
-  so without it the per-file coverage thresholds are 0 and a run can be green locally while the merge gate is
-  red (#233 reached `main` exactly this way). Run `npm run test:e2e` if you touched anything a browser can see.
+- Before pushing run: `npm run lint && npm run typecheck && npm run test:unit && npm run test:coverage && npm run build`,
+  and paste the output in the PR. Both test commands are gates and CI's `unit` job runs both: `test:unit` is
+  every test with coverage off, `test:coverage` is the per-file thresholds. `test:coverage` sets
+  `COVERAGE_STRICT` itself, so the old trap — thresholds silently 0 locally because only CI set the flag —
+  is gone.
 - Visual work: include a preview screenshot next to the reference-image crop in the PR. Label the PR
   `needs-design-review`.
 - Determinism: all randomness goes through `src/core/rng.js` with a seed. E2e tests fast-forward time through

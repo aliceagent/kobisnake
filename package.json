@@ -2,7 +2,7 @@
   "name": "kobisnake",
   "version": "0.1.0",
   "private": true,
-  "description": "KOBI Snake \u2014 a local two-player 3D Snake game for the desktop browser.",
+  "description": "KOBI Snake — a local two-player 3D Snake game for the desktop browser.",
   "type": "module",
   "engines": {
     "node": ">=20"
@@ -14,7 +14,8 @@
     "lint": "eslint .",
     "format": "prettier --write .",
     "typecheck": "tsc --noEmit -p jsconfig.json",
-    "test:unit": "vitest run",
+    "test:unit": "vitest run --coverage.enabled=false",
+    "test:coverage": "COVERAGE_STRICT=1 vitest run tests/unit tests/agent",
     "test:e2e": "node scripts/run-playwright-suite.mjs e2e tests/e2e --project=chromium",
     "test:visual": "node scripts/run-playwright-suite.mjs visual tests/visual --project=chromium",
     "test:agent": "node scripts/run-playwright-suite.mjs agent tests/agent --project=chromium",
