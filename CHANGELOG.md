@@ -45,6 +45,9 @@ yet: `package.json` is at `0.1.0`, Sprint 18 cuts `v1.0.0`, and everything below
 - **The main menu leads with the one thing you can do.** `2 PLAYERS` carries primary weight and the five
   unavailable rows are grouped into a quieter box below, instead of the screen reading as mostly locked
   (#146).
+- **A note when the window is too small.** Below 640x480 the HUD is replaced by a plain
+  `MAKE THE WINDOW BIGGER`, instead of pills laid over the arena. The game keeps running underneath, so
+  making the window bigger again picks the round straight back up (#274).
 
 ### Fixed
 
@@ -52,6 +55,12 @@ yet: `package.json` is at `0.1.0`, Sprint 18 cuts `v1.0.0`, and everything below
   targets rather than a scatter (#111).
 - **Space pauses and resumes**, interchangeably with Esc, and a held Space no longer repeat-toggles the pause
   screen (#112).
+- **The game is correct in whatever window it is given.** The whole arena is on screen at every window shape
+  from 4:3 to ultrawide, and the HUD no longer overlaps it on narrower screens - a player pill sat over the
+  arena at 1024x768, 800x600 and 640x480 (#274).
+- **Resizing the window mid-round no longer shows a stretched frame**, and costs the round no time. The
+  picture also stays sharp at browser zoom levels that produce a fractional pixel ratio, where the drawing
+  buffer used to come out a device pixel short of the window and be scaled up (#271).
 
 ---
 
