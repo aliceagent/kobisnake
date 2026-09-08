@@ -560,6 +560,38 @@ describe('KS-03-06 createTestHooks', () => {
     });
   });
 
+  describe('getRenderStats', () => {
+    it("KI-08-03: getRenderStats forwards the renderer's whole info reading", () => {
+      const renderer = createFakeRenderer();
+      const stats = {
+        calls: 15,
+        triangles: 4321,
+        lines: 0,
+        points: 0,
+        geometries: 12,
+        textures: 3,
+        programs: 5,
+        sceneNodes: 47,
+      };
+      renderer.getRenderStats = vi.fn(() => stats);
+      const { hooks } = buildHooks({ renderer });
+
+      expect(hooks.getRenderStats()).toEqual(stats);
+      expect(renderer.getRenderStats).toHaveBeenCalled();
+    });
+
+    it('KI-08-03: getRenderStats answers null, never a zeroed reading, when the renderer has no such seam', () => {
+      // The distinction is load-bearing: every figure this returns is one a budget is compared against, so a
+      // zeroed object would read as "this scene costs nothing", i.e. as passing. `null` says "this build
+      // cannot answer", which `tests/perf/frameTime.js` turns into a failure rather than a green run.
+      const renderer = createFakeRenderer();
+      const { hooks } = buildHooks({ renderer });
+
+      expect(renderer.getRenderStats).toBeUndefined();
+      expect(hooks.getRenderStats()).toBeNull();
+    });
+  });
+
   describe('projectToNdc', () => {
     it('KI-16-01: projectToNdc forwards x, y, z to the renderer and returns its plain {x, y, z}', () => {
       const renderer = createFakeRenderer();
