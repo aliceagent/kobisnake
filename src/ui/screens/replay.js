@@ -3,6 +3,7 @@ import { PHASES } from '../../core/events.js';
 import { REPLAY_ERROR_CODES } from '../../core/replay.js';
 import { STATES } from '../../game/gameStateMachine.js';
 import { createFocusModel } from '../focus.js';
+import { replay } from '../strings.js';
 
 /**
  * The REPLAY screen (`docs/sprints/improvement-05-replay-capture-and-playback.md` KI-05-03): a paste box or a
@@ -15,10 +16,14 @@ import { createFocusModel } from '../focus.js';
  *
  * Every player-visible string below — the screen heading, the paste/file labels, the four transport labels,
  * the tick readout's wording and the bad-paste error — is **approved copy**, ruled by the design lead on
- * issue #211 and recorded verbatim in `DESIGN-DECISIONS §3` under "The REPLAY screen". `REPLAY_COPY` is the
- * one place every one of them is written, the same way `scoreboard.js` exports `DRAW_TEXT` ("Never invent
- * another spelling"). The screen was built against these strings while they were still proposals, which is
- * exactly why the ruling cost one word — `WATCH IT` became `WATCH` — instead of a rewrite.
+ * issue #211 and recorded verbatim in `DESIGN-DECISIONS §3` under "The REPLAY screen", and since KI-20-02 read
+ * from the catalogue's `replay` group (`src/ui/strings.js`, imported as `{ replay }`, this screen's own group,
+ * never the `STRINGS` aggregate — see that module's own doc comment on why). `REPLAY_COPY` stays exported
+ * under its original name, now built from `replay.*`, because `mainMenu.js` (migrated in a later PR),
+ * `tests/unit/ui/replay.test.js`, `tests/unit/ui/mainMenu.test.js`, `tests/e2e/offline.spec.js` and
+ * `tests/e2e/replay-screen.spec.js` all import it from this path. The screen was built against these strings
+ * while they were still proposals, which is exactly why the ruling cost one word — `WATCH IT` became `WATCH`
+ * — instead of a rewrite.
  *
  * One piece of the ruling is deliberately **not** built here: the approved key-hint line
  * `SPACE PLAY · . STEP · ← → SCRUB · ESC BACK`, and the transport hotkeys it advertises. See "Keyboard
@@ -102,50 +107,44 @@ import { createFocusModel } from '../focus.js';
  * }>}
  */
 export const REPLAY_COPY = Object.freeze({
-  // DESIGN-DECISIONS §3 — the main-menu row this screen is reached from (`mainMenu.js` imports this one).
-  menuLabel: 'REPLAY',
-  // DESIGN-DECISIONS §3 — this screen's own heading.
-  screenHeading: 'REPLAY',
-  // DESIGN-DECISIONS §3.
-  pasteLabel: 'PASTE A REPLAY',
-  // DESIGN-DECISIONS §3.
-  pastePlaceholder: 'Paste the replay text here.',
-  // DESIGN-DECISIONS §3. The proposal offered `WATCH IT`; the ruling shortened it to `WATCH`, which also
-  // keeps it distinct from the transport's own `PLAY` two rows below.
-  watchLabel: 'WATCH',
-  // DESIGN-DECISIONS §3.
-  openFileLabel: 'OPEN A FILE',
-  // DESIGN-DECISIONS §3.
-  playLabel: 'PLAY',
-  // DESIGN-DECISIONS §3 — the same button, toggled.
-  pauseLabel: 'PAUSE',
-  // DESIGN-DECISIONS §3.
-  stepLabel: 'STEP',
-  // DESIGN-DECISIONS §3 — this build's concrete "seek": back to tick 0, the one seek target the proposal itself names.
-  startAgainLabel: 'START AGAIN',
-  // DESIGN-DECISIONS §3.
-  endOfReplayText: 'END OF REPLAY',
-  // DESIGN-DECISIONS §3 — shown for every load failure except an unsupported version (below).
-  badReplayHeading: 'THAT IS NOT A REPLAY',
-  // DESIGN-DECISIONS §3.
-  tooNewHeading: 'THIS REPLAY IS TOO NEW',
-  tooNewDetail: 'It was made by a newer version of the game.',
+  // The main-menu row this screen is reached from (`mainMenu.js` imports this one).
+  menuLabel: replay.menuLabel,
+  // This screen's own heading.
+  screenHeading: replay.screenHeading,
+  pasteLabel: replay.pasteLabel,
+  pastePlaceholder: replay.pastePlaceholder,
+  // The proposal offered `WATCH IT`; the ruling shortened it to `WATCH`, which also keeps it distinct from
+  // the transport's own `PLAY` two rows below.
+  watchLabel: replay.watchLabel,
+  openFileLabel: replay.openFileLabel,
+  playLabel: replay.playLabel,
+  // The same button, toggled.
+  pauseLabel: replay.pauseLabel,
+  stepLabel: replay.stepLabel,
+  // This build's concrete "seek": back to tick 0, the one seek target the proposal itself names.
+  startAgainLabel: replay.startAgainLabel,
+  endOfReplayText: replay.endOfReplayText,
+  // Shown for every load failure except an unsupported version (below).
+  badReplayHeading: replay.badReplayHeading,
+  tooNewHeading: replay.tooNewHeading,
+  tooNewDetail: replay.tooNewDetail,
 });
 
 /**
  * Formats the tick readout (`DESIGN-DECISIONS §3`'s approved `TICK 137 / 380`; the word "TICK" stays — the
  * ruling kept it because it is the unit the screen exists to show) — a pure function so the
  * format is unit-testable without a DOM. `totalTick` is `null` when it cannot be known yet (nothing loaded);
- * the readout then drops the `/ total` half rather than showing a misleading `/ null`.
+ * the readout then drops the `/ total` half rather than showing a misleading `/ null`. Delegates to the
+ * catalogue's `replay.tickReadout` (`src/ui/strings.js`, byte-identical logic, including both branches) since
+ * KI-20-02, kept as its own exported function under this name because `tests/unit/ui/replay.test.js` imports
+ * it from this path.
  *
  * @param {number | null} tick
  * @param {number | null} totalTick
  * @returns {string}
  */
 export function formatTickReadout(tick, totalTick) {
-  if (tick === null) return '';
-  const prefix = `TICK ${tick}`;
-  return totalTick === null ? prefix : `${prefix} / ${totalTick}`;
+  return replay.tickReadout(tick, totalTick);
 }
 
 /**
@@ -177,9 +176,9 @@ export function replayTotalTick(replay) {
  */
 export function describeLoadError(error) {
   if (error.code === REPLAY_ERROR_CODES.UNSUPPORTED_VERSION) {
-    return { heading: REPLAY_COPY.tooNewHeading, detail: REPLAY_COPY.tooNewDetail };
+    return { heading: replay.tooNewHeading, detail: replay.tooNewDetail };
   }
-  return { heading: REPLAY_COPY.badReplayHeading, detail: error.message };
+  return { heading: replay.badReplayHeading, detail: error.message };
 }
 
 /**
@@ -245,7 +244,7 @@ export function createReplayScreen(root) {
 
   const title = doc.createElement('div');
   title.className = 'menu-title';
-  title.textContent = REPLAY_COPY.screenHeading;
+  title.textContent = replay.screenHeading;
   panel.appendChild(title);
 
   // --- load view (paste box + local file) --------------------------------------------------------------
@@ -255,12 +254,12 @@ export function createReplayScreen(root) {
 
   const pasteLabel = doc.createElement('label');
   pasteLabel.className = 'replay-paste-label';
-  pasteLabel.textContent = REPLAY_COPY.pasteLabel;
+  pasteLabel.textContent = replay.pasteLabel;
   loadView.appendChild(pasteLabel);
 
   const textarea = /** @type {HTMLTextAreaElement} */ (doc.createElement('textarea'));
   textarea.className = 'replay-textarea';
-  textarea.placeholder = REPLAY_COPY.pastePlaceholder;
+  textarea.placeholder = replay.pastePlaceholder;
   // A stable hook for `tests/e2e` and `tests/unit/ui/replay.test.js` — the same discipline `data-screen`
   // uses (tech-lead note on this ticket).
   textarea.dataset.replayPaste = 'true';
@@ -279,7 +278,7 @@ export function createReplayScreen(root) {
 
   const watchItRow = doc.createElement('div');
   watchItRow.className = 'menu-item menu-item--action';
-  watchItRow.textContent = REPLAY_COPY.watchLabel;
+  watchItRow.textContent = replay.watchLabel;
   loadView.appendChild(watchItRow);
 
   // Never touches the network (module doc): `change` reads the chosen `File` off this input and hands its
@@ -293,7 +292,7 @@ export function createReplayScreen(root) {
 
   const openFileRow = doc.createElement('div');
   openFileRow.className = 'menu-item menu-item--action';
-  openFileRow.textContent = REPLAY_COPY.openFileLabel;
+  openFileRow.textContent = replay.openFileLabel;
   loadView.appendChild(openFileRow);
 
   panel.appendChild(loadView);
@@ -319,13 +318,13 @@ export function createReplayScreen(root) {
   // test's problem. Keeping the box always means the panel's height never changes and the rows never move.
   const endOfReplay = doc.createElement('div');
   endOfReplay.className = 'replay-end replay-end--placeholder';
-  endOfReplay.textContent = REPLAY_COPY.endOfReplayText;
+  endOfReplay.textContent = replay.endOfReplayText;
   endOfReplay.dataset.replayEnd = 'true';
   playerView.appendChild(endOfReplay);
 
   const playRow = doc.createElement('div');
   playRow.className = 'menu-item menu-item--action';
-  playRow.textContent = REPLAY_COPY.playLabel;
+  playRow.textContent = replay.playLabel;
   // KI-05-06 (#260): a stable handle that does not change when the label does. This row's text flips between
   // PLAY and PAUSE, and a locator written as `.menu-item` filtered by the text `PAUSE` stops matching
   // anything the moment the replay ends and the label flips back — which is how #260 burned a full 30-second
@@ -335,12 +334,12 @@ export function createReplayScreen(root) {
 
   const stepRow = doc.createElement('div');
   stepRow.className = 'menu-item menu-item--action';
-  stepRow.textContent = REPLAY_COPY.stepLabel;
+  stepRow.textContent = replay.stepLabel;
   playerView.appendChild(stepRow);
 
   const startAgainRow = doc.createElement('div');
   startAgainRow.className = 'menu-item menu-item--action';
-  startAgainRow.textContent = REPLAY_COPY.startAgainLabel;
+  startAgainRow.textContent = replay.startAgainLabel;
   playerView.appendChild(startAgainRow);
 
   panel.appendChild(playerView);
@@ -453,7 +452,7 @@ export function createReplayScreen(root) {
     updateProgress(progress) {
       const totalTick = progress.replay === null ? null : replayTotalTick(progress.replay);
       readout.textContent = formatTickReadout(progress.tick, totalTick);
-      playRow.textContent = progress.isPlaying ? REPLAY_COPY.pauseLabel : REPLAY_COPY.playLabel;
+      playRow.textContent = progress.isPlaying ? replay.pauseLabel : replay.playLabel;
       // KI-05-06 (#260): toggles *visibility*, never the box. `--placeholder` keeps the line's height and
       // leaves the text invisible and out of the accessibility tree; dropping it reveals the same box. See
       // this element's own note above for why its box must never come and go.
