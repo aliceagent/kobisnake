@@ -1583,3 +1583,101 @@ describe('KI-05-03 the REPLAY screen entry point', () => {
     expect(session.getReplayEvents()).toEqual(NO_INPUT_ROUND.expectedEvents);
   });
 });
+
+/** Plays a loaded replay to the end, guarding against an infinite loop the same way the KI-05-03 tests do. */
+function driveReplayToEnd(session) {
+  session.playReplay();
+  const dt = 1 / SETTINGS.simHz;
+  let guard = 0;
+  while (session.getReplayPhase() === 'PLAYING' && guard < 20_000) {
+    session.advanceSimulation(dt);
+    guard += 1;
+  }
+  expect(guard).toBeLessThan(20_000);
+  expect(session.getReplayPhase()).toBe('ROUND_OVER');
+}
+
+/**
+ * KI-05-04: WATCH LAST ROUND on the match-over screen (the design lead's ruling on issue #211/#222 moving it
+ * off `scoreboard.js`, `DESIGN-DECISIONS §3`). `crashPlayerOne` gives every round here a real, non-empty
+ * `roundInputLog` (P1's own `KeyW`) as well as a real `roundEventLog`, so a replay reconstructed from just the
+ * round's seed — with nobody's input applied — would diverge from what actually happened the moment P1 should
+ * have turned. Comparing against `session.getReplay()`'s own snapshot, taken while `sim` still holds the round
+ * that just ended (MATCH_OVER never resets it), is what proves AC1 means "exactly that round" and not "a round
+ * with the same seed" (tech-lead note on issue #222).
+ */
+describe('KI-05-04 WATCH LAST ROUND from the match-over screen', () => {
+  it('KI-05-04 AC1: WATCH LAST ROUND replays exactly the round that just ended, tick for tick', () => {
+    const { session, ui, target } = buildSession({ seed: 41 });
+    playTo(session, { bestOf: 1 });
+    crashPlayerOne(session, target);
+    runFrames(session, SETTINGS.scoreboardSeconds + 0.05, 6);
+    expect(session.getState()).toBe(STATES.MATCH_OVER);
+
+    // `sim`/`roundIndex` are untouched between the round ending and MATCH_OVER, so `getReplay()` here is
+    // still exactly the snapshot `enterRoundOver` captured — the oracle this test replays against.
+    const recorded = session.getReplay();
+    expect(recorded.seed).not.toBeNull();
+    expect(recorded.inputs).toEqual([{ t: expect.any(Number), player: 'p1', dir: 'UP' }]);
+    expect(recorded.expectedEvents.length).toBeGreaterThan(0);
+
+    lastShow(ui, STATES.MATCH_OVER).onWatchLastRound();
+
+    expect(session.getState()).toBe(STATES.REPLAY);
+    expect(session.hasReplay()).toBe(true);
+    const props = lastShow(ui, STATES.REPLAY);
+    expect(props.loaded).toBe(true);
+    expect(props.error).toBeNull();
+
+    driveReplayToEnd(session);
+
+    // Tick for tick: the replayed log is not merely "a round with this seed", it is this exact recording.
+    expect(session.getReplayEvents()).toEqual(recorded.expectedEvents);
+  });
+
+  it('KI-05-04 AC1: after a second round, WATCH LAST ROUND replays that round, not the first', () => {
+    const { session, ui, target } = buildSession({ seed: 41 });
+    playTo(session, { bestOf: 3 });
+
+    crashPlayerOne(session, target); // round 0: P2 wins
+    runFrames(session, SETTINGS.scoreboardSeconds + 0.05, 6);
+    runFrames(session, SETTINGS.countdownStepSeconds * 4 + 0.02, 20);
+    expect(session.getState()).toBe(STATES.PLAYING);
+    const round2Seed = session.getSim().seed;
+
+    crashPlayerOne(session, target); // round 1: P2 wins again -> Bo3 decided
+    runFrames(session, SETTINGS.scoreboardSeconds + 0.05, 6);
+    expect(session.getState()).toBe(STATES.MATCH_OVER);
+    expect(session.getMatch()?.isOver()).toBe(true);
+
+    const recorded = session.getReplay();
+    expect(recorded.seed).toBe(round2Seed);
+
+    lastShow(ui, STATES.MATCH_OVER).onWatchLastRound();
+    driveReplayToEnd(session);
+
+    expect(session.getReplayEvents()).toEqual(recorded.expectedEvents);
+    // Not round 0's log: round 0 also ends in a P1-crash `ROUND_OVER` with a different `snakeId`/`winnerId`
+    // pairing is the same shape, so the real discriminator is the seed each round's events were produced
+    // under, already asserted above via `recorded.seed`.
+  });
+
+  it('KI-05-04: Esc from a replay entered via WATCH LAST ROUND returns to MATCH_OVER, not MAIN_MENU', () => {
+    const { session, ui, target } = buildSession({ seed: 41 });
+    playTo(session, { bestOf: 1 });
+    crashPlayerOne(session, target);
+    runFrames(session, SETTINGS.scoreboardSeconds + 0.05, 6);
+    expect(session.getState()).toBe(STATES.MATCH_OVER);
+    const matchOverProps = lastShow(ui, STATES.MATCH_OVER);
+
+    matchOverProps.onWatchLastRound();
+    expect(session.getState()).toBe(STATES.REPLAY);
+
+    lastShow(ui, STATES.REPLAY).onBack();
+
+    expect(session.getState()).toBe(STATES.MATCH_OVER);
+    // The screen was re-rendered with the same match still standing, not torn down (this file's own KI-05-04
+    // header note: MATCH_OVER re-enters exactly as it left).
+    expect(lastShow(ui, STATES.MATCH_OVER).winner).toBe(matchOverProps.winner);
+  });
+});

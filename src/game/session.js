@@ -182,6 +182,42 @@ import { createReplayPlayer } from './replayPlayer.js';
  *   while paused, and `renderReplayFrame()` already draws the frozen frame (or the empty arena, with nothing
  *   loaded) exactly as `runUpdate`'s own `default` case does for every menu and for `PAUSE` ("the frame
  *   still renders").
+ *
+ * ## KI-05-04: WATCH LAST ROUND, the match-over screen's own entry point
+ *
+ * Per the design lead's ruling on issue #211/#222 (`DESIGN-DECISIONS §3`), WATCH LAST ROUND is a row on
+ * `matchOver.js`, not `scoreboard.js` — a declared deviation from the sprint file's own `Files:` list,
+ * explained in the PR description. This section is the other half of KI-05-03's own prediction
+ * (`gameStateMachine.js`'s `STATES.REPLAY`/`GAME_EVENTS.SELECT_REPLAY` doc notes): `MATCH_OVER` grows its own
+ * `SELECT_REPLAY` row, landing on the identical `REPLAY` state `MAIN_MENU`'s row already does, so no new
+ * state-machine shape is needed — only this file's own entry point and the capture that feeds it.
+ *
+ * **The capture, not a fresh replay from the same seed.** {@link captureReplaySnapshot} is exactly what the
+ * public `getReplay()` already builds (KS-07-01 AC2), pulled out so {@link enterRoundOver} can take the
+ * identical snapshot into {@link lastRoundReplay} the instant a round ends — before the next `startRound()`
+ * (reached through `NEXT_ROUND` or `REMATCH`) resets `roundInputLog`/`roundEventLog` out from under it.
+ * `playtestPrompt.offer()`'s own call site, two lines below that capture, is the existing precedent for
+ * "capture at exactly this instant" (tech-lead note on issue #222). Overwritten on every round-over, so by
+ * the time `MATCH_OVER` fires, {@link lastRoundReplay} holds only the match's *last* round — exactly what the
+ * ruling asks WATCH LAST ROUND to show. Capturing the recorded inputs and event log, not merely the round's
+ * seed, is what makes this "exactly that round" rather than "a round with the same seed": a fresh
+ * `RoundSimulation` built from the seed alone would replay with nobody's inputs applied and could diverge the
+ * moment either player had actually turned.
+ *
+ * **Loading, not re-deriving.** {@link watchLastRound} calls the same {@link loadReplayInternal} the REPLAY
+ * screen's own paste box uses, handing it {@link lastRoundReplay} directly — the exact "already-parsed value"
+ * seam `loadReplay()`'s own doc comment names — then dispatches `SELECT_REPLAY`. `showReplayScreen`
+ * (`onEnter[STATES.REPLAY]`) runs immediately after and finds `replayPlayer` already built; its own doc
+ * comment already covers this case ("a replay already loaded... survives a round trip back to it"), so the
+ * REPLAY screen comes up already showing this round, with no third code path needed.
+ *
+ * **Esc goes back to MATCH_OVER, not MAIN_MENU**, for the same reason PAUSE's own `RESUME` does: `REPLAY`'s
+ * `BACK` row resolves through the {@link PREVIOUS} sentinel to whichever state `SELECT_REPLAY` was dispatched
+ * from (`gameStateMachine.js`'s own `previousState` bookkeeping), which is `MATCH_OVER` when this section's
+ * own `watchLastRound` is the caller. Re-entering `MATCH_OVER` re-runs `enterMatchOver`, which reads `match`
+ * exactly as it did the first time — untouched by anything in this section (the "never touches match state"
+ * property this file's KI-05-02 header note already establishes) — so the screen redraws identically rather
+ * than losing the winner or the score.
  */
 
 /** @typedef {import('./input.js').Direction} Direction */
@@ -620,6 +656,16 @@ export function createSession({
   /** @type {SimEvent[]} */
   let roundEventLog = [];
 
+  /**
+   * KI-05-04: a snapshot of the most recent round-that-ended's replay, in exactly {@link captureReplaySnapshot}'s
+   * shape — `null` until the first round of this session ends. Written once per round, in {@link enterRoundOver},
+   * at the instant that round's own `roundInputLog`/`roundEventLog` are still live and correct; never read or
+   * written anywhere else, so it cannot go stale between a round ending and `MATCH_OVER`'s own WATCH LAST ROUND
+   * row asking for it (this file's own "WATCH LAST ROUND" header note).
+   * @type {{seed: number | null, settingsOverrides: object, inputs: object[], expectedEvents: object[]} | null}
+   */
+  let lastRoundReplay = null;
+
   /** Wall seconds elapsed inside the current countdown. */
   let countdownElapsed = 0;
   /** Which of {@link COUNTDOWN_LABELS} is currently on screen; -1 outside a countdown. */
@@ -695,7 +741,32 @@ export function createSession({
     ui.show(STATES.LASER_WARNING);
   }
 
+  /**
+   * The current round's replay, in exactly the shape `tests/sim/replays/*.json` fixtures use (KS-07-01 AC2):
+   * the seed it was built from, the override tree that built its settings, every input actually applied and
+   * the full event log produced so far. Factored out of the public `getReplay()` so KI-05-04's own
+   * {@link enterRoundOver} can take the identical snapshot at the identical instant (this file's own "WATCH
+   * LAST ROUND" header note) — the two callers must never drift into two different shapes of "what a round's
+   * replay is".
+   *
+   * @returns {{seed: number | null, settingsOverrides: object, inputs: object[], expectedEvents: object[]}}
+   */
+  function captureReplaySnapshot() {
+    return {
+      seed: sim === null ? null : roundSeeds[roundIndex],
+      settingsOverrides: settingsOverrides === null ? {} : { ...settingsOverrides },
+      inputs: roundInputLog.map((entry) => ({ ...entry })),
+      expectedEvents: roundEventLog.map((event) => ({ ...event })),
+    };
+  }
+
   function enterRoundOver() {
+    // KI-05-04: captured before anything below touches `match`/`roundIndex`, and well before the next
+    // `startRound()` (reached via `NEXT_ROUND` or `REMATCH`) resets `roundInputLog`/`roundEventLog` — this
+    // file's own header note names `playtestPrompt.offer()`'s call site, a few lines below, as the existing
+    // precedent for capturing at exactly this instant. Overwritten every round-over, so `MATCH_OVER` always
+    // sees only the match's last round.
+    lastRoundReplay = captureReplaySnapshot();
     const result = /** @type {string | null} */ (pendingRoundOver?.result ?? null);
     pendingRoundOver = null;
     scoreboardElapsed = 0;
@@ -736,7 +807,21 @@ export function createSession({
       keys: current.winner === null ? 0 : current.rewardKeys,
       onRematch: () => machine.dispatch(GAME_EVENTS.REMATCH),
       onMenu: () => machine.dispatch(GAME_EVENTS.QUIT_TO_MENU),
+      onWatchLastRound: watchLastRound,
     });
+  }
+
+  /**
+   * KI-05-04: `matchOver.js`'s own WATCH LAST ROUND row. Loads {@link lastRoundReplay} — snapshotted the
+   * instant the match's last round ended, in {@link enterRoundOver} — into the same `replayPlayer` the REPLAY
+   * screen's paste box loads into, then dispatches `SELECT_REPLAY` exactly as `mainMenu.js`'s own REPLAY row
+   * does. See this file's own "WATCH LAST ROUND" header note for why loading the captured replay rather than
+   * building a fresh one from its seed is what makes this "exactly that round".
+   */
+  function watchLastRound() {
+    const result = loadReplayInternal(lastRoundReplay);
+    replayLoadError = result.ok ? null : result.error;
+    machine.dispatch(GAME_EVENTS.SELECT_REPLAY);
   }
 
   function enterPause() {
@@ -1656,12 +1741,7 @@ export function createSession({
      * @returns {{seed: number | null, settingsOverrides: object, inputs: object[], expectedEvents: object[]}}
      */
     getReplay() {
-      return {
-        seed: sim === null ? null : roundSeeds[roundIndex],
-        settingsOverrides: settingsOverrides === null ? {} : { ...settingsOverrides },
-        inputs: roundInputLog.map((entry) => ({ ...entry })),
-        expectedEvents: roundEventLog.map((event) => ({ ...event })),
-      };
+      return captureReplaySnapshot();
     },
 
     /**
