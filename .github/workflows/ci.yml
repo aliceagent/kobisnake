@@ -57,8 +57,6 @@ jobs:
     # 0 unless COVERAGE_STRICT=1. src/core hit real coverage in Sprint 02, so flip the gate on here
     # — vitest exits non-zero on a missed threshold and the step below is a plain `run:` (no pipe,
     # no continue-on-error), so that failure fails this job for real.
-    env:
-      COVERAGE_STRICT: '1'
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -66,7 +64,23 @@ jobs:
           node-version: ${{ env.NODE_VERSION }}
           cache: npm
       - run: npm ci
-      - run: npm run test:unit
+
+      # KI-19-06: two steps, both required, still one check named `unit` so branch protection is untouched.
+      #
+      # Correctness first, coverage off. This is the step that says whether the game's rules hold, and it is
+      # deliberately the one with no coverage instrumentation on it: a run with coverage took long enough that
+      # Vitest's own worker-to-main RPC timed out and the process exited non-zero **with every test passing**
+      # (`Timeout calling "onTaskUpdate"`, birpc's unconfigurable 60-second window). That was red on `main`
+      # for hours and confirmed from this job's own log. `vitest.config.js` has the measurements.
+      - name: correctness (every test, coverage off)
+        run: npm run test:unit
+
+      # Then the thresholds, over the tests that produce the coverage — 20 s rather than 187 s, so the
+      # 60-second window is never load-bearing on the gate again. `test:coverage` sets COVERAGE_STRICT
+      # itself, which also closes the trap this job used to carry: the flag lived only in this file, so a
+      # local run could be green while the merge gate was red.
+      - name: coverage thresholds
+        run: npm run test:coverage
       # `if: always()` so a red run (KS-01-04 AC1) still uploads the coverage report that explains
       # it — coverage/ is written by vitest.config.js's v8 provider before the process exits either
       # way, it is only *skipped* if the step above never got to run npm's own script at all.
