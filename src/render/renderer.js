@@ -187,6 +187,11 @@ export function createGameplayScene({
  * @property {() => void} resize
  * @property {(player: number) => THREE.Vector3} getHeadWorldPosition
  * @property {() => number} getDrawCalls
+ * @property {(x: number, y: number, z: number) => {x: number, y: number, z: number}} projectToNdc - KI-16-01:
+ *   the smallest real seam onto `THREE.Vector3.prototype.project`, so a measurement layer can ask "where does
+ *   this world point land on screen" without re-deriving the camera's own maths. Plain object, not a
+ *   `THREE.Vector3` — the same reason {@link GameplayRenderer.getHeadWorldPosition} clones into `{x, y, z}`:
+ *   it has to survive `page.evaluate`'s structured clone.
  * @property {() => void} dispose
  */
 
@@ -240,6 +245,22 @@ export function createGameplayRenderer(canvas, options = {}) {
     /** Draw calls the last frame cost, from three's own counter (`ARCHITECTURE §12` budget: ≤ 120). */
     getDrawCalls() {
       return renderer.info.render.calls;
+    },
+    /**
+     * Projects a world point through the gameplay camera into normalized device coordinates — `x`/`y` each in
+     * `[-1, 1]` when the point falls inside the view frustum, `y` up. KI-16-01's seam for measuring what is
+     * actually on screen at a given viewport, without reconstructing the camera's own projection maths in a
+     * test: `x, y, z` in, `THREE.Vector3.prototype.project` does the work, and the result comes back as a
+     * plain object rather than a `THREE.Vector3` for the same reason {@link getHeadWorldPosition} does.
+     *
+     * @param {number} x
+     * @param {number} y
+     * @param {number} z
+     * @returns {{x: number, y: number, z: number}}
+     */
+    projectToNdc(x, y, z) {
+      const projected = new THREE.Vector3(x, y, z).project(camera);
+      return { x: projected.x, y: projected.y, z: projected.z };
     },
     dispose() {
       composition.dispose();

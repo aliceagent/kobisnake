@@ -60,6 +60,7 @@ function createFakeRenderer(position = { x: 1, y: 2, z: 3 }) {
   return {
     getHeadWorldPosition: vi.fn(() => ({ x: 0, y: 0, z: 0, ...position })),
     getDrawCalls: vi.fn(() => 0),
+    projectToNdc: vi.fn(() => ({ x: 0, y: 0, z: 0 })),
   };
 }
 
@@ -556,6 +557,17 @@ describe('KS-03-06 createTestHooks', () => {
 
       expect(hooks.getDrawCalls()).toBe(42);
       expect(renderer.getDrawCalls).toHaveBeenCalled();
+    });
+  });
+
+  describe('projectToNdc', () => {
+    it('KI-16-01: projectToNdc forwards x, y, z to the renderer and returns its plain {x, y, z}', () => {
+      const renderer = createFakeRenderer();
+      renderer.projectToNdc = vi.fn(() => ({ x: 0.5, y: -0.25, z: 0.1 }));
+      const { hooks } = buildHooks({ renderer });
+
+      expect(hooks.projectToNdc(3, 0, 4)).toEqual({ x: 0.5, y: -0.25, z: 0.1 });
+      expect(renderer.projectToNdc).toHaveBeenCalledWith(3, 0, 4);
     });
   });
 
