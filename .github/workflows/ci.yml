@@ -306,23 +306,17 @@ jobs:
           node-version: ${{ env.NODE_VERSION }}
           cache: npm
 
-      # AC1, first line of defence. `npm ci` installs strictly from the lockfile and refuses outright when
-      # package.json disagrees with it, so this step alone fails a PR that edits one without the other.
-      - run: npm ci
-
-      # AC1, second line of defence, and the one with a message worth reading. `npm ci`'s own refusal is
-      # accurate but generic; this reproduces the lockfile from package.json and shows the diff, so the failure
-      # names the file to regenerate and the command to do it with. `--package-lock-only` touches no
-      # node_modules and `--ignore-scripts` runs nothing from the registry, so this is cheap and side-effect
-      # free: on an in-sync tree it rewrites the lockfile byte-identically and the diff is empty.
-      - name: package-lock.json is up to date with package.json
+      # AC1, and now the only lockfile check. `npm ci` installs strictly from the lockfile and refuses
+      # outright (`npm error code EUSAGE`) when package.json disagrees with it. That is the question worth
+      # asking, and `npm ci` is the authority on it — every other required job runs it too, so a genuine
+      # mismatch fails five checks, not one.
+      - name: npm ci (also the lockfile gate — see below)
         run: |
-          npm install --package-lock-only --ignore-scripts
-          if ! git diff --exit-code package-lock.json; then
+          if ! npm ci; then
             echo ""
-            echo "::error title=Lockfile out of date::package-lock.json does not match package.json"
-            echo "package.json was changed without regenerating the lockfile (the diff above is what is"
-            echo "missing). Fix it with:"
+            echo "::error title=Lockfile out of date::npm ci refused - package.json and package-lock.json disagree"
+            echo "npm ci installs strictly from the lockfile and refuses when package.json asks for something"
+            echo "the lockfile does not describe. Regenerate it and commit the result:"
             echo ""
             echo "    npm install --package-lock-only"
             echo "    git add package-lock.json"
@@ -330,6 +324,21 @@ jobs:
             echo "Do not hand-edit package-lock.json."
             exit 1
           fi
+
+      # KI-19-06 removed a second lockfile step that regenerated package-lock.json and failed on any diff.
+      # It was wrong, and it failed 7 of the 8 pull requests KI-19-02's Dependabot config opened on its first
+      # Monday — including a plain minor bump of @playwright/test (#262), where:
+      #
+      #     npm install --package-lock-only && git diff --stat    ->  36 lines removed
+      #     npm ci --dry-run                                      ->  exit 0
+      #
+      # The 36 lines were `"libc": ["glibc"] / ["musl"]` metadata on platform-specific optional packages,
+      # which Dependabot's npm writes and this runner's npm prunes on regeneration. Nothing was out of sync.
+      #
+      # The step asked "would a fresh resolve on *this machine* produce a byte-identical lockfile", which is
+      # not the same question as "does the lockfile satisfy package.json" and is not stable across npm
+      # versions or platforms. A gate that fails for reasons unrelated to the repository is the failure mode
+      # this sprint's own Risks section names, so it is gone rather than tuned. `npm ci` above is the check.
 
       # AC2, the gate. **Scope: what ships.** `--omit=dev` narrows this to the runtime dependency tree, which
       # is `three` and nothing else — the only code that reaches dist/ and therefore a player's browser. The
