@@ -43,6 +43,9 @@ yet: `package.json` is at `0.1.0`, Sprint 18 cuts `v1.0.0`, and everything below
 
 ### Changed
 
+- **The colour-pairing note spells PLAYER the way the rest of the screen does.** When two chosen colours look
+  alike, the suggestion beneath them read "Try TEAL for player 2." while the controls card directly above it
+  read "PLAYER 1 · RED — W A S D". It now reads "Try TEAL for PLAYER 2." (#214).
 - **A match of draws now ends.** Three consecutive draws end the match instead of replaying forever — the
   round could previously repeat indefinitely at 0–0 with no way out but quitting (#139, #149).
 - **The apple is easier to see.** It was a small dark-red sphere on a green floor and shared player one's hue

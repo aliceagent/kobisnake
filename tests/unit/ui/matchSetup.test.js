@@ -14,6 +14,7 @@ import {
   changeMusicTrack,
   changePlayerKind,
   checkColourSafety,
+  colourNoteText,
   controlsCardLabel,
   pickPlayerColor,
   togglePowerUps,
@@ -234,6 +235,28 @@ describe('controlsCardLabel — KI-10-02', () => {
  * `failing`/`recommendedColor`, never to `COLOUR_NOTE_COPY`'s sentence, which is provisional pending #184
  * (`matchSetup.js`'s own doc comment on that constant).
  */
+describe('colourNoteText — #214: the approved colour-note sentence, joined end to end', () => {
+  // This is the test that was missing when #214 landed. The sentence is approved copy (`DESIGN-DECISIONS §3`,
+  // "The colour-safe pairing note on match setup") and player-visible, yet changing `player 2` to `PLAYER 2`
+  // turned nothing red: no visual baseline renders this note, and every other assertion binds to the
+  // `[data-colour-note]` element and its `data-recommended-color`, never to the words.
+  it('#214: reads PLAYER in capitals, as the controls card on the same screen spells it', () => {
+    expect(colourNoteText('teal', 2)).toBe(
+      'These two colours look alike to some players. Try TEAL for PLAYER 2.',
+    );
+  });
+
+  it('#214: the colour word and the player number are computed, never literals (§3)', () => {
+    expect(colourNoteText('gold', 1)).toBe(
+      'These two colours look alike to some players. Try GOLD for PLAYER 1.',
+    );
+  });
+
+  it('says the note and invents no alternative when nothing owned clears the check', () => {
+    expect(colourNoteText(null, 2)).toBe('These two colours look alike to some players.');
+  });
+});
+
 describe('checkColourSafety — KI-15-02 AC1', () => {
   it('KI-15-02 AC1: a passing pair (the shipping default, red/blue) reports no note', () => {
     const matchSettings = { ...BASE_SETTINGS, colors: { 1: 'red', 2: 'blue' } };

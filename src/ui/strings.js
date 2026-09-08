@@ -29,18 +29,19 @@ import { deepFreeze } from './deepFreeze.js';
  * spec — parses only §3. Those entries are approved copy that {@link APPROVED_KEYS} and the AC1 test do not
  * (and are not asked to) verify; see the test file's own module comment for why.
  *
- * ## One deliberate contradiction between this file and the code (tracked on #212)
+ * ## The contradiction this file found, and how it was closed (#214)
  *
- * §3's colour-safe pairing note bullet approves, verbatim: `Try TEAL for PLAYER 2.` — capital `PLAYER`,
- * because (§3's own words) "PLAYER is capitalised because the controls card on the same screen spells it so."
- * `src/ui/screens/matchSetup.js`'s `COLOUR_NOTE_COPY.suggestion` (line 255 at the time of writing) renders
- * `` `Try ${colorName.toUpperCase()} for player 2.` `` — lower-case `player`, and with the player number
- * hard-coded to `2` rather than taken as a parameter. `matchSetup.colourNote.suggestion` below transcribes
- * §3's approved form (capital `PLAYER`, and the player number computed rather than literal — §3 is explicit
- * that "the colour word and the player number are computed, never literals"), **not** what `matchSetup.js`
- * currently outputs. This is deliberate: AC1 is a parity test against §3, and `matchSetup.js` is outside this
- * ticket's `Files:` list — the discrepancy is already reported on #212 for the design lead to rule on, and
- * fixing it is not this ticket's job.
+ * Worth keeping, because it is the argument for the catalogue existing at all. §3's colour-safe pairing note
+ * bullet approves, verbatim: `Try TEAL for PLAYER 2.` — capital `PLAYER`, because (§3's own words) "PLAYER is
+ * capitalised because the controls card on the same screen spells it so." `matchSetup.js` had always rendered
+ * `` `Try ${colorName.toUpperCase()} for player 2.` `` — lower-case, with the number hard-coded. Nobody had
+ * noticed: the two lived in different files and no test compared them.
+ *
+ * Transcribing §3 here made the AC1 parity test fail on its very first run, which is how the discrepancy
+ * surfaced. It was reported rather than decided — an engineer does not choose what a sentence says — and the
+ * catalogue deliberately disagreed with the screen until the design lead ruled. #214 ruled §3 right and the
+ * screen wrong, and `matchSetup.js` now reads `matchSetup.colourNote.suggestion` like everything else, so the
+ * two agree again and the parity test is what keeps them that way.
  *
  * ## Three strings approved here that no screen renders yet
  *
