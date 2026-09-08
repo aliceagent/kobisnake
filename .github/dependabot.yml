@@ -43,6 +43,33 @@ updates:
       prefix: 'chore(deps)'
       prefix-development: 'chore(deps-dev)'
     groups:
+      # KI-19-02 follow-up: two pairs that must move together, and cannot move at all otherwise.
+      #
+      # Dependabot's first Monday opened eslint 10 (#263) and @eslint/js 10 (#264) as two pull requests, and
+      # vitest 5 (#266) and @vitest/coverage-v8 5 (#268) as two more. All four were red on **every** check —
+      # lint, typecheck, unit, build, browser, supply-chain — which is the signature of an unsatisfiable peer
+      # range rather than of a package that regressed: install one half at the new major while the other is
+      # still on the old one and `npm ci` produces a tree that cannot do anything. All four were closed as
+      # superseded by whatever these groups open next.
+      #
+      # The `dev-dependencies` group below deliberately excludes majors so that an *independent* major gets
+      # reviewed alone. That is still right. It is simply wrong for a pair, and the fix is not to loosen that
+      # group but to give each pair one of its own that accepts every update type — so the two halves are
+      # always in the same pull request, at the same version, whatever kind of bump it is.
+      #
+      # `applies-to: version-updates` on both, matching the group below; security updates are a separate
+      # stream and are left to arrive however Dependabot sees fit.
+      eslint:
+        applies-to: version-updates
+        patterns:
+          - 'eslint'
+          - '@eslint/*'
+      vitest:
+        applies-to: version-updates
+        patterns:
+          - 'vitest'
+          - '@vitest/*'
+
       # Routine dev-toolchain bumps only: `dependency-type: development` already keeps `three` out (it is
       # this project's one runtime dependency, `dependencies` not `devDependencies`), and `@types/three` is
       # excluded by name below even though it *is* a devDependency, because it only makes sense pinned to the
@@ -60,6 +87,14 @@ updates:
         exclude-patterns:
           - 'three'
           - '@types/three'
+          # Belt and braces with the two pair groups above. Dependabot assigns a dependency to the first
+          # group that matches and those are declared first, so ordering alone would do it — but ordering is
+          # invisible to anyone reading one group in isolation, and a reordering would silently split the
+          # pairs again. Naming them here means the intent survives the file being rearranged.
+          - 'eslint'
+          - '@eslint/*'
+          - 'vitest'
+          - '@vitest/*'
     # `three` and `@types/three` are deliberately in no `groups:` entry at all — not even a single-member
     # group of their own. A grouped update (however small the group) still gets a generic "bump the
     # dev-dependencies group" PR title and Dependabot's group update/superseding behaviour; a renderer bump

@@ -91,7 +91,10 @@ describe('KI-19-02 automated updates', () => {
     // .npmrc's save-exact=true (KI-19-01) means every version is an exact pin; `increase` is the setting
     // that keeps Dependabot rewriting the manifest to a new exact version rather than widening it to a range.
     const lines = codeLines(config());
-    const npmUpdate = lines.slice(0, lines.findIndex((l) => /github-actions/.test(l)));
+    const npmUpdate = lines.slice(
+      0,
+      lines.findIndex((l) => /github-actions/.test(l)),
+    );
     expect(npmUpdate.join('\n')).toContain('versioning-strategy: increase');
   });
 
@@ -103,7 +106,7 @@ describe('KI-19-02 automated updates', () => {
     expect(excludePatterns).toContain("'@types/three'");
   });
 
-  it('KI-19-02 AC2: three never appears inside any group\'s `patterns:` (only ever `exclude-patterns:`)', () => {
+  it("KI-19-02 AC2: three never appears inside any group's `patterns:` (only ever `exclude-patterns:`)", () => {
     // This is the literal claim of AC2: `three` is not a member of any group. `dependency-type: development`
     // already keeps it out of dev-dependencies (three ships to the player, it is not a devDependency), and
     // this asserts the stronger property directly — that no group anywhere lists it as an *included* pattern.
@@ -137,5 +140,38 @@ describe('KI-19-02 automated updates', () => {
       .toLowerCase();
     expect(allWorkflowText).not.toContain('automerge');
     expect(allWorkflowText).not.toContain('auto-merge');
+  });
+
+  it('KI-19-02: eslint and @eslint/js share a group, and so do vitest and @vitest/coverage-v8', () => {
+    // Dependabot's first Monday opened each half of both pairs as its own pull request (#263/#264 and
+    // #266/#268). All four were red on every single check, which is what an unsatisfiable peer range looks
+    // like rather than a package that regressed: one half at the new major and the other at the old one
+    // gives `npm ci` a tree that cannot lint, typecheck, build or test. A pair has to move together.
+    const lines = codeLines(config());
+    for (const [group, members] of [
+      ['eslint', ["'eslint'", "'@eslint/*'"]],
+      ['vitest', ["'vitest'", "'@vitest/*'"]],
+    ]) {
+      const body = block(lines, group);
+      for (const member of members) {
+        expect(body, `the \`${group}\` group must contain ${member}`).toContain(member);
+      }
+      // The whole point: unlike `dev-dependencies`, these must accept a major, because a major is exactly
+      // when the two halves must not be separated.
+      expect(
+        body,
+        `the \`${group}\` group must not restrict update-types — a major is when pairing matters most`,
+      ).not.toContain('update-types');
+    }
+  });
+
+  it('KI-19-02: the catch-all dev group cannot swallow either pair', () => {
+    // Ordering already prevents it (Dependabot takes the first matching group and the pairs are declared
+    // first), but ordering is invisible when reading one group, and a rearrangement would silently split
+    // the pairs again.
+    const dev = block(codeLines(config()), 'dev-dependencies');
+    for (const member of ["'eslint'", "'@eslint/*'", "'vitest'", "'@vitest/*'"]) {
+      expect(dev, `dev-dependencies must exclude ${member}`).toContain(member);
+    }
   });
 });
