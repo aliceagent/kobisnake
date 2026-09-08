@@ -1,7 +1,7 @@
 // @ts-check
 import { describe, expect, it, vi } from 'vitest';
 import { GAME_EVENTS, STATES } from '../../../src/game/gameStateMachine.js';
-import { createMainMenuScreen } from '../../../src/ui/screens/mainMenu.js';
+import { createMainMenuScreen, setBuildStamp } from '../../../src/ui/screens/mainMenu.js';
 import { REPLAY_COPY } from '../../../src/ui/screens/replay.js';
 
 /**
@@ -263,5 +263,45 @@ describe('createMainMenuScreen — KI-10-01', () => {
     createMainMenuScreen(/** @type {any} */ (root));
     const container = findAllByClass(/** @type {any} */ (root), 'menu-screen')[0];
     expect(container.dataset.screen).toBe(STATES.MAIN_MENU);
+  });
+});
+
+/**
+ * KI-19-03: the build stamp `main.js` feeds this screen through {@link setBuildStamp} — a plain-argument
+ * seam rather than this module reading `import.meta` itself (see that function's own doc comment).
+ */
+describe('createMainMenuScreen — KI-19-03 build stamp', () => {
+  it('KI-19-03: shows the "unknown" default before setBuildStamp has ever been called', async () => {
+    // A fresh module instance, isolated from every other test in this file (some of which call the
+    // top-level `setBuildStamp` below and would otherwise leak into this one, since it is module-level
+    // state) — `vi.resetModules()` plus a dynamic re-import is what real production code never needs: a
+    // page only ever has the one `mainMenu.js` instance `main.js` calls `setBuildStamp` on before anything
+    // reads it (that file's own comment on the ordering).
+    vi.resetModules();
+    const freshMainMenu = await import('../../../src/ui/screens/mainMenu.js');
+    const root = createFakeRoot();
+    freshMainMenu.createMainMenuScreen(/** @type {any} */ (root));
+
+    const stamp = findByClass(/** @type {any} */ (root), 'build-stamp');
+    expect(stamp.textContent).toBe('unknown');
+    expect(stamp.dataset.buildStamp).toBe('');
+  });
+
+  it('KI-19-03: setBuildStamp updates every screen built after it is called', () => {
+    setBuildStamp({ commit: 'abc1234', date: '2026-09-07T12:00:00.000Z' });
+    const root = createFakeRoot();
+    createMainMenuScreen(/** @type {any} */ (root));
+
+    const stamp = findByClass(/** @type {any} */ (root), 'build-stamp');
+    expect(stamp.textContent).toBe('abc1234 · 2026-09-07');
+  });
+
+  it('KI-19-03: falls back to the commit alone when the date is empty', () => {
+    setBuildStamp({ commit: 'abc1234', date: '' });
+    const root = createFakeRoot();
+    createMainMenuScreen(/** @type {any} */ (root));
+
+    const stamp = findByClass(/** @type {any} */ (root), 'build-stamp');
+    expect(stamp.textContent).toBe('abc1234');
   });
 });

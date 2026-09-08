@@ -1,11 +1,32 @@
 import { defineConfig } from 'vite';
 
+import { resolveBuildCommit, resolveBuildDate } from './scripts/build-stamp.mjs';
 import { previewPort } from './scripts/preview-port.mjs';
 
 // The whole game is a single static page. Everything (three.js included) is bundled from npm so the built
 // site never asks the network for anything after it loads.
+
+/**
+ * KI-19-03: the commit short-hash and build date, resolved once per `vite.config.js` evaluation (`resolveBuildCommit`'s
+ * own doc comment in `scripts/build-stamp.mjs` covers the env-var-then-`git`-then-`'unknown'` fallback chain)
+ * and baked into `import.meta.env` below via `define` — a build-time substitution, not a runtime read, which
+ * is what makes AC2 ("no runtime network request to find it out") true: the string is already sitting in the
+ * bundle before the page is ever served, there is nothing left to ask for.
+ */
+const BUILD_COMMIT = resolveBuildCommit();
+const BUILD_DATE = resolveBuildDate();
+
 export default defineConfig({
   base: './',
+  // KI-19-03: extends `import.meta.env` with two build-time constants, the same mechanism Vite itself uses
+  // for `import.meta.env.DEV` (`src/main.js`'s own comment: that file is the one place allowed to read
+  // `import.meta.env`, and does — see its `buildStamp` constant). `KOBI_`-prefixed rather than `VITE_`:
+  // Vite's `VITE_` convention is for values it loads from an actual `.env` file, and these two never come
+  // from one.
+  define: {
+    'import.meta.env.KOBI_BUILD_COMMIT': JSON.stringify(BUILD_COMMIT),
+    'import.meta.env.KOBI_BUILD_DATE': JSON.stringify(BUILD_DATE),
+  },
   build: {
     outDir: 'dist',
     target: 'es2022',
