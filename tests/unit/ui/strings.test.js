@@ -446,6 +446,7 @@ describe("KI-20-05 — the catalogue must not defeat KI-11-05's entry/playtest c
     'hud',
     'tuning',
     'tutorial',
+    'error',
   ];
 
   it.each(GROUPS)('exports "%s" as its own /*#__PURE__*/-annotated top-level const', (group) => {
@@ -678,6 +679,43 @@ describe("Parameterised strings match the live screens' own formatting, branch f
   });
   it('tuning.presetSeconds', () => {
     expect(STRINGS.tuning.presetSeconds(30)).toBe('30s');
+  });
+});
+
+describe('KI-06-02 AC3 — the error screen carries no technical jargon', () => {
+  // The machine-checkable half of AC3 ("the screen carries no technical jargon"): every string
+  // `STRINGS.error` renders, checked case-insensitively against a list of words the ticket's tech-lead notes
+  // rule out by name — none of them mean anything to an eleven-year-old, and all of them describe the cause
+  // rather than "what happened, in plain words, and what to do about it" (the ticket's own spec).
+  const FORBIDDEN_SUBSTRINGS = [
+    'webgl',
+    'gpu',
+    'context',
+    'error',
+    'exception',
+    'stack',
+    'undefined',
+    'null',
+    'nan',
+    'code',
+  ];
+
+  /** @type {string[]} */
+  const renderedStrings = Object.values(STRINGS.error).filter(
+    (value) => typeof value === 'string',
+  );
+
+  it('sanity — the error group actually has strings to check (the check is not vacuous)', () => {
+    expect(renderedStrings.length).toBeGreaterThan(0);
+  });
+
+  it.each(FORBIDDEN_SUBSTRINGS)('no rendered error-screen string contains "%s"', (forbidden) => {
+    const offenders = renderedStrings.filter((value) => value.toLowerCase().includes(forbidden));
+    expect(offenders, `found "${forbidden}" in: ${JSON.stringify(offenders)}`).toEqual([]);
+  });
+
+  it('the reload control is named RELOAD, in words, per the ticket', () => {
+    expect(STRINGS.error.reloadButton).toBe('RELOAD');
   });
 });
 

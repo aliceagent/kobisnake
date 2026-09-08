@@ -51,6 +51,12 @@ const NO_INPUT_ROUND = readFileSync(
  * Every PNG this file adds was opened and checked by hand against the screen it claims to picture before
  * being committed (tech-lead note F) — see the PR description for that confirmation.
  *
+ * KI-06-02 adds one more, for the last-resort screen (`src/ui/screens/error.js`) — not one of `ui.js`'s six
+ * `GameState` screens (that module's own doc comment says why), so it needs no freeze and no `__kobi` call at
+ * all: it is reached by blocking WebGL context creation before the page ever navigates, the same fabrication
+ * `tests/e2e/error-screen.spec.js`'s AC1 test uses, which is also the most deterministic way there is to
+ * reach it — nothing else in the page gets far enough to tick.
+ *
  * KI-01-02 adds the two new screen *states* the draw cap introduces (`DESIGN-DECISIONS §1` row 26): the
  * scoreboard carrying the last-replay warning, and the match-over panel on a tie. Both are reached with the
  * same golden no-input `DRAW` the ROUND_OVER baseline above steers *away* from with `pressKey` — here neither
@@ -304,5 +310,31 @@ test.describe('KS-05-05 screen baselines', () => {
     await expect(page.locator('[data-replay-readout]')).toHaveText(/TICK 0/);
 
     await expect(page).toHaveScreenshot('screen-replay-loaded.png');
+  });
+
+  test('KI-06-02 AC3: the ERROR screen matches its baseline', async ({ page }) => {
+    // Blocks every WebGL context request, the way a browser with no WebGL at all behaves — the same
+    // fabrication `tests/e2e/error-screen.spec.js`'s AC1 test uses, repeated here rather than imported: this
+    // file's own screens are each reached a different way (state-machine dispatch, `__kobi` calls, a faked
+    // `document.hidden`), and this is this screen's own way, self-contained like the rest of them.
+    // `createGameplayRenderer` throws from three's own `WebGLRenderer` constructor with no context to draw
+    // into, `main.js`'s `catch` shows this screen, and nothing else in the page ever gets far enough to tick
+    // — the most deterministic, least-flake-prone way to reach this particular screen for a pixel diff.
+    await page.addInitScript(() => {
+      const proto = /** @type {any} */ (globalThis).HTMLCanvasElement.prototype;
+      const originalGetContext = proto.getContext;
+      proto.getContext = function (/** @type {string} */ type, ...args) {
+        if (typeof type === 'string' && type.toLowerCase().includes('webgl')) return null;
+        return originalGetContext.apply(this, [type, ...args]);
+      };
+    });
+    await page.goto(DEFAULT_QUERY);
+
+    // Per #209, the pixel diff alone cannot prove the screen rendered — assert the DOM the baseline is a
+    // picture of, not just that a screenshot was taken.
+    await expect(page.locator('[data-screen="ERROR"]')).toBeVisible();
+    await expect(page.locator('.error-reload-button')).toBeVisible();
+
+    await expect(page).toHaveScreenshot('screen-error.png');
   });
 });

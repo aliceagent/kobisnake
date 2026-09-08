@@ -54,7 +54,7 @@
  *   yet (Sprint 15's job); this is the one line of its copy the design lead has already ruled on, with nowhere
  *   to live until that screen exists.
  *
- * ## Why this is twelve exports and not one object (KI-20-05, #258)
+ * ## Why this is thirteen exports and not one object (KI-20-05, #258)
  *
  * Each screen group is its own top-level `export const`, annotated `/*#__PURE__*\/`, and the `STRINGS`
  * aggregate below is assembled from them. **A screen imports its group — never the aggregate.** That is not a
@@ -504,6 +504,30 @@ export const tutorial = /*#__PURE__*/ deepFreeze({
 });
 
 /**
+ * `error` — see this module's doc comment for the approved/unapproved convention, and for why each group
+ * is its own `/*#__PURE__*\/`-annotated export rather than a property of one object.
+ *
+ * KI-06-02 (`docs/sprints/improvement-06-resilience-and-recovery.md`): the last-resort screen
+ * (`src/ui/screens/error.js`), shown when WebGL was never available, a lost context never comes back, or
+ * something threw during startup. Every entry is a first draft transcribed for the design lead to rule on —
+ * see this module's own doc comment's "Approved vs. unapproved" section — written to the ticket's own spec:
+ * "in words an eleven-year-old can act on, not a stack trace", with no `WebGL`, `context`, `GPU`, `Error`,
+ * stack or error code anywhere in it. `tests/unit/ui/strings.test.js`'s "KI-06-02 AC3" describe block is the
+ * machine-checkable half of that rule: a list of forbidden substrings run against every string this group
+ * renders.
+ */
+export const error = /*#__PURE__*/ deepFreeze({
+  // UNAPPROVED — KI-06-02 (`error.js`'s `heading.textContent`). "What happened", without naming the cause:
+  // an eleven-year-old has no use for "WebGL context lost", and the ticket rules that word choice out anyway.
+  heading: 'SOMETHING WENT WRONG',
+  // UNAPPROVED — KI-06-02 (`error.js`'s `message.textContent`). "What to do about it", plus one reassurance a
+  // player looking at a dead screen needs before anything else: this was not something they did.
+  message: "The game got stuck. It isn't anything you did — click RELOAD to start it again.",
+  // UNAPPROVED — KI-06-02 (`error.js`'s `reloadButton.textContent`); the ticket's own name for the control.
+  reloadButton: 'RELOAD',
+});
+
+/**
  * Recursively freezes `value` and everything reachable from it (nested plain objects, arrays and — since a
  * `Set` iterates its own values but freezing does not touch what a `Set` holds indirectly — every own property
  * of every object, function included). AC2's "a write throws" needs this to go all the way down: freezing only
@@ -545,6 +569,7 @@ export const STRINGS = /*#__PURE__*/ deepFreeze({
   hud,
   tuning,
   tutorial,
+  error,
 });
 
 /**
