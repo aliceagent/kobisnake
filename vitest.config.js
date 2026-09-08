@@ -111,7 +111,18 @@ export default defineConfig({
     // `.test.js` half is the pure functions the browser layer is built from: the driver's own failure gate,
     // KI-03-02's policies and KI-03-03's invariants, each provable in Node against a hand-built snapshot.
     // Without this line those tests would exist and never run.
-    include: ['tests/unit/**/*.test.js', 'tests/sim/**/*.test.js', 'tests/agent/**/*.test.js'],
+    //
+    // `tests/perf` (KI-08-01) is the same story one directory over: it is plain Vitest (`bundle.test.js`
+    // shells out to `vite build` and asserts on the result in Node, no browser involved), so it belongs in
+    // this same `test:unit` run rather than needing a runner of its own — but a Vitest positional path filter
+    // cannot add a file this `include` does not already match, so without this glob the file would exist,
+    // pass locally when run directly, and never run as part of the gate anyone actually trusts.
+    include: [
+      'tests/unit/**/*.test.js',
+      'tests/sim/**/*.test.js',
+      'tests/agent/**/*.test.js',
+      'tests/perf/**/*.test.js',
+    ],
     environment: 'node',
     coverage: {
       enabled: true,
