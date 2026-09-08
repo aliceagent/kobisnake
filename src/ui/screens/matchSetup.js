@@ -208,9 +208,9 @@ export const PLAYER_KIND_VALUES = Object.freeze(
 );
 
 /**
- * KI-12-04's own row: cycles `player`'s kind through {@link PLAYER_KIND_VALUES} — `HUMAN`, then the three CPU
- * levels, wrapping around. Independent of {@link pickPlayerColor}: a CPU still owns a colour (its snake still
- * needs one to render), so cycling a player's kind never touches `matchSettings.colors`.
+ * KI-12-04's own row: cycles `player`'s kind through {@link PLAYER_KIND_VALUES} — `HUMAN`, then the two
+ * offered CPU levels, wrapping around. Independent of {@link pickPlayerColor}: a CPU still owns a colour (its
+ * snake still needs one to render), so cycling a player's kind never touches `matchSettings.colors`.
  *
  * @param {MatchSettings} matchSettings
  * @param {1 | 2} player
