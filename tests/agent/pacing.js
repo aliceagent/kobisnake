@@ -76,12 +76,18 @@ export const LASER_START_TIMES = Object.freeze([20, 25, 30]);
  * climax fraction, which would let the matrix answer "which single lever moves it most" by default rather
  * than on the evidence.
  *
- * So these two cells exist to bound the lever from the other side, and `gate1-bot-matrix.md` already
- * establishes 35 as a value worth asking about (its own variants are 25/30/35). They are labelled as an
- * extension everywhere they appear, and the ticket's 3×3 grid is reported intact and unchanged beside them —
- * the point is to add the missing direction, never to quietly redefine what was asked for.
+ * So these cells exist to bound the lever from the other side, and `gate1-bot-matrix.md` already establishes
+ * 35 as a value worth asking about (its own variants are 25/30/35). They are labelled as an extension
+ * everywhere they appear, and the ticket's 3×3 grid is reported intact and unchanged beside them — the point
+ * is to add the missing direction, never to quietly redefine what was asked for.
+ *
+ * **35 and 40 were run by KI-04-01; 45 and 50 were added by KI-04-03** on the design lead's ruling (#229,
+ * `DESIGN-DECISIONS §1` row 30): with only two points the arm is "a line, not a curve", and the lever has to
+ * be measured far enough to see where it turns over. It must turn: `laserStartTime` cannot usefully approach
+ * `roundDuration`, because a warning at 50 s remaining leaves only 40 s of open board before the arena starts
+ * closing, and the round has to be worth playing before the climax as well as during it.
  */
-export const EARLIER_LASER_START_TIMES = Object.freeze([35, 40]);
+export const EARLIER_LASER_START_TIMES = Object.freeze([35, 40, 45, 50]);
 
 /** The `roundDuration` values I04 sweeps, in simulated seconds. The last is the shipping default. */
 export const ROUND_DURATIONS = Object.freeze([60, 75, 90]);
@@ -566,6 +572,12 @@ export function aggregateSweep(run) {
   };
 }
 
+/** `[35, 40, 45, 50]` → `"35, 40, 45 and 50"`. Prose, not data — the JSON block carries the values themselves. */
+const listOf = (/** @type {readonly number[]} */ values) =>
+  values.length < 2
+    ? String(values[0] ?? '')
+    : `${values.slice(0, -1).join(', ')} and ${values[values.length - 1]}`;
+
 const fmtPct = (/** @type {number | null} */ value) =>
   value === null ? '—' : `${value.toFixed(1)}%`;
 const fmtSeconds = (/** @type {number | null} */ value) =>
@@ -750,9 +762,11 @@ KI-04-02, which belongs to the design lead; this document deliberately stops at 
   values (20 / 25 / 30) are the shipping start and two *later* ones, and the sprint file's lever table
   ("earlier lasers reach more rounds") describes the direction none of them test. Swept only downward this
   lever can move the climax fraction one way, so a matrix built from those three alone would answer "which
-  single lever moves it most" by default rather than on evidence. \`laserStartTime\` ${EARLIER_LASER_START_TIMES.join(' and ')} s
+  single lever moves it most" by default rather than on evidence. \`laserStartTime\` ${listOf(EARLIER_LASER_START_TIMES)} s
   at the shipping \`roundDuration\` are therefore run as well, labelled *(extension: earlier start)* wherever
-  they appear. The ticket's 3×3 grid is reported intact beside them.
+  they appear. The ticket's 3×3 grid is reported intact beside them. 35 and 40 s were measured by KI-04-01;
+  45 and 50 s were added by KI-04-03 on the design lead's ruling, because two points describe a line rather
+  than a curve and this lever has to be measured far enough to show where it turns over.
 - **Best-of-3**, \`agent-run.md\`'s format and the game's own default. First-to-two means every match plays at
   least two rounds, so ${meta.seedsPerCell} seeds guarantee at least ${meta.seedsPerCell * 2} rounds in every
   cell by construction.

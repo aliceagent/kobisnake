@@ -127,6 +127,17 @@ describe('KI-04-01 · the sweep shape', () => {
     expect(grid).toHaveLength(ticketCells.length + EARLIER_LASER_START_TIMES.length);
   });
 
+  it('KI-04-03: the earlier-start arm is 35, 40, 45 and 50 s — far enough to show where it turns over', () => {
+    // KI-04-01 ran 35 and 40; KI-04-03 added 45 and 50 on the design lead's ruling (#229), because two
+    // points describe a line rather than a curve and the lever has to be measured past its useful range.
+    expect(EARLIER_LASER_START_TIMES).toEqual([35, 40, 45, 50]);
+    // It must stop short of `roundDuration`: a warning at the round's own length would leave no open board
+    // at all, which is not a pacing option, it is a different game.
+    for (const laserStartTime of EARLIER_LASER_START_TIMES) {
+      expect(laserStartTime).toBeLessThan(SETTINGS.roundDuration);
+    }
+  });
+
   it('KI-04-01: the extension is earlier starts only, at the shipping round duration', () => {
     // "Earlier" is the whole point: laserStartTime counts seconds *remaining*, so every extension value must
     // be larger than the shipping one, or it is not testing the direction the ticket's own three miss.
