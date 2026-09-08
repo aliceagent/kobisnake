@@ -340,6 +340,43 @@ export function createGameplayScene({
 }
 
 /**
+ * One `getRenderStats()` reading: what the last frame cost, and what is resident on the GPU.
+ *
+ * @typedef {object} RenderStats
+ * @property {number} calls - draw calls the last frame cost; the same number {@link
+ *   GameplayRenderer.getDrawCalls} returns, carried here so one read answers the whole question.
+ * @property {number} triangles - triangles the last frame submitted.
+ * @property {number} lines
+ * @property {number} points
+ * @property {number} geometries - geometries currently resident. Residency, not per-frame: it moves only
+ *   when something is created or disposed, which is what makes it a leak signal.
+ * @property {number} textures - textures currently resident, same reading.
+ * @property {number} programs - compiled shader programs currently held; `0` before the first compile.
+ * @property {number} sceneNodes - every `Object3D` in the scene graph, the scene itself included
+ *   ({@link countSceneNodes}). three's own `info` does not report this, and it is the one that catches a
+ *   leak `memory.geometries` cannot: a view that re-adds a mesh each round while reusing one geometry grows
+ *   this and nothing else.
+ */
+
+/**
+ * Every `Object3D` in `root`'s subtree, `root` included.
+ *
+ * `THREE.Object3D.traverse` visits the node it is called on as well as its descendants, so a fresh scene
+ * carrying nothing but the arena still counts more than zero — the number is only ever meaningful as a
+ * comparison against another reading of the same scene, which is exactly how KI-08-03's leak check uses it.
+ *
+ * @param {THREE.Object3D} root
+ * @returns {number}
+ */
+function countSceneNodes(root) {
+  let count = 0;
+  root.traverse(() => {
+    count += 1;
+  });
+  return count;
+}
+
+/**
  * @typedef {object} GameplayRenderer
  * @property {THREE.WebGLRenderer} renderer
  * @property {THREE.Scene} scene
@@ -349,6 +386,14 @@ export function createGameplayScene({
  * @property {() => boolean} resize
  * @property {(player: number) => THREE.Vector3} getHeadWorldPosition
  * @property {() => number} getDrawCalls
+ * @property {() => RenderStats} getRenderStats - KI-08-03: everything `THREE.WebGLRenderer.info` knows about
+ *   the last frame and about what is resident on the GPU, as one plain object. `getDrawCalls` above is one
+ *   field of it and stays, because KS-04-02, KI-08-02 and `tests/e2e/laser.spec.js` all read that narrower
+ *   seam; this is the wider one a frame-time budget needs, and it exists because **on a GPU-less CI runner
+ *   the honest measure of a frame's cost is the work it asks for, not the milliseconds it took**
+ *   (`ARCHITECTURE §12`, KS-07-06's own three-machine table, and the KI-19-00 ruling that a gate never keys
+ *   on wall clock). A declared deviation from KI-08-03's `Files:` list, per that ticket's PR description —
+ *   the same minimal-surface pattern KI-16-01's `projectToNdc` and KI-04-01's `setSettingsOverrides` used.
  * @property {(listener: () => void) => () => void} onContextLost - KI-06-01: subscribe to the canvas losing
  *   its WebGL context; the return value unsubscribes. See {@link createContextLossWatcher}.
  * @property {(listener: () => void) => () => void} onContextRestored - KI-06-01: subscribe to the context
@@ -460,6 +505,39 @@ export function createGameplayRenderer(canvas, options = {}) {
     /** Draw calls the last frame cost, from three's own counter (`ARCHITECTURE §12` budget: ≤ 120). */
     getDrawCalls() {
       return renderer.info.render.calls;
+    },
+    /**
+     * KI-08-03: the last frame's cost and the scene's GPU residency, in one read.
+     *
+     * Every field is a **count of work or of resources**, never a duration, and that is the whole point.
+     * `ARCHITECTURE §12`'s frame-time row is `p95 ≤ 16.6 ms`, which cannot be gated on a CI runner that
+     * renders in software at single-digit fps — KS-07-06 met exactly this and answered it by reporting a
+     * machine-independent figure beside the milliseconds, and KI-19-00 turned that into the rule. These
+     * counts are what a frame costs in a form that is the same on every machine: identical on the runner,
+     * on a developer's laptop and on the 11-year-old's school laptop, because they describe what the scene
+     * asked the GPU to do rather than how fast that GPU did it.
+     *
+     * `render.*` is per-frame and three resets it on every `render()` call, so these describe the **last**
+     * frame drawn. `memory.*` and `programs` are residency, not per-frame: they only move when something is
+     * created or disposed, which is what makes them a leak check (KI-08-03 AC2) rather than a cost.
+     *
+     * `programs` can be `null` in three's own typings before the first compile; it is reported as `0` there
+     * rather than `null`, so a caller never has to special-case a renderer that has not drawn yet.
+     *
+     * @returns {RenderStats}
+     */
+    getRenderStats() {
+      const { render, memory } = renderer.info;
+      return {
+        calls: render.calls,
+        triangles: render.triangles,
+        lines: render.lines,
+        points: render.points,
+        geometries: memory.geometries,
+        textures: memory.textures,
+        programs: renderer.info.programs?.length ?? 0,
+        sceneNodes: countSceneNodes(scene),
+      };
     },
     /**
      * Projects a world point through the gameplay camera into normalized device coordinates — `x`/`y` each in

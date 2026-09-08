@@ -76,6 +76,10 @@ import { STATES } from './gameStateMachine.js';
  * @property {(player: number) => {x: number, y: number, z: number}} getHeadWorldPosition
  * @property {() => number} getDrawCalls - KS-04-02: lets an e2e spec measure the laser phase's draw-call
  *   cost (AC3) against three's own counter, the same one `ARCHITECTURE §12`'s budget is measured from.
+ * @property {() => import('../render/renderer.js').RenderStats} [getRenderStats] - KI-08-03: the wider read
+ *   of the same counter — triangles, resident geometries, textures, programs and scene-graph nodes beside
+ *   the draw calls. Optional for the same reason `camera` below is: a minimal test renderer that predates it
+ *   stays legal, and `tests/unit/game/testHooks.test.js` builds exactly such a renderer.
  * @property {(x: number, y: number, z: number) => {x: number, y: number, z: number}} projectToNdc - KI-16-01:
  *   a straight passthrough to `renderer.js`'s own method — see {@link KobiTestHooks.projectToNdc}.
  * @property {{
@@ -161,6 +165,12 @@ import { STATES } from './gameStateMachine.js';
  * @property {(player: 1 | 2, dir: Direction | DirectionName) => void} pressKey
  * @property {(player: number) => {x: number, y: number, z: number}} getHeadWorldPosition
  * @property {() => number} getDrawCalls - see {@link TestHooksRenderer.getDrawCalls}.
+ * @property {() => import('../render/renderer.js').RenderStats | null} getRenderStats - KI-08-03 (a declared
+ *   deviation from that ticket's own `Files:` list, per its PR description): the seam `tests/perf/frameTime.js`
+ *   reads instead of the milliseconds a GPU-less runner would report. `null` when the renderer in play does
+ *   not offer it, so a caller can say "this build cannot answer" rather than mistake a missing seam for a
+ *   scene that costs nothing — a distinction that matters here, because every figure this returns is one a
+ *   budget is compared against and a silent zero would read as passing.
  * @property {(x: number, y: number, z: number) => {x: number, y: number, z: number}} projectToNdc - KI-16-01
  *   (a declared deviation from that ticket's own `Files:` list, per its PR description): the seam
  *   `tests/agent/viewports.js` uses to ask where a world point lands on screen, without reconstructing the
@@ -437,6 +447,14 @@ export function createTestHooks({ session, renderer, eventTarget, KeyboardEventC
     },
     getDrawCalls() {
       return renderer.getDrawCalls();
+    },
+    /**
+     * KI-08-03: see {@link KobiTestHooks.getRenderStats}. A straight passthrough, with the one guard that
+     * distinguishes "no seam" from "no cost" — see that property's own comment for why `null` rather than a
+     * zeroed object.
+     */
+    getRenderStats() {
+      return renderer.getRenderStats === undefined ? null : renderer.getRenderStats();
     },
     projectToNdc(x, y, z) {
       return renderer.projectToNdc(x, y, z);
