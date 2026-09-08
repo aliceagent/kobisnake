@@ -53,13 +53,13 @@ import { matchSetup } from '../strings.js';
  * player 2. It never blocks START MATCH — it only decides whether the note below the colour rows is shown.
  * Issue #184 has since been answered and `DESIGN-DECISIONS §3` now carries "The colour-safe pairing note on
  * match setup" as an approved bullet, read from the catalogue (`matchSetup.colourNote.note`,
- * `src/ui/strings.js`) since KI-20-02. `COLOUR_NOTE_COPY.suggestion` (the note's second sentence, naming the
- * recommended colour) is the one exception: §3's approved form differs from what this screen has always
- * rendered — capital `PLAYER` there, lower-case `player` here, a computed player number there, a hard-coded
- * `2` here — and that discrepancy is still open on #212/#214, not this ticket's to resolve. See
- * {@link COLOUR_NOTE_COPY}'s own doc comment for why that one literal is a deliberate KI-20-02 AC3 exception.
- * Every assertion elsewhere (`tests/e2e`, `tests/unit/ui/matchSetup.test.js`) binds to structure — whether the
- * note element is present and visible, and which colour name it recommends — never to the sentence itself.
+ * `src/ui/strings.js`) since KI-20-02. Its second sentence — `matchSetup.colourNote.suggestion`, naming the
+ * recommended colour — was KI-20-02's one AC3 exception, kept as a literal so that refactor could guarantee no
+ * pixel moved; #214 ruled §3 right and the screen wrong, so it now reads from the catalogue too and this
+ * screen holds no copy literal at all. Every assertion elsewhere (`tests/e2e`,
+ * `tests/unit/ui/matchSetup.test.js`) binds to structure — whether the note element is present and visible,
+ * and which colour name it recommends — never to the sentence itself, which is why one word of casing changes
+ * exactly one baseline and no test.
  */
 
 /** @typedef {import('../focus.js').MenuAction} MenuAction */
@@ -232,27 +232,47 @@ export function changePlayerKind(matchSettings, player, direction) {
 }
 
 /**
- * KI-15-02: the colour-pairing note's two sentences.
+ * KI-15-02: the colour-pairing note's two sentences, both approved copy read from the catalogue
+ * (`matchSetup.colourNote`, `src/ui/strings.js`).
  *
- * `note` is approved copy since KI-20-02 (`DESIGN-DECISIONS §3`, "The colour-safe pairing note on match
- * setup") and reads from the catalogue below (`matchSetup.colourNote.note`).
+ * `suggestion` was KI-20-02's one deliberate AC3 exception, and #214 closed it. This screen had always
+ * rendered `Try TEAL for player 2.` — lower-case `player`, with the `2` hard-coded — while `DESIGN-DECISIONS
+ * §3` approved `Try TEAL for PLAYER 2.`, capital `PLAYER`, "the colour word and the player number are
+ * computed, never literals", because the controls card on this very screen spells it `PLAYER 1 · RED — W A S
+ * D`. The design lead ruled §3 right and the screen wrong, so the literal is gone and both sentences now come
+ * from the catalogue like every other string on this screen.
  *
- * `suggestion` is a **deliberate exception to this ticket's AC3** — tracked on #214, not #184 (#184 is
- * answered; §3 now carries the note). §3's approved form is `matchSetup.colourNote.suggestion` in the
- * catalogue: capital `PLAYER`, with the player number computed rather than hard-coded — but that is not what
- * this screen has ever rendered. This screen has always rendered lower-case `player 2`, hard-coded, and the
- * design lead has not yet ruled on which one is right (#212/#214). KI-20-02 is a refactor whose guarantee is
- * that no rendered pixel moves, so this one literal stays exactly as it is — not read from the catalogue —
- * until that ruling lands and a follow-up PR (outside KI-20-02) re-records whichever form is correct, with a
- * new baseline. Do not "fix" this by pointing it at `matchSetup.colourNote.suggestion`.
+ * The player number is the parameter §3 asks for rather than a baked-in `2`: the note recommends an
+ * alternative for player 2 because {@link checkColourSafety} only ever proposes one for player 2 (player 1
+ * keeps the colour they chose), so the caller passes `2` and the sentence itself no longer assumes it.
  *
- * @type {{ note: string, suggestion: (colorName: string) => string }}
+ * @type {{ note: string, suggestion: (colorName: string, player: 1 | 2) => string }}
  */
 const COLOUR_NOTE_COPY = {
   note: matchSetup.colourNote.note,
-  // #214 exception (see above) — left exactly as this screen has always rendered it.
-  suggestion: (colorName) => `Try ${colorName.toUpperCase()} for player 2.`,
+  suggestion: matchSetup.colourNote.suggestion,
 };
+
+/**
+ * The colour note as one rendered sentence — the note alone when nothing owned clears the check, or the note
+ * followed by the suggestion when something does.
+ *
+ * Exported and pure for the same reason `scoreboard.js`'s {@link buildScoreboardLines} is: so the composed
+ * text has a test that does not need a DOM. It needs one. When #214 changed `player 2` to `PLAYER 2` — an
+ * approved, player-visible copy change — **nothing went red**: no visual baseline shows this note (the
+ * default red/blue pair passes the check, so `screen-match-setup.png` never renders it) and every existing
+ * assertion binds to `[data-colour-note]`'s presence and its `data-recommended-color` attribute, never to the
+ * words. The catalogue's §3 parity test covers the sentence, and KI-20-03's lint covers the screen reading it
+ * from the catalogue, but nothing covered the two ends joined. This does.
+ *
+ * @param {string | null} recommendedColor - `null` when no owned colour clears the check.
+ * @param {1 | 2} player - the player the alternative is for; `checkColourSafety` only ever proposes one for 2.
+ * @returns {string}
+ */
+export function colourNoteText(recommendedColor, player) {
+  if (recommendedColor === null) return COLOUR_NOTE_COPY.note;
+  return `${COLOUR_NOTE_COPY.note} ${COLOUR_NOTE_COPY.suggestion(recommendedColor, player)}`;
+}
 
 /**
  * @typedef {object} ColourSafetyResult
@@ -510,12 +530,13 @@ export function createMatchSetupScreen(root) {
       delete colourNote.dataset.recommendedColor;
       return;
     }
+    // `2` because `checkColourSafety` only ever recommends an alternative for player 2 — the sentence takes
+    // the number rather than assuming it (`DESIGN-DECISIONS §3`, #214). When nothing owned clears the check,
+    // `colourNoteText` says the note and invents no alternative (ticket spec).
+    colourNote.textContent = colourNoteText(recommendedColor, 2);
     if (recommendedColor === null) {
-      // No owned colour clears the check either — say the note, invent no alternative (ticket spec).
-      colourNote.textContent = COLOUR_NOTE_COPY.note;
       delete colourNote.dataset.recommendedColor;
     } else {
-      colourNote.textContent = `${COLOUR_NOTE_COPY.note} ${COLOUR_NOTE_COPY.suggestion(recommendedColor)}`;
       colourNote.dataset.recommendedColor = recommendedColor;
     }
   }
