@@ -55,8 +55,36 @@ function createFakeVisibility() {
 }
 
 /**
- * A started loop plus everything a test needs to drive it. Visibility is opted out of by default so a test
- * that is not about visibility cannot be affected by it; pass one in when it is the subject.
+ * A stand-in for `document`'s freeze/resume half or `window`'s pagehide/pageshow half (KI-06-03) — no
+ * `hidden`-style property to read, unlike {@link createFakeVisibility}, only the events a caller registers
+ * for. One fake shape serves both real targets, since `loop.js`'s `LifecycleSource` is generic over the event
+ * name.
+ */
+function createFakeLifecycle() {
+  /** @type {Map<string, Set<() => void>>} */
+  const listeners = new Map();
+  return {
+    /** @param {string} type @param {() => void} listener */
+    addEventListener(type, listener) {
+      if (!listeners.has(type)) listeners.set(type, new Set());
+      listeners.get(type)?.add(listener);
+    },
+    /** @param {string} type @param {() => void} listener */
+    removeEventListener(type, listener) {
+      listeners.get(type)?.delete(listener);
+    },
+    /** @param {string} type */
+    listenerCount: (type) => listeners.get(type)?.size ?? 0,
+    /** @param {string} type */
+    fire(type) {
+      for (const listener of [...(listeners.get(type) ?? [])]) listener();
+    },
+  };
+}
+
+/**
+ * A started loop plus everything a test needs to drive it. Visibility and both lifecycle sources are opted
+ * out of by default so a test that is not about them cannot be affected; pass one in when it is the subject.
  *
  * @param {object} [options]
  */
@@ -73,6 +101,8 @@ function startLoop(options = {}) {
     requestFrame: frames.requestFrame,
     cancelFrame: frames.cancelFrame,
     visibilitySource: null,
+    documentLifecycleSource: null,
+    windowLifecycleSource: null,
     ...options,
   });
   loop.start();
@@ -463,6 +493,195 @@ describe('createLoop', () => {
       expect(update).toHaveBeenCalledTimes(1);
     } finally {
       globals.performance = savedPerformance;
+    }
+  });
+
+  describe.each([
+    {
+      label: 'freeze/resume (document)',
+      sourceOption: 'documentLifecycleSource',
+      suspendEvent: 'freeze',
+      resumeEvent: 'resume',
+    },
+    {
+      label: 'pagehide/pageshow (window)',
+      sourceOption: 'windowLifecycleSource',
+      suspendEvent: 'pagehide',
+      resumeEvent: 'pageshow',
+    },
+  ])('KI-06-03 tab lifecycle: $label', ({ sourceOption, suspendEvent, resumeEvent }) => {
+    it('KI-06-03 AC1: suspending stops updates, and a multi-minute gap while suspended advances nothing', () => {
+      const lifecycle = createFakeLifecycle();
+      const { frames, update } = startLoop({ [sourceOption]: lifecycle });
+
+      frames.advanceBy(0);
+      frames.advanceBy(16);
+      const callsBeforeSuspend = update.mock.calls.length;
+
+      lifecycle.fire(suspendEvent);
+      // Ten minutes of real time, in two five-minute chunks — many times the round's own 90 s.
+      frames.advanceBy(300_000);
+      frames.advanceBy(300_000);
+
+      expect(update).toHaveBeenCalledTimes(callsBeforeSuspend);
+      // Nothing is queued either: the loop cancelled the frame it was waiting on rather than trusting a real
+      // browser to keep throttling a suspended tab for it, the same guarantee `hidden` already gives.
+      expect(frames.pendingCount()).toBe(0);
+    });
+
+    it('KI-06-03 AC1: the time spent suspended is not handed to update on the way back', () => {
+      const lifecycle = createFakeLifecycle();
+      const { frames, update } = startLoop({ [sourceOption]: lifecycle });
+
+      frames.advanceBy(0);
+      lifecycle.fire(suspendEvent);
+      frames.advanceBy(600_000); // ten minutes
+      lifecycle.fire(resumeEvent);
+      frames.advanceBy(16);
+
+      // Not 0.1 (the clamp) and certainly not 600: `onFrame` treats the first frame after coming back from
+      // suspension as zero-length, exactly as it already does for a hidden tab becoming visible again.
+      expect(dtsPassedTo(update)).toEqual([0, 0]);
+    });
+
+    it('calls onAutoPause before the next update on the way back, same as coming back from hidden', () => {
+      const lifecycle = createFakeLifecycle();
+      const { frames, update, onAutoPause } = startLoop({ [sourceOption]: lifecycle });
+      /** @type {string[]} */
+      const order = [];
+      update.mockImplementation(() => order.push('update'));
+      onAutoPause.mockImplementation(() => order.push('onAutoPause'));
+
+      frames.advanceBy(0);
+      order.length = 0;
+      lifecycle.fire(suspendEvent);
+      frames.advanceBy(5000);
+      expect(order).toEqual([]);
+
+      lifecycle.fire(resumeEvent);
+      frames.advanceBy(16);
+      frames.advanceBy(16);
+
+      expect(onAutoPause).toHaveBeenCalledTimes(1);
+      expect(order[0]).toBe('onAutoPause');
+      expect(order.slice(1)).toEqual(['update', 'update']);
+    });
+
+    it('step(dt) does nothing while suspended, same as while hidden', () => {
+      const lifecycle = createFakeLifecycle();
+      const { loop, update } = startLoop({ [sourceOption]: lifecycle });
+
+      lifecycle.fire(suspendEvent);
+      loop.step(0.016);
+
+      expect(update).not.toHaveBeenCalled();
+      expect(loop.isSuspended()).toBe(true);
+    });
+
+    it('ignores a resume/pageshow that does not change anything', () => {
+      const lifecycle = createFakeLifecycle();
+      const { loop, frames } = startLoop({ [sourceOption]: lifecycle });
+
+      frames.advanceBy(0);
+      lifecycle.fire(resumeEvent); // already not suspended
+
+      expect(loop.isSuspended()).toBe(false);
+      expect(frames.pendingCount()).toBe(1);
+    });
+
+    it('dispose() removes the listener', () => {
+      const lifecycle = createFakeLifecycle();
+      const { loop } = startLoop({ [sourceOption]: lifecycle });
+
+      expect(lifecycle.listenerCount(suspendEvent)).toBe(1);
+      expect(lifecycle.listenerCount(resumeEvent)).toBe(1);
+
+      loop.dispose();
+
+      expect(lifecycle.listenerCount(suspendEvent)).toBe(0);
+      expect(lifecycle.listenerCount(resumeEvent)).toBe(0);
+    });
+  });
+
+  it('KI-06-03 AC2: the frame clamp is asserted directly against a fabricated ten-minute delta, in both dt and unscaledDt', () => {
+    const { loop, update } = startLoop({ requestFrame: () => 0, cancelFrame: () => {} });
+
+    // Ten minutes of suspension arriving as one frame — exactly the shape `pagehide`/`freeze` and their
+    // resume make possible, and exactly what `maxFrameSeconds` exists to swallow rather than pass on.
+    loop.step(600);
+
+    expect(update).toHaveBeenCalledTimes(1);
+    const [dt, unscaledDt] = update.mock.calls[0];
+    expect(dt).toBeLessThanOrEqual(0.1);
+    expect(unscaledDt).toBeLessThanOrEqual(0.1);
+    // Not merely "under the cap" — exactly it, since `step` was not suspended when this ran.
+    expect(dt).toBeCloseTo(0.1, 10);
+    expect(unscaledDt).toBeCloseTo(0.1, 10);
+  });
+
+  it('KI-06-03: a hidden-and-then-suspended tab does not un-hide itself on pageshow', () => {
+    const visibility = createFakeVisibility();
+    const lifecycle = createFakeLifecycle();
+    const { loop, frames, update } = startLoop({
+      visibilitySource: visibility,
+      windowLifecycleSource: lifecycle,
+    });
+
+    frames.advanceBy(0);
+    visibility.setHidden(true);
+    lifecycle.fire('pagehide');
+    const callsWhileHiddenAndSuspended = update.mock.calls.length;
+    expect(loop.isHidden()).toBe(true);
+    expect(loop.isSuspended()).toBe(true);
+
+    // The suspension alone ends — a `pageshow` restoring the page from the back/forward cache while the tab
+    // is still backgrounded. `hidden` must stay exactly what `visibilitychange` last said it was.
+    lifecycle.fire('pageshow');
+    expect(loop.isHidden()).toBe(true);
+    expect(loop.isSuspended()).toBe(false);
+    frames.advanceBy(16);
+    expect(update).toHaveBeenCalledTimes(callsWhileHiddenAndSuspended);
+
+    // Only real visibility coming back schedules anything again.
+    visibility.setHidden(false);
+    frames.advanceBy(16);
+    expect(update.mock.calls.length).toBeGreaterThan(callsWhileHiddenAndSuspended);
+  });
+
+  it('falls back to the platform document and window for the lifecycle sources when nothing is injected', () => {
+    const documentFake = createFakeLifecycle();
+    const windowFake = createFakeLifecycle();
+    const globals = /** @type {any} */ (globalThis);
+    const saved = { document: globals.document, window: globals.window };
+    globals.document = documentFake;
+    globals.window = windowFake;
+
+    try {
+      const update = vi.fn();
+      const loop = createLoop({
+        update,
+        requestFrame: () => 0,
+        cancelFrame: () => {},
+        visibilitySource: null,
+      });
+      loop.start();
+
+      expect(documentFake.listenerCount('freeze')).toBe(1);
+      expect(documentFake.listenerCount('resume')).toBe(1);
+      expect(windowFake.listenerCount('pagehide')).toBe(1);
+      expect(windowFake.listenerCount('pageshow')).toBe(1);
+
+      documentFake.fire('freeze');
+      expect(loop.isSuspended()).toBe(true);
+      windowFake.fire('pageshow');
+      expect(loop.isSuspended()).toBe(false);
+
+      loop.dispose();
+      expect(documentFake.listenerCount('freeze')).toBe(0);
+      expect(windowFake.listenerCount('pagehide')).toBe(0);
+    } finally {
+      globals.document = saved.document;
+      globals.window = saved.window;
     }
   });
 });
