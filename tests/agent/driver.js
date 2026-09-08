@@ -84,7 +84,25 @@ export const DEFAULT_MAX_FRAMES = 30_000;
 const MAX_REPORTED_PROBLEMS = 50;
 
 /**
+ * KI-06-04: how long `runMatchInPage`'s chaos loop waits for a triggered `webglcontextlost`/
+ * `webglcontextrestored` to actually arrive before moving on. Real delivery is effectively instant in every
+ * observed run — this bound exists only so a browser that never delivers the event turns into a short count
+ * `chaosFailureReasons` reports by name, rather than a hung page and a suite-wide timeout that names nothing.
+ */
+const DEFAULT_CHAOS_EVENT_TIMEOUT_MS = 2000;
+
+/**
  * @typedef {'UP' | 'DOWN' | 'LEFT' | 'RIGHT' | null} PolicyMove
+ */
+
+/**
+ * KI-06-04 — one instruction in an optional chaos schedule: fire a real WebGL context loss or restore on the
+ * driven frame named by `frame`. Plain data, not a function — `tests/agent/resilience.js`'s
+ * `buildChaosSchedule`/`chaosScheduleToEvents` build the list, seeded and pure; this module only ever consumes
+ * it. See {@link playMatch}'s `chaosEvents` option and this file's header on why the loop has to `await` to
+ * deliver one.
+ *
+ * @typedef {{frame: number, type: 'lose' | 'restore'}} ChaosEvent
  */
 
 /**
@@ -135,6 +153,11 @@ const MAX_REPORTED_PROBLEMS = 50;
  * @property {string[]} pageErrors - uncaught exceptions and `console.error` output from the page
  *   (`QA-STRATEGY §8`: "console has zero errors during a full match").
  * @property {number} wallMs
+ * @property {{lostCount: number, restoredCount: number} | null} chaos - KI-06-04: `null` when `playMatch` was
+ *   not given `chaosEvents`. Otherwise the **real** `webglcontextlost`/`webglcontextrestored` events the page
+ *   observed — counted from the events themselves, not from how many times the loop asked for one, so a
+ *   missing `WEBGL_lose_context` extension or an event the browser never delivered shows up as a short count
+ *   rather than a silently clean run (`tests/agent/resilience.js`'s `chaosFailureReasons` reads this).
  */
 
 /**
@@ -142,10 +165,17 @@ const MAX_REPORTED_PROBLEMS = 50;
  * rather than a closure, because `page.evaluate` serialises it: it may not reference anything in this
  * module's scope.
  *
+ * **`async` for KI-06-04, and only for it.** `WEBGL_lose_context`'s `loseContext()`/`restoreContext()` fire
+ * their events asynchronously — a queued task, not something that can land inside one synchronous loop — so
+ * delivering one for real requires yielding the loop after asking for it. `chaosEvents` is the only thing
+ * that ever does that: with it `null` (every caller before this ticket, and every caller that never passes
+ * it), the chaos block below never runs and the loop `await`s nothing, so this stays exactly the tight
+ * synchronous loop it always was for a caller that does not opt in.
+ *
  * @param {object} args
- * @returns {object}
+ * @returns {Promise<object>}
  */
-function runMatchInPage(args) {
+async function runMatchInPage(args) {
   const {
     bestOf,
     powerUpsEnabled,
@@ -157,6 +187,8 @@ function runMatchInPage(args) {
     policySources,
     invariantsSource,
     invariantConfig,
+    chaosEvents,
+    chaosEventTimeoutMs,
   } = args;
 
   const kobi = /** @type {any} */ (globalThis).__kobi;
@@ -196,7 +228,97 @@ function runMatchInPage(args) {
     p2Text: doc.querySelector('.hud-player--p2')?.textContent ?? null,
   });
 
+  // KI-06-04: an opt-in chaos source. `chaosEvents` is `null` for every caller before this ticket, in which
+  // case none of this runs — `chaos` stays `null` and the returned `MatchResult.chaos` says so.
+  //
+  // The two listeners below are permanent, for the whole match, and are how the **real** counts are taken —
+  // never how many times the loop asked `loseContext()`/`restoreContext()` for one (the driver may ask on a
+  // menu screen where nothing is listening, or the extension may simply not exist), because a chaos pass that
+  // reports the calls it made rather than the events the page actually saw would report ten clean matches on
+  // a build that silently never wired the recovery path at all — precisely the risk this ticket exists to
+  // close (`tests/agent/resilience.js`'s `chaosFailureReasons` reads these counts back out).
+  let chaos = null;
+  if (chaosEvents !== null) {
+    const canvas = /** @type {any} */ (doc.getElementById('game'));
+    const gl = canvas === null ? null : canvas.getContext('webgl2');
+    const ext = gl === null ? null : gl.getExtension('WEBGL_lose_context');
+    chaos = { canvas, ext, lostCount: 0, restoredCount: 0, nextIndex: 0 };
+    if (canvas !== null) {
+      canvas.addEventListener('webglcontextlost', () => {
+        chaos.lostCount += 1;
+      });
+      canvas.addEventListener('webglcontextrestored', () => {
+        chaos.restoredCount += 1;
+      });
+    }
+  }
+
+  /**
+   * Real milliseconds the loop waits after a chaos event is delivered before it may trigger the next one.
+   *
+   * Not part of `chaosEventTimeoutMs` — that bounds how long the loop waits *for* an event; this is a
+   * settle time *after* one arrives, and both are needed for a different reason. Measured directly against
+   * this build: `restoreContext()` called in the same task the `webglcontextlost` listener ran in is rejected
+   * by Chromium (`WebGL: INVALID_OPERATION: restoreContext: context restoration not allowed`) — the event
+   * firing is not, in practice, the browser's internal loss handling actually finishing, only this ticket's
+   * own signal that it started. One further real task-queue turn is what the browser needs to catch up; a
+   * bare `await Promise.resolve()` (a microtask) is not enough, only a macrotask is, which is why this is a
+   * `setTimeout`, not a `then`.
+   */
+  const CHAOS_SETTLE_MS = 50;
+
+  /**
+   * Fires `trigger`, then waits for the real event it should cause — the yield this file's own header
+   * describes, since `loseContext()`/`restoreContext()` deliver their event as a queued task, never inside the
+   * synchronous call that asked for it. Bounded by `chaosEventTimeoutMs` rather than awaited forever: a browser
+   * that never delivers the event is exactly the failure `chaosFailureReasons` is for, and a hung page proves
+   * nothing a timed-out one does not — the permanent listeners above still count whatever arrives later, so a
+   * late event is not lost, only not waited on. Settles for {@link CHAOS_SETTLE_MS} afterwards regardless — see
+   * that constant's own comment for why the event alone is not enough.
+   *
+   * @param {string} eventName
+   * @param {() => void} trigger
+   * @returns {Promise<void>}
+   */
+  function waitForChaosEvent(eventName, trigger) {
+    // `globalThis.setTimeout` rather than the bare identifier: this function is serialised into the page and
+    // never called from this file (this file's own header), so it needs the page's timer, not Node's — and
+    // spelling it this way keeps `eslint.config.js`'s `tests/**` globals untouched (it already lists `window`,
+    // which every browser exposes `setTimeout` on too) rather than declaring a new one for one call site.
+    const pageSetTimeout = /** @type {any} */ (globalThis).setTimeout;
+    return new Promise((resolve) => {
+      let settled = false;
+      const finish = () => {
+        if (settled) return;
+        settled = true;
+        chaos.canvas.removeEventListener(eventName, finish);
+        pageSetTimeout(() => resolve(undefined), CHAOS_SETTLE_MS);
+      };
+      chaos.canvas.addEventListener(eventName, finish, { once: true });
+      pageSetTimeout(finish, chaosEventTimeoutMs);
+      trigger();
+    });
+  }
+
   for (; frames < maxFrames; frames += 1) {
+    if (chaos !== null) {
+      while (
+        chaos.nextIndex < chaosEvents.length &&
+        chaosEvents[chaos.nextIndex].frame === frames
+      ) {
+        const event = chaosEvents[chaos.nextIndex];
+        chaos.nextIndex += 1;
+        // No extension: nothing to trigger. `chaos.lostCount`/`restoredCount` simply stay short of what was
+        // planned, which `chaosFailureReasons` turns into a named failure rather than a silent no-op.
+        if (chaos.ext === null) continue;
+        if (event.type === 'lose') {
+          await waitForChaosEvent('webglcontextlost', () => chaos.ext.loseContext());
+        } else {
+          await waitForChaosEvent('webglcontextrestored', () => chaos.ext.restoreContext());
+        }
+      }
+    }
+
     const state = kobi.getState();
     if (statesVisited.indexOf(state) === -1) statesVisited.push(state);
     if (state === 'MATCH_OVER') break;
@@ -295,6 +417,8 @@ function runMatchInPage(args) {
     maxDrawCalls,
     problemCount,
     problems,
+    chaos:
+      chaos === null ? null : { lostCount: chaos.lostCount, restoredCount: chaos.restoredCount },
   };
 }
 
@@ -320,6 +444,17 @@ function runMatchInPage(args) {
  *   derived on the Node side (KI-03-03's HUD tolerance) reaches a function that may not import it.
  * @param {number} [options.maxFrames]
  * @param {number} [options.renderEveryNFrames]
+ * @param {ChaosEvent[] | null} [options.chaosEvents] - KI-06-04: an optional, opt-in chaos source — plain
+ *   data, built by `tests/agent/resilience.js`'s `buildChaosSchedule` + `chaosScheduleToEvents`, never a
+ *   function (unlike `policy1`/`invariants` this never needs `Function.prototype.toString()`; it is only ever
+ *   read, not called, inside the page). `null` (the default) triggers nothing and costs the loop no `await` —
+ *   every caller written before this option existed is unaffected. Each event fires real
+ *   `WEBGL_lose_context.loseContext()`/`restoreContext()` on the live canvas at the driven `frame` named, and
+ *   the loop yields for the real `webglcontextlost`/`webglcontextrestored` event before continuing
+ *   (`runMatchInPage`'s own header explains why a synchronous loop cannot deliver one otherwise).
+ * @param {number} [options.chaosEventTimeoutMs] - how long the loop waits for a triggered event before giving
+ *   up on it and moving on; default {@link DEFAULT_CHAOS_EVENT_TIMEOUT_MS}. The permanent counters still pick
+ *   up a late event — see `runMatchInPage`'s `waitForChaosEvent`.
  * @returns {Promise<MatchResult>}
  */
 export async function playMatch(page, options) {
@@ -334,6 +469,8 @@ export async function playMatch(page, options) {
     invariantConfig = {},
     maxFrames = DEFAULT_MAX_FRAMES,
     renderEveryNFrames = RENDER_EVERY_N_FRAMES,
+    chaosEvents = null,
+    chaosEventTimeoutMs = DEFAULT_CHAOS_EVENT_TIMEOUT_MS,
   } = options;
 
   /** @type {string[]} */
@@ -361,6 +498,8 @@ export async function playMatch(page, options) {
       policySources: [policy1.toString(), policy2.toString()],
       invariantsSource: invariants === null ? null : invariants.toString(),
       invariantConfig,
+      chaosEvents,
+      chaosEventTimeoutMs,
     });
     return { seed, bestOf, ...raw, pageErrors, wallMs: Date.now() - startedAt };
   } finally {
