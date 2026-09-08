@@ -172,19 +172,26 @@ import { createReplayPlayer } from './replayPlayer.js';
  *   `runUpdate` and still bails out on its own `sim === null`/`acceptsSteeringInput()` guards, which `REPLAY`
  *   fails the same way every non-round state does. Nothing about *reading* a keydown changed.
  * - **`replayPlayer` is still the one variable only this section reads and writes.** `advanceReplayInternal`
- *   is `replayPlayer?.advance(wallSeconds); renderReplayFrame();` — unchanged from what KI-05-02 already
- *   built as `advanceReplayFrame`'s body, just given a name `runUpdate` can call alongside the public method
- *   that now forwards to it. A movement key still has no code path to `replayPlayer` at all, `REPLAY` state
- *   or not — KI-12-02's `driveCpuPlayers` is a second caller of `handleDirection`, not a second caller of
- *   anything in this section, so it is not entangled with this deviation either.
+ *   is `replayPlayer?.advance(wallSeconds)` and nothing else. A movement key still has no code path to
+ *   `replayPlayer` at all, `REPLAY` state or not — KI-12-02's `driveCpuPlayers` is a second caller of
+ *   `handleDirection`, not a second caller of anything in this section, so it is not entangled with this
+ *   deviation either.
+ * - **It does not draw, and that is the point (KI-05-08, #317).** It used to be
+ *   `replayPlayer?.advance(wallSeconds); renderReplayFrame();`, which was right when KI-05-02 called it by
+ *   hand and wrong the moment KI-05-03 put it on the frame loop: `loop.advance` draws the same frame through
+ *   `drawFrame`, so REPLAY rendered twice and the second render — which had no replay branch — drew the
+ *   empty arena (or, entering from MATCH_OVER, the last round's frozen frame) straight over the replay.
+ *   `drawFrameWithDt` now selects the replay's own snapshot in REPLAY, so the loop's single render is the
+ *   correct picture. The public `advanceReplayFrame` keeps its "advance, then draw" contract by calling the
+ *   draw itself.
  * - **`REPLAY` carries no `PAUSE`/`AUTO_PAUSE` row** (`gameStateMachine.js`'s own table), so a replay's
  *   play/pause state is owned entirely by `replayPlayer.js`'s own `play()`/`pause()` — never by
  *   `loop.timeScale`, which stays exactly what it already was (usually `1`, from whatever screen was up
  *   before `REPLAY`) for the whole time a replay is loaded. `advanceReplayInternal` is therefore called
  *   unconditionally, every frame, and is safe to: `replayPlayer.advance()` is already a documented no-op
- *   while paused, and `renderReplayFrame()` already draws the frozen frame (or the empty arena, with nothing
- *   loaded) exactly as `runUpdate`'s own `default` case does for every menu and for `PAUSE` ("the frame
- *   still renders").
+ *   while paused, and `drawFrameWithDt` draws the frozen frame (or the empty arena, with nothing loaded)
+ *   exactly as `runUpdate`'s own `default` case does for every menu and for `PAUSE` ("the frame still
+ *   renders").
  *
  * ## KI-05-04: WATCH LAST ROUND, the match-over screen's own entry point
  *
@@ -1341,14 +1348,33 @@ export function createSession({
    * @param {number} dt - seconds of camera-effect time this draw represents
    */
   function drawFrameWithDt(dt) {
+    // KI-05-08 (#317): REPLAY is tested **first**, ahead of `sim !== null`. This is the one state whose
+    // picture does not come from `sim` at all, and the two ways of reaching it fail differently if it is
+    // not: from MAIN_MENU `sim` is `null` and the arena drew empty over the replay, and from MATCH_OVER
+    // `sim` is the *finished round*, so the last round's frozen final frame drew over it instead. Before
+    // this branch existed the REPLAY case rendered the replay itself and then `loop.advance`'s own
+    // `drawFrame` overdrew it on the same frame — twice the render cost for the wrong picture (the monkey
+    // measured 32.9 ms/frame on that screen against 0.00 on every other menu). There is now exactly one
+    // render per frame, and it is this one.
+    //
     // KI-15-02/#157: MATCH_SETUP alone gets the one-apple preview snapshot; every other sim-less state
     // (MAIN_MENU foremost — see this constant's own doc comment) keeps the plain empty arena it always had.
-    const state =
-      sim !== null
+    const inReplay = machine.getState() === STATES.REPLAY;
+    const state = inReplay
+      ? replaySnapshot()
+      : sim !== null
         ? sim.getState()
         : machine.getState() === STATES.MATCH_SETUP
           ? MATCH_SETUP_SNAPSHOT
           : EMPTY_SNAPSHOT;
+    // The HUD follows the same snapshot the renderer is about to draw, so a replay's timer and lengths
+    // cannot disagree with its own picture.
+    if (inReplay && replayPlayer !== null) {
+      const snapshot = /** @type {RoundSnapshot} */ (state);
+      ui.hud.setTime(formatTime(snapshot.timeRemaining ?? 0));
+      const [p1, p2] = snapshot.snakes;
+      ui.hud.setLengths(p1?.length ?? 0, p2?.length ?? 0);
+    }
     lastRenderedState = state;
     // KS-07-06: `observeState` must see the state *before* it is drawn (it is looking for a direction that
     // changed on `sim.advance()` earlier this same frame) and `markRendered` immediately after — bracketing
@@ -1370,16 +1396,20 @@ export function createSession({
    * Draws the loaded replay's current tick with the same renderer and HUD a live round uses (ticket spec:
    * "renders it with the existing renderer and HUD"), or the empty arena when no replay is loaded.
    */
+  function replaySnapshot() {
+    return replayPlayer === null ? EMPTY_SNAPSHOT : replayPlayer.getSnapshot();
+  }
+
+  /**
+   * KI-05-08 (#317): one line, delegating to {@link drawFrameWithDt}, which now knows about REPLAY itself.
+   * It used to be a second, parallel render — its own `renderer.render` call and its own copy of the HUD
+   * update — which is how the game came to render twice on a REPLAY frame and draw the wrong one second.
+   * Kept as a named function because the transport's own click handlers (`onStep`, `onSeekToStart`) want an
+   * immediate redraw rather than waiting for the next frame, and because `__kobi.renderReplayFrame` is part
+   * of the test-hook contract.
+   */
   function renderReplayFrame() {
-    const state = replayPlayer === null ? EMPTY_SNAPSHOT : replayPlayer.getSnapshot();
-    lastRenderedState = state;
-    renderer.render(state, lastDt);
-    if (replayPlayer !== null) {
-      const snapshot = /** @type {RoundSnapshot} */ (state);
-      ui.hud.setTime(formatTime(snapshot.timeRemaining ?? 0));
-      const [p1, p2] = snapshot.snakes;
-      ui.hud.setLengths(p1?.length ?? 0, p2?.length ?? 0);
-    }
+    drawFrameWithDt(lastDt);
   }
 
   /**
@@ -1423,12 +1453,13 @@ export function createSession({
   }
   /**
    * Shared by the public `advanceReplayFrame()` and `runUpdate`'s new `REPLAY` case (this file's own header
-   * note on the deviation). Unchanged from what KI-05-02 wrote inline as `advanceReplayFrame`'s own body.
+   * note on the deviation). **Advances only — it must not draw** (KI-05-08, #317): the per-frame caller's
+   * frame is drawn by `loop.advance` through `drawFrame`, and having both draw is the double render that
+   * put the empty arena on top of the replay. `advanceReplayFrame` adds the draw back for its own callers.
    * @param {number} wallSeconds
    */
   function advanceReplayInternal(wallSeconds) {
     replayPlayer?.advance(wallSeconds);
-    renderReplayFrame();
   }
 
   /**
@@ -2025,6 +2056,11 @@ export function createSession({
      */
     advanceReplayFrame(wallSeconds) {
       advanceReplayInternal(wallSeconds);
+      // KI-05-08 (#317): the draw is explicit here rather than inside `advanceReplayInternal`, because the
+      // per-frame caller (`runUpdate`'s REPLAY case) must **not** draw — `loop.advance` draws that frame
+      // itself, and having both do it is the double render this ticket removes. This method keeps its
+      // "advance, then draw" contract, the same shape `fastForward` has for a live round.
+      renderReplayFrame();
     },
     /** Draws one frame of the loaded replay's current tick, without advancing it. */
     renderReplayFrame() {
