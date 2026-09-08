@@ -74,8 +74,10 @@ There is no `test:sim` script: simulation tests live in `tests/sim/` but run und
 - Branch `s{NN}/{ticket-id}-{slug}`; PR title `KS-NN-TT: description`; one ticket per PR; squash merge.
 - Every acceptance criterion in your ticket gets a test named after it (`KS-04-02 AC3: …`) unless the ticket
   says "manual".
-- Before pushing run: `npm run lint && npm run typecheck && npm run test:unit && npm run build`, and paste the
-  output in the PR. Run `npm run test:e2e` if you touched anything a browser can see.
+- Before pushing run: `npm run lint && npm run typecheck && COVERAGE_STRICT=1 npm run test:unit && npm run build`,
+  and paste the output in the PR. **`COVERAGE_STRICT=1` matters**: CI's `unit` job sets it and nothing else does,
+  so without it the per-file coverage thresholds are 0 and a run can be green locally while the merge gate is
+  red (#233 reached `main` exactly this way). Run `npm run test:e2e` if you touched anything a browser can see.
 - Visual work: include a preview screenshot next to the reference-image crop in the PR. Label the PR
   `needs-design-review`.
 - Determinism: all randomness goes through `src/core/rng.js` with a seed. E2e tests fast-forward time through
