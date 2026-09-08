@@ -1,8 +1,8 @@
 // @ts-check
 import { GAME_EVENTS, STATES } from '../../game/gameStateMachine.js';
 import { createFocusModel } from '../focus.js';
+import { menu, replay } from '../strings.js';
 import { createHowToPlayPanel } from './howToPlayPanel.js';
-import { REPLAY_COPY } from './replay.js';
 
 /**
  * The main menu (`docs/reference/README.md` note 1: the GDD's item list is authoritative, not
@@ -48,10 +48,17 @@ import { REPLAY_COPY } from './replay.js';
  * the same before/after ordering the two ideas have everywhere else this game talks about them (GDD,
  * `DESIGN-DECISIONS`). Unlike HOW TO PLAY, REPLAY *does* carry a `GAME_EVENTS` entry
  * (`GAME_EVENTS.SELECT_REPLAY`) — selecting it is a real state-machine transition, into the new `REPLAY`
- * state `gameStateMachine.js` now defines. Its label, `REPLAY_COPY.menuLabel`, is approved copy from the
- * design lead's ruling on issue #211 (`DESIGN-DECISIONS §3`, "The REPLAY screen") — see `replay.js`'s own
- * module doc for why it still lives there rather than as a literal here, the same way every other
- * player-visible string on that screen does.
+ * state `gameStateMachine.js` now defines. Its label, `replay.menuLabel`, is approved copy from the design
+ * lead's ruling on issue #211 (`DESIGN-DECISIONS §3`, "The REPLAY screen"), read from the catalogue
+ * (`src/ui/strings.js`) since KI-20-02 — `replay.js`'s own `REPLAY_COPY.menuLabel` reads the identical value
+ * from the same place, so the two can never drift, but this file reads the catalogue's `replay` group
+ * directly (`import { replay } from '../strings.js'`) rather than importing `REPLAY_COPY` from `replay.js`,
+ * the same as every other screen's own group import (`strings.js`'s own doc comment explains why a screen
+ * never imports the `STRINGS` aggregate).
+ *
+ * Since KI-20-02 this screen's own strings (the title, the description, every `MENU_ITEMS` label except
+ * `HOW TO PLAY` and `REPLAY`'s, and the `COMING SOON` tag) read from the catalogue's `menu` group the same
+ * way; `HOW TO PLAY`'s own label reads `menu.itemHowToPlay` too, alongside `replay.menuLabel` above.
  */
 
 /** @typedef {import('../focus.js').MenuAction} MenuAction */
@@ -83,18 +90,19 @@ import { REPLAY_COPY } from './replay.js';
  * @type {ReadonlyArray<{label: string, disabled?: boolean, event?: string, isHowToPlay?: boolean}>}
  */
 const MENU_ITEMS = Object.freeze([
-  Object.freeze({ label: '1 PLAYER', disabled: true }),
-  Object.freeze({ label: '2 PLAYERS', event: GAME_EVENTS.SELECT_2P }),
+  Object.freeze({ label: menu.item1Player, disabled: true }),
+  Object.freeze({ label: menu.item2Players, event: GAME_EVENTS.SELECT_2P }),
   // KI-10-03: not disabled, but no `event` — selecting it opens the HOW TO PLAY overlay locally rather than
   // firing a `GAME_EVENTS` transition (see the module doc comment above).
-  Object.freeze({ label: 'HOW TO PLAY', isHowToPlay: true }),
+  Object.freeze({ label: menu.itemHowToPlay, isHowToPlay: true }),
   // KI-05-03: a declared `Files:` deviation (module doc comment above) — the entry point into the REPLAY
-  // screen. `label` is approved copy from issue #211's ruling (`replay.js`'s `REPLAY_COPY.menuLabel`).
-  Object.freeze({ label: REPLAY_COPY.menuLabel, event: GAME_EVENTS.SELECT_REPLAY }),
-  Object.freeze({ label: 'PRACTICE', disabled: true, event: GAME_EVENTS.SELECT_PRACTICE }),
-  Object.freeze({ label: 'TUTORIAL', disabled: true, event: GAME_EVENTS.SELECT_TUTORIAL }),
-  Object.freeze({ label: 'SHOP', disabled: true, event: GAME_EVENTS.SELECT_SHOP }),
-  Object.freeze({ label: 'SETTINGS', disabled: true, event: GAME_EVENTS.SELECT_SETTINGS }),
+  // screen. `label` is approved copy from issue #211's ruling (`replay.menuLabel`, the catalogue's `replay`
+  // group).
+  Object.freeze({ label: replay.menuLabel, event: GAME_EVENTS.SELECT_REPLAY }),
+  Object.freeze({ label: menu.itemPractice, disabled: true, event: GAME_EVENTS.SELECT_PRACTICE }),
+  Object.freeze({ label: menu.itemTutorial, disabled: true, event: GAME_EVENTS.SELECT_TUTORIAL }),
+  Object.freeze({ label: menu.itemShop, disabled: true, event: GAME_EVENTS.SELECT_SHOP }),
+  Object.freeze({ label: menu.itemSettings, disabled: true, event: GAME_EVENTS.SELECT_SETTINGS }),
 ]);
 
 /**
@@ -159,15 +167,14 @@ export function createMainMenuScreen(root) {
 
   const title = doc.createElement('div');
   title.className = 'menu-title';
-  title.textContent = 'KOBI SNAKE';
+  title.textContent = menu.title;
   panel.appendChild(title);
 
   // KI-10-00 approved copy (`DESIGN-DECISIONS §3`), verbatim. Answers "what is this and who plays it" in its
   // first four words, which is the line's whole job — it goes right under the title.
   const description = doc.createElement('p');
   description.className = 'menu-description';
-  description.textContent =
-    'Two players, one keyboard. Eat apples, grow long, and make the other snake crash.';
+  description.textContent = menu.description;
   panel.appendChild(description);
 
   /** @type {MainMenuProps} */
@@ -192,7 +199,7 @@ export function createMainMenuScreen(root) {
     if (item.disabled) {
       const tag = doc.createElement('span');
       tag.className = 'menu-item-tag';
-      tag.textContent = 'COMING SOON';
+      tag.textContent = menu.comingSoonTag;
       row.appendChild(tag);
     }
 
