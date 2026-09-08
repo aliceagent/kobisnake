@@ -20,9 +20,9 @@ KI-04-02, which belongs to the design lead; this document deliberately stops at 
   regenerate this document on a different day or a different machine** — every other number comes from fixed
   seeds through a deterministic simulation (`ARCHITECTURE §11`). Treat any other line changing as a real
   discrepancy to investigate, not a maintenance chore to reconcile.
-- **Wall time:** ~10594s. Real time, reported as a sense of what regenerating costs. Not
+- **Wall time:** ~12551s. Real time, reported as a sense of what regenerating costs. Not
   reproducible, and unlike every other figure here not a property of the simulation at all.
-- **Total:** 33 cells, 4950 matches, 12299 rounds. Smallest cell:
+- **Total:** 39 cells, 5850 matches, 14509 rounds. Smallest cell:
   328 rounds (the ticket's floor is 300).
 - **Seeds** — the same list in every cell, so any two cells differ by their swept values and nothing else:
   1, 2, 3, 5, 8, 13, 21, 34, 55, 89, 144, 233, 377, 610, 987, 1597, 2584, 4181, 6765, 10946, then 500001…500130 (150 seeds in total, the same list in every cell)
@@ -39,9 +39,11 @@ KI-04-02, which belongs to the design lead; this document deliberately stops at 
   values (20 / 25 / 30) are the shipping start and two *later* ones, and the sprint file's lever table
   ("earlier lasers reach more rounds") describes the direction none of them test. Swept only downward this
   lever can move the climax fraction one way, so a matrix built from those three alone would answer "which
-  single lever moves it most" by default rather than on evidence. `laserStartTime` 35 and 40 s
+  single lever moves it most" by default rather than on evidence. `laserStartTime` 35, 40, 45 and 50 s
   at the shipping `roundDuration` are therefore run as well, labelled *(extension: earlier start)* wherever
-  they appear. The ticket's 3×3 grid is reported intact beside them.
+  they appear. The ticket's 3×3 grid is reported intact beside them. 35 and 40 s were measured by KI-04-01;
+  45 and 50 s were added by KI-04-03 on the design lead's ruling, because two points describe a line rather
+  than a curve and this lever has to be measured far enough to show where it turns over.
 - **Best-of-3**, `agent-run.md`'s format and the game's own default. First-to-two means every match plays at
   least two rounds, so 150 seeds guarantee at least 300 rounds in every
   cell by construction.
@@ -100,9 +102,9 @@ Every cell: 150 seeds, Best-of-3, power-ups at the match-setup default. "Reached
 `RoundRecord.reachedLaserPhase` — the beams left `PARKED` during the round — and "reached inset ≥ 3"
 is `maxLaserInset >= 3`, a third of the way in, where the board is visibly closing rather than
 merely lit. Match times are whole matches including countdown, crash slow-mo and scoreboard. Rows marked
-*(extension: earlier start)* are the two cells beyond the ticket's grid, for the reason given above; read the
-ticket's own nine rows as the answer to what it asked, and those two as what the tenth question would have
-been.
+*(extension: earlier start)* are the 4 cells beyond the ticket's grid, for
+the reason given above; read the ticket's own nine rows as the answer to what it asked, and those as the
+question it did not ask.
 
 ### greedy vs greedy
 
@@ -119,6 +121,8 @@ been.
 | laser 20s / round 60s | 367 | 29.9 | 47.9 | 38.4% | 9.8% | 0.0% | 1.4% | 89.4 | 129.1 |
 | laser 35s / round 90s *(extension: earlier start)* | 390 | 30.9 | 54.3 | 13.6% | 4.1% | 0.0% | 1.8% | 96.8 | 143.3 |
 | laser 40s / round 90s *(extension: earlier start)* | 389 | 30.9 | 54.3 | 18.5% | 5.4% | 0.0% | 1.8% | 96.1 | 143.2 |
+| laser 45s / round 90s *(extension: earlier start)* | 395 | 30.8 | 50.0 | 27.1% | 5.6% | 0.0% | 2.5% | 96.7 | 138.6 |
+| laser 50s / round 90s *(extension: earlier start)* | 388 | 30.9 | 47.5 | 42.5% | 8.5% | 0.0% | 1.5% | 96.1 | 132.6 |
 
 **How deep the lasers got** — percentage of greedy vs greedy rounds reaching at least each inset:
 
@@ -135,6 +139,8 @@ been.
 | laser 20s / round 60s | 30.0% | 20.7% | 9.8% | 2.7% | 0.3% | 0.0% | 0.0% | 0.0% | 0.0% |
 | laser 35s / round 90s | 9.7% | 6.7% | 4.1% | 1.5% | 0.5% | 0.0% | 0.0% | 0.0% | 0.0% |
 | laser 40s / round 90s | 13.6% | 8.5% | 5.4% | 3.9% | 1.3% | 0.0% | 0.0% | 0.0% | 0.0% |
+| laser 45s / round 90s | 20.5% | 12.2% | 5.6% | 3.0% | 1.0% | 0.5% | 0.0% | 0.0% | 0.0% |
+| laser 50s / round 90s | 27.6% | 18.3% | 8.5% | 4.4% | 2.6% | 1.3% | 0.5% | 0.0% | 0.0% |
 
 ### survivor vs survivor
 
@@ -151,6 +157,8 @@ been.
 | laser 20s / round 60s | 449 | 60.0 | 60.0 | 100.0% | 99.6% | 82.0% | 14.9% | 193.1 | 262.9 |
 | laser 35s / round 90s *(extension: earlier start)* | 400 | 77.7 | 81.6 | 100.0% | 99.3% | 1.0% | 5.0% | 239.6 | 267.4 |
 | laser 40s / round 90s *(extension: earlier start)* | 396 | 73.4 | 76.8 | 100.0% | 99.2% | 0.8% | 3.8% | 229.1 | 245.4 |
+| laser 45s / round 90s *(extension: earlier start)* | 363 | 60.2 | 70.1 | 100.0% | 99.2% | 0.8% | 1.7% | 145.2 | 221.8 |
+| laser 50s / round 90s *(extension: earlier start)* | 388 | 63.2 | 66.7 | 100.0% | 99.0% | 1.0% | 3.1% | 192.3 | 215.8 |
 
 **How deep the lasers got** — percentage of survivor vs survivor rounds reaching at least each inset:
 
@@ -167,6 +175,8 @@ been.
 | laser 20s / round 60s | 100.0% | 99.8% | 99.6% | 99.6% | 99.1% | 95.8% | 93.8% | 0.0% | 0.0% |
 | laser 35s / round 90s | 100.0% | 99.8% | 99.3% | 99.0% | 98.5% | 91.5% | 79.8% | 67.8% | 39.3% |
 | laser 40s / round 90s | 100.0% | 99.5% | 99.2% | 99.0% | 96.5% | 92.7% | 91.7% | 76.8% | 35.4% |
+| laser 45s / round 90s | 100.0% | 100.0% | 99.2% | 98.6% | 97.5% | 56.5% | 51.8% | 44.4% | 19.8% |
+| laser 50s / round 90s | 99.7% | 99.5% | 99.0% | 98.7% | 97.9% | 95.1% | 94.6% | 81.7% | 37.6% |
 
 ### greedy vs survivor
 
@@ -183,6 +193,8 @@ been.
 | laser 20s / round 60s | 334 | 44.0 | 55.0 | 70.1% | 37.4% | 1.2% | 0.0% | 98.1 | 149.2 |
 | laser 35s / round 90s *(extension: earlier start)* | 332 | 47.2 | 66.9 | 49.1% | 25.0% | 0.0% | 0.0% | 111.0 | 155.3 |
 | laser 40s / round 90s *(extension: earlier start)* | 335 | 46.3 | 65.0 | 58.5% | 27.5% | 0.0% | 0.0% | 113.5 | 150.8 |
+| laser 45s / round 90s *(extension: earlier start)* | 335 | 47.0 | 60.0 | 66.3% | 37.9% | 0.0% | 0.0% | 110.9 | 149.6 |
+| laser 50s / round 90s *(extension: earlier start)* | 341 | 45.0 | 55.2 | 76.5% | 43.1% | 0.0% | 0.0% | 106.3 | 149.2 |
 
 **How deep the lasers got** — percentage of greedy vs survivor rounds reaching at least each inset:
 
@@ -199,6 +211,23 @@ been.
 | laser 20s / round 60s | 62.3% | 50.9% | 37.4% | 24.6% | 20.4% | 11.1% | 4.2% | 0.0% | 0.0% |
 | laser 35s / round 90s | 42.5% | 33.4% | 25.0% | 15.7% | 8.7% | 5.1% | 1.2% | 0.6% | 0.0% |
 | laser 40s / round 90s | 50.1% | 35.5% | 27.5% | 23.0% | 16.4% | 6.6% | 3.3% | 0.3% | 0.0% |
+| laser 45s / round 90s | 59.1% | 49.9% | 37.9% | 25.7% | 17.9% | 9.9% | 3.9% | 0.6% | 0.0% |
+| laser 50s / round 90s | 66.0% | 52.2% | 43.1% | 29.6% | 20.2% | 10.9% | 4.1% | 1.5% | 0.0% |
+
+## What the earlier-start arm shows
+
+KI-04-03 extended `laserStartTime` to 35, 40, 45 and 50 s to find where the lever turns
+over. Reading the arm back, at the shipping round length:
+
+- **greedy vs greedy:** 30 s → 9.5%, 35 s → 13.6%, 40 s → 18.5%, 45 s → 27.1%, 50 s → 42.5%. **Still climbing at 50 s** — the lever does not turn over anywhere in the measured range. Median round over the same span: 30.8 s → 30.9 s.
+- **survivor vs survivor:** 30 s → 100.0%, 35 s → 100.0%, 40 s → 100.0%, 45 s → 100.0%, 50 s → 100.0%. Already at the ceiling at the shipping value, so this arm says nothing about the warning rate here — read the match wall-clock column instead. Median round over the same span: 82.8 s → 63.2 s.
+- **greedy vs survivor:** 30 s → 42.2%, 35 s → 49.1%, 40 s → 58.5%, 45 s → 66.3%, 50 s → 76.5%. **Still climbing at 50 s** — the lever does not turn over anywhere in the measured range. Median round over the same span: 47.7 s → 45.0 s.
+
+Two things follow, and the second matters more than the first. **The climax fraction is bought without
+lengthening the round** — the median round barely moves across the whole arm, because `laserStartTime` changes
+*when* the arena starts closing rather than how long the round lasts. And a lever still climbing at the top of
+its measured range has not been bounded: if a value beyond the largest cell here is wanted, it needs measuring,
+not extrapolating.
 
 ## Machine-readable data
 
@@ -729,6 +758,98 @@ between this document and `gate1-bot-matrix.md`, whose cells are headless and *a
       }
     },
     {
+      "pairing": "greedy vs greedy",
+      "laserStartTime": 45,
+      "roundDuration": 90,
+      "isBaseline": false,
+      "isEarlierStartExtension": true,
+      "matches": 150,
+      "matchesFinished": 150,
+      "rounds": 395,
+      "p1Wins": 194,
+      "p2Wins": 191,
+      "draws": 10,
+      "drawRatePct": 2.5316455696202533,
+      "deathCount": 395,
+      "timeoutCount": 0,
+      "deathRatePct": 100,
+      "timeoutRatePct": 0,
+      "reachedWarningCount": 107,
+      "reachedWarningRatePct": 27.088607594936708,
+      "reachedClimaxInsetCount": 22,
+      "reachedClimaxInsetRatePct": 5.5696202531645564,
+      "reachedInsetAtLeastRatePct": [
+        100,
+        20.506329113924053,
+        12.151898734177214,
+        5.5696202531645564,
+        3.0379746835443036,
+        1.0126582278481013,
+        0.5063291139240507,
+        0,
+        0,
+        0
+      ],
+      "roundLength": {
+        "medianSeconds": 30.833333333333332,
+        "p90Seconds": 50,
+        "meanSeconds": 31.91109704641349,
+        "minSeconds": 3.1666666666666665,
+        "maxSeconds": 62.5
+      },
+      "matchWallClock": {
+        "medianSeconds": 96.73333333333333,
+        "p90Seconds": 138.55,
+        "meanSeconds": 100.66733333333337
+      }
+    },
+    {
+      "pairing": "greedy vs greedy",
+      "laserStartTime": 50,
+      "roundDuration": 90,
+      "isBaseline": false,
+      "isEarlierStartExtension": true,
+      "matches": 150,
+      "matchesFinished": 150,
+      "rounds": 388,
+      "p1Wins": 199,
+      "p2Wins": 183,
+      "draws": 6,
+      "drawRatePct": 1.5463917525773196,
+      "deathCount": 388,
+      "timeoutCount": 0,
+      "deathRatePct": 100,
+      "timeoutRatePct": 0,
+      "reachedWarningCount": 165,
+      "reachedWarningRatePct": 42.52577319587629,
+      "reachedClimaxInsetCount": 33,
+      "reachedClimaxInsetRatePct": 8.505154639175258,
+      "reachedInsetAtLeastRatePct": [
+        100,
+        27.577319587628867,
+        18.298969072164947,
+        8.505154639175258,
+        4.381443298969072,
+        2.5773195876288657,
+        1.2886597938144329,
+        0.5154639175257731,
+        0,
+        0
+      ],
+      "roundLength": {
+        "medianSeconds": 30.933333333333334,
+        "p90Seconds": 47.5,
+        "meanSeconds": 31.431743986254286,
+        "minSeconds": 3.1666666666666665,
+        "maxSeconds": 60.333333333333336
+      },
+      "matchWallClock": {
+        "medianSeconds": 96.1,
+        "p90Seconds": 132.55,
+        "meanSeconds": 97.6434444444445
+      }
+    },
+    {
       "pairing": "survivor vs survivor",
       "laserStartTime": 30,
       "roundDuration": 90,
@@ -1235,6 +1356,98 @@ between this document and `gate1-bot-matrix.md`, whose cells are headless and *a
       }
     },
     {
+      "pairing": "survivor vs survivor",
+      "laserStartTime": 45,
+      "roundDuration": 90,
+      "isBaseline": false,
+      "isEarlierStartExtension": true,
+      "matches": 150,
+      "matchesFinished": 150,
+      "rounds": 363,
+      "p1Wins": 85,
+      "p2Wins": 272,
+      "draws": 6,
+      "drawRatePct": 1.6528925619834711,
+      "deathCount": 360,
+      "timeoutCount": 3,
+      "deathRatePct": 99.17355371900827,
+      "timeoutRatePct": 0.8264462809917356,
+      "reachedWarningCount": 363,
+      "reachedWarningRatePct": 100,
+      "reachedClimaxInsetCount": 360,
+      "reachedClimaxInsetRatePct": 99.17355371900827,
+      "reachedInsetAtLeastRatePct": [
+        100,
+        100,
+        100,
+        99.17355371900827,
+        98.62258953168043,
+        97.52066115702479,
+        56.473829201101935,
+        51.790633608815426,
+        44.352617079889804,
+        19.834710743801654
+      ],
+      "roundLength": {
+        "medianSeconds": 60.166666666666664,
+        "p90Seconds": 70.1,
+        "meanSeconds": 63.696005509641935,
+        "minSeconds": 45.333333333333336,
+        "maxSeconds": 90
+      },
+      "matchWallClock": {
+        "medianSeconds": 145.23333333333332,
+        "p90Seconds": 221.78333333333333,
+        "meanSeconds": 169.41900000000012
+      }
+    },
+    {
+      "pairing": "survivor vs survivor",
+      "laserStartTime": 50,
+      "roundDuration": 90,
+      "isBaseline": false,
+      "isEarlierStartExtension": true,
+      "matches": 150,
+      "matchesFinished": 150,
+      "rounds": 388,
+      "p1Wins": 159,
+      "p2Wins": 217,
+      "draws": 12,
+      "drawRatePct": 3.0927835051546393,
+      "deathCount": 384,
+      "timeoutCount": 4,
+      "deathRatePct": 98.96907216494846,
+      "timeoutRatePct": 1.0309278350515463,
+      "reachedWarningCount": 388,
+      "reachedWarningRatePct": 100,
+      "reachedClimaxInsetCount": 384,
+      "reachedClimaxInsetRatePct": 98.96907216494846,
+      "reachedInsetAtLeastRatePct": [
+        100,
+        99.74226804123711,
+        99.48453608247422,
+        98.96907216494846,
+        98.71134020618557,
+        97.9381443298969,
+        95.10309278350515,
+        94.58762886597938,
+        81.70103092783505,
+        37.628865979381445
+      ],
+      "roundLength": {
+        "medianSeconds": 63.166666666666664,
+        "p90Seconds": 66.66666666666667,
+        "meanSeconds": 62.58767182130589,
+        "minSeconds": 40.166666666666664,
+        "maxSeconds": 90
+      },
+      "matchWallClock": {
+        "medianSeconds": 192.28333333333333,
+        "p90Seconds": 215.78333333333333,
+        "meanSeconds": 178.21711111111114
+      }
+    },
+    {
       "pairing": "greedy vs survivor",
       "laserStartTime": 30,
       "roundDuration": 90,
@@ -1738,6 +1951,98 @@ between this document and `gate1-bot-matrix.md`, whose cells are headless and *a
         "medianSeconds": 113.46666666666667,
         "p90Seconds": 150.81666666666666,
         "meanSeconds": 113.23477777777771
+      }
+    },
+    {
+      "pairing": "greedy vs survivor",
+      "laserStartTime": 45,
+      "roundDuration": 90,
+      "isBaseline": false,
+      "isEarlierStartExtension": true,
+      "matches": 150,
+      "matchesFinished": 150,
+      "rounds": 335,
+      "p1Wins": 43,
+      "p2Wins": 292,
+      "draws": 0,
+      "drawRatePct": 0,
+      "deathCount": 335,
+      "timeoutCount": 0,
+      "deathRatePct": 100,
+      "timeoutRatePct": 0,
+      "reachedWarningCount": 222,
+      "reachedWarningRatePct": 66.26865671641791,
+      "reachedClimaxInsetCount": 127,
+      "reachedClimaxInsetRatePct": 37.91044776119403,
+      "reachedInsetAtLeastRatePct": [
+        100,
+        59.1044776119403,
+        49.850746268656714,
+        37.91044776119403,
+        25.671641791044774,
+        17.91044776119403,
+        9.850746268656717,
+        3.880597014925373,
+        0.5970149253731344,
+        0
+      ],
+      "roundLength": {
+        "medianSeconds": 47,
+        "p90Seconds": 60,
+        "meanSeconds": 43.14485074626863,
+        "minSeconds": 6.333333333333333,
+        "maxSeconds": 67.5
+      },
+      "matchWallClock": {
+        "medianSeconds": 110.89999999999999,
+        "p90Seconds": 149.55,
+        "meanSeconds": 110.46477777777771
+      }
+    },
+    {
+      "pairing": "greedy vs survivor",
+      "laserStartTime": 50,
+      "roundDuration": 90,
+      "isBaseline": false,
+      "isEarlierStartExtension": true,
+      "matches": 150,
+      "matchesFinished": 150,
+      "rounds": 341,
+      "p1Wins": 53,
+      "p2Wins": 288,
+      "draws": 0,
+      "drawRatePct": 0,
+      "deathCount": 341,
+      "timeoutCount": 0,
+      "deathRatePct": 100,
+      "timeoutRatePct": 0,
+      "reachedWarningCount": 261,
+      "reachedWarningRatePct": 76.53958944281524,
+      "reachedClimaxInsetCount": 147,
+      "reachedClimaxInsetRatePct": 43.10850439882698,
+      "reachedInsetAtLeastRatePct": [
+        100,
+        65.98240469208211,
+        52.19941348973607,
+        43.10850439882698,
+        29.61876832844575,
+        20.234604105571847,
+        10.850439882697946,
+        4.105571847507331,
+        1.466275659824047,
+        0
+      ],
+      "roundLength": {
+        "medianSeconds": 45,
+        "p90Seconds": 55.166666666666664,
+        "meanSeconds": 40.799682306940355,
+        "minSeconds": 6.333333333333333,
+        "maxSeconds": 63.6
+      },
+      "matchWallClock": {
+        "medianSeconds": 106.3,
+        "p90Seconds": 149.21666666666667,
+        "meanSeconds": 107.11177777777772
       }
     }
   ],

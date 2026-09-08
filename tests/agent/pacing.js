@@ -76,12 +76,18 @@ export const LASER_START_TIMES = Object.freeze([20, 25, 30]);
  * climax fraction, which would let the matrix answer "which single lever moves it most" by default rather
  * than on the evidence.
  *
- * So these two cells exist to bound the lever from the other side, and `gate1-bot-matrix.md` already
- * establishes 35 as a value worth asking about (its own variants are 25/30/35). They are labelled as an
- * extension everywhere they appear, and the ticket's 3×3 grid is reported intact and unchanged beside them —
- * the point is to add the missing direction, never to quietly redefine what was asked for.
+ * So these cells exist to bound the lever from the other side, and `gate1-bot-matrix.md` already establishes
+ * 35 as a value worth asking about (its own variants are 25/30/35). They are labelled as an extension
+ * everywhere they appear, and the ticket's 3×3 grid is reported intact and unchanged beside them — the point
+ * is to add the missing direction, never to quietly redefine what was asked for.
+ *
+ * **35 and 40 were run by KI-04-01; 45 and 50 were added by KI-04-03** on the design lead's ruling (#229,
+ * `DESIGN-DECISIONS §1` row 30): with only two points the arm is "a line, not a curve", and the lever has to
+ * be measured far enough to see where it turns over. It must turn: `laserStartTime` cannot usefully approach
+ * `roundDuration`, because a warning at 50 s remaining leaves only 40 s of open board before the arena starts
+ * closing, and the round has to be worth playing before the climax as well as during it.
  */
-export const EARLIER_LASER_START_TIMES = Object.freeze([35, 40]);
+export const EARLIER_LASER_START_TIMES = Object.freeze([35, 40, 45, 50]);
 
 /** The `roundDuration` values I04 sweeps, in simulated seconds. The last is the shipping default. */
 export const ROUND_DURATIONS = Object.freeze([60, 75, 90]);
@@ -566,6 +572,12 @@ export function aggregateSweep(run) {
   };
 }
 
+/** `[35, 40, 45, 50]` → `"35, 40, 45 and 50"`. Prose, not data — the JSON block carries the values themselves. */
+const listOf = (/** @type {readonly number[]} */ values) =>
+  values.length < 2
+    ? String(values[0] ?? '')
+    : `${values.slice(0, -1).join(', ')} and ${values[values.length - 1]}`;
+
 const fmtPct = (/** @type {number | null} */ value) =>
   value === null ? '—' : `${value.toFixed(1)}%`;
 const fmtSeconds = (/** @type {number | null} */ value) =>
@@ -614,6 +626,60 @@ function insetTable(cells) {
       return `${cols.join(' | ')} |`;
     }),
   ].join('\n');
+}
+
+/**
+ * The earlier-start arm, read back as a sentence per pairing.
+ *
+ * KI-04-03 ran 45 and 50 s to find where the lever turns over — the ruling's own reason for extending it.
+ * Whether it *does* turn over inside the measured range is a property of the numbers, so this is computed
+ * from them rather than asserted in prose that a later regeneration could silently outlive. It reports the
+ * warning rate at each value, whether the rate is still climbing at the top of the range, and what the round
+ * length did while it climbed — because a lever that raises the climax without lengthening the round is
+ * doing something different from one that merely stretches the round out.
+ *
+ * @param {CellStats[]} cells
+ * @returns {string}
+ */
+function earlierStartReading(cells) {
+  const lines = [];
+  for (const pairing of PAIRINGS) {
+    const arm = cells
+      .filter(
+        (cell) =>
+          cell.pairing === pairing &&
+          cell.roundDuration === SETTINGS.roundDuration &&
+          cell.laserStartTime >= SETTINGS.laserStartTime,
+      )
+      .sort((a, b) => a.laserStartTime - b.laserStartTime);
+    if (arm.length < 2) continue;
+
+    const rate = (/** @type {CellStats} */ cell) => cell.reachedWarningRatePct ?? 0;
+    const first = arm[0];
+    const last = arm[arm.length - 1];
+    const rising = arm.every((cell, i) => i === 0 || rate(cell) >= rate(arm[i - 1]));
+    const saturated = rate(first) >= 99.9;
+
+    const trail = arm
+      .map((cell) => `${cell.laserStartTime} s → ${fmtPct(cell.reachedWarningRatePct)}`)
+      .join(', ');
+
+    const medianFirst = first.roundLength?.medianSeconds ?? null;
+    const medianLast = last.roundLength?.medianSeconds ?? null;
+    const roundNote =
+      medianFirst === null || medianLast === null
+        ? ''
+        : ` Median round over the same span: ${fmtSeconds(medianFirst)} s → ${fmtSeconds(medianLast)} s.`;
+
+    const verdict = saturated
+      ? 'Already at the ceiling at the shipping value, so this arm says nothing about the warning rate here — read the match wall-clock column instead.'
+      : rising
+        ? `**Still climbing at ${last.laserStartTime} s** — the lever does not turn over anywhere in the measured range.`
+        : `Turns over inside the range: the rate stops climbing before ${last.laserStartTime} s.`;
+
+    lines.push(`- **${pairing}:** ${trail}. ${verdict}${roundNote}`);
+  }
+  return lines.join('\n');
 }
 
 /**
@@ -750,9 +816,11 @@ KI-04-02, which belongs to the design lead; this document deliberately stops at 
   values (20 / 25 / 30) are the shipping start and two *later* ones, and the sprint file's lever table
   ("earlier lasers reach more rounds") describes the direction none of them test. Swept only downward this
   lever can move the climax fraction one way, so a matrix built from those three alone would answer "which
-  single lever moves it most" by default rather than on evidence. \`laserStartTime\` ${EARLIER_LASER_START_TIMES.join(' and ')} s
+  single lever moves it most" by default rather than on evidence. \`laserStartTime\` ${listOf(EARLIER_LASER_START_TIMES)} s
   at the shipping \`roundDuration\` are therefore run as well, labelled *(extension: earlier start)* wherever
-  they appear. The ticket's 3×3 grid is reported intact beside them.
+  they appear. The ticket's 3×3 grid is reported intact beside them. 35 and 40 s were measured by KI-04-01;
+  45 and 50 s were added by KI-04-03 on the design lead's ruling, because two points describe a line rather
+  than a curve and this lever has to be measured far enough to show where it turns over.
 - **Best-of-3**, \`agent-run.md\`'s format and the game's own default. First-to-two means every match plays at
   least two rounds, so ${meta.seedsPerCell} seeds guarantee at least ${meta.seedsPerCell * 2} rounds in every
   cell by construction.
@@ -809,11 +877,24 @@ Every cell: ${meta.seedsPerCell} seeds, Best-of-3, power-ups at the match-setup 
 \`RoundRecord.reachedLaserPhase\` — the beams left \`PARKED\` during the round — and "reached inset ≥ ${CLIMAX_INSET}"
 is \`maxLaserInset >= ${CLIMAX_INSET}\`, a third of the way in, where the board is visibly closing rather than
 merely lit. Match times are whole matches including countdown, crash slow-mo and scoreboard. Rows marked
-*(extension: earlier start)* are the two cells beyond the ticket's grid, for the reason given above; read the
-ticket's own nine rows as the answer to what it asked, and those two as what the tenth question would have
-been.
+*(extension: earlier start)* are the ${EARLIER_LASER_START_TIMES.length} cells beyond the ticket's grid, for
+the reason given above; read the ticket's own nine rows as the answer to what it asked, and those as the
+question it did not ask.
 
 ${perPairing}
+## What the earlier-start arm shows
+
+KI-04-03 extended \`laserStartTime\` to ${listOf(EARLIER_LASER_START_TIMES)} s to find where the lever turns
+over. Reading the arm back, at the shipping round length:
+
+${earlierStartReading(cells)}
+
+Two things follow, and the second matters more than the first. **The climax fraction is bought without
+lengthening the round** — the median round barely moves across the whole arm, because \`laserStartTime\` changes
+*when* the arena starts closing rather than how long the round lasts. And a lever still climbing at the top of
+its measured range has not been bounded: if a value beyond the largest cell here is wanted, it needs measuring,
+not extrapolating.
+
 ## Machine-readable data
 
 The exact numbers above, one object per cell, plus the reconciliation rows. Everything here is a pure function
