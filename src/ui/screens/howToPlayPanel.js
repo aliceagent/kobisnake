@@ -1,4 +1,5 @@
 // @ts-check
+import { howToPlay } from '../strings.js';
 
 /**
  * The HOW TO PLAY panel (KI-10-03, `docs/sprints/improvement-10-first-minute.md`). Four lines, text only —
@@ -11,18 +12,16 @@
  * file's own doc comment for how Esc, and the menu underneath, are kept from double-handling input while the
  * panel is up.
  *
- * Copy is `DESIGN-DECISIONS §3` ("First-minute copy", KI-10-00), approved and frozen — used verbatim below,
- * in order. Do not paraphrase; if a layout will not hold a line, that is a question for the design lead, not
- * a rewrite here.
+ * Copy is `DESIGN-DECISIONS §3` ("First-minute copy", KI-10-00), approved and frozen. Since KI-20-02 it is
+ * read from the catalogue (`src/ui/strings.js`) rather than kept here: the four lines are
+ * `howToPlay.lines`, in order, and the heading is `howToPlay.title`. Do not paraphrase, and do not
+ * reintroduce a literal — if a layout will not hold a line, that is a question for the design lead, and new
+ * copy is a catalogue diff they approve (`AGENT-ROLES-AND-WORKFLOW §3.1`).
+ *
+ * Note the import is `{ howToPlay }`, this screen's own group, **not** the `STRINGS` aggregate: importing the
+ * aggregate pulls every group into this chunk and breaks KI-11-05's entry/playtest split (#258). See
+ * `strings.js`'s own doc comment.
  */
-
-/** The four approved lines, in order. @type {ReadonlyArray<string>} */
-const HOW_TO_PLAY_LINES = Object.freeze([
-  'Eat apples to grow longer.',
-  "Don't hit a wall, yourself, or the other snake.",
-  'After 30 seconds the lasers close in.',
-  'The last snake alive wins the round.',
-]);
 
 /**
  * @typedef {object} HowToPlayPanel
@@ -54,10 +53,10 @@ export function createHowToPlayPanel(root) {
 
   const title = doc.createElement('div');
   title.className = 'menu-title';
-  title.textContent = 'HOW TO PLAY';
+  title.textContent = howToPlay.title;
   panel.appendChild(title);
 
-  for (const line of HOW_TO_PLAY_LINES) {
+  for (const line of howToPlay.lines) {
     const lineEl = doc.createElement('div');
     lineEl.className = 'how-to-play-line';
     lineEl.textContent = line;
