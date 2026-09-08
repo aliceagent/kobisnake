@@ -228,7 +228,6 @@ export const TRANSITIONS = Object.freeze({
   }),
   [STATES.MATCH_OVER]: Object.freeze({
     [GAME_EVENTS.REMATCH]: STATES.COUNTDOWN,
-    [GAME_EVENTS.QUIT_TO_MENU]: STATES.MAIN_MENU,
     // KI-05-04: WATCH LAST ROUND (`DESIGN-DECISIONS §3`, ruled on #211/#222) — the table's own note above on
     // `REPLAY`'s `BACK` row explains why this needed no new event or state, only this one row.
     [GAME_EVENTS.SELECT_REPLAY]: STATES.REPLAY,
