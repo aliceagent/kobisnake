@@ -102,3 +102,5 @@ tags, updates the sign-off record in `docs/sprints/README.md`, and starts the ne
 S01 → S02 → S03 → S04 → S05 → S06 → S07 → { S08 → S09 → S10 } ∥ { S11 → S12 } → S13 → S14 → S15 → S16 → S17 →
 S18 → S19 → S20. Sprint 07 and Sprint 17 need two humans on one keyboard; Fable schedules them at the start of
 the preceding sprint.
+
+- **A draft PR cannot be marked ready from an agent session** (REST does not expose draft→ready and GraphQL is restricted). Open PRs as ready, or close and reopen; #228 had to become #239 (Improvement 12).

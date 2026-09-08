@@ -129,3 +129,9 @@ toggles persist after reload.
 ## 11. Output
 Each FAIL becomes a GitHub issue (`bug` or `tuning-proposal`). Fable decides tuning changes and updates
 `DESIGN-DECISIONS.md` in the same sprint.
+
+## 9. Session 3 addendum — the CPU opponent (Improvement 12)
+| Q | Procedure | Pass condition |
+|---|---|---|
+| C1 CPU NORMAL feels like an opponent | One player, match setup with PLAYER 2 set to CPU NORMAL, Best of 3, twice. | The human wins at least one round and loses at least one; nobody says "it just drives in circles". |
+| C2 CPU EASY is beatable by a beginner | The less experienced player against CPU EASY, Best of 3. | The beginner wins the match. |
