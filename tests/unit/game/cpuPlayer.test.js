@@ -1,7 +1,7 @@
 // @ts-check
 import { describe, expect, it, vi } from 'vitest';
 import { DIRECTIONS } from '../../../src/core/grid.js';
-import { SETTINGS } from '../../../src/core/settings.js';
+import { SETTINGS, withOverrides } from '../../../src/core/settings.js';
 import { createCpuPlayer } from '../../../src/game/cpuPlayer.js';
 import { greedy } from '../../../src/game/bots/greedy.js';
 import { MOVE_VECTORS } from '../../../src/game/bots/policy.js';
@@ -264,16 +264,23 @@ function noopBot() {
 describe('KI-12-02 AC1', () => {
   const seed = 20260907;
 
-  function playOneCpuMatch() {
+  /**
+   * @param {number} bestOf
+   * @param {{maxFrames?: number}} [driveOptions]
+   */
+  function playOneCpuMatch(bestOf, driveOptions) {
     const { session, roundLogs } = buildCpuMatch({ seed, policy1: greedy, policy2: survivor });
-    session.startMatch({ bestOf: 1 });
-    const finished = driveToMatchOver(session);
+    session.startMatch({ bestOf });
+    const finished = driveToMatchOver(session, driveOptions);
     return { finished, roundLogs, wins: session.getMatch()?.wins ?? null };
   }
 
-  it('KI-12-02 AC1: a CPU-vs-CPU match on a fixed seed produces an identical event log on two runs', () => {
-    const runA = playOneCpuMatch();
-    const runB = playOneCpuMatch();
+  it('KI-12-02 AC1: a CPU-vs-CPU Bo1 match on a fixed seed produces an identical event log on two runs', () => {
+    // The fast signal: one round, one seed, no round boundary crossed. `bestOf: 3` below is the load-bearing
+    // assertion — this one is kept alongside it for a quicker failure when something *within* a round
+    // regresses, per the tech-lead review on PR #226.
+    const runA = playOneCpuMatch(1);
+    const runB = playOneCpuMatch(1);
 
     expect(runA.finished).toBe(true);
     expect(runA.roundLogs.length).toBeGreaterThan(0);
@@ -284,10 +291,37 @@ describe('KI-12-02 AC1', () => {
   });
 
   it(
-    "KI-12-02 AC1: the CPU's recorded inputs replay identically through tests/sim/harness.js's runRound " +
-      "(this repository's own replay mechanism today — I05's player does not exist yet)",
+    'KI-12-02 AC1: a CPU-vs-CPU Bo3 match — crossing real round boundaries — produces an identical event ' +
+      'log on two runs',
     () => {
-      const { roundLogs } = playOneCpuMatch();
+      // PR #226 tech-lead review: a Bo1 match never crosses a round boundary, and the round boundary is
+      // where this ticket's only piece of hidden state lives — `cpuPlayer.js`'s own head-cell memory,
+      // cleared by `session.js`'s `startRound()` calling `reset()` on every configured `CpuPlayer`. Without
+      // that reset, a new round's spawn cell matching the *previous* round's final head cell would silently
+      // swallow the new round's first decision — a defect only a run that actually starts a second round can
+      // expose. `maxFrames` is raised well past `driveToMatchOver`'s own default (12 000): a Bo3 can play up
+      // to five rounds (two replayed draws before the draw cap, `DESIGN-DECISIONS §1` row 26) each up to the
+      // full 90 s round length, plus a countdown and a scoreboard beat between every one of them.
+      const driveOptions = { maxFrames: 40_000 };
+      const runA = playOneCpuMatch(3, driveOptions);
+      const runB = playOneCpuMatch(3, driveOptions);
+
+      expect(runA.finished).toBe(true);
+      // More than one round actually played — otherwise this test would be no different from the Bo1 one
+      // above, and the round-boundary hazard it exists to cover would still be untested.
+      expect(runA.roundLogs.length).toBeGreaterThan(1);
+      expect(runA.roundLogs).toEqual(runB.roundLogs);
+      expect(runA.wins).toEqual(runB.wins);
+    },
+  );
+
+  it(
+    "KI-12-02 AC1: the CPU's recorded inputs replay identically through tests/sim/harness.js's runRound " +
+      "(this repository's own replay mechanism today — KI-05-01's versioned format has landed on `main`, " +
+      'but KI-05-02, the player that would actually play one back, has not: `src/game/replayPlayer.js` does ' +
+      'not exist yet)',
+    () => {
+      const { roundLogs } = playOneCpuMatch(1);
       expect(roundLogs.length).toBeGreaterThan(0);
 
       const firstRound = /** @type {any} */ (roundLogs[0]);
@@ -300,6 +334,43 @@ describe('KI-12-02 AC1', () => {
       expect(replayed.events).toEqual(firstRound.expectedEvents);
     },
   );
+});
+
+describe('KI-12-02: startRound resets each CpuPlayer across a round boundary', () => {
+  it("a spawn cell matching the previous round's final head cell still gets a fresh decision each round", () => {
+    // PR #226 tech-lead review: the Bo1/Bo3 comparisons above prove two *independent* runs agree with each
+    // other, but a broken `reset()` breaks both runs identically and such a comparison cannot catch that
+    // (confirmed: stubbing `reset()` to a no-op left the Bo3 comparison test above still green — see this
+    // ticket's PR for that finding, and for why: neither shipped policy ever reads `decisionIndex`, and
+    // seed 20260907's own three rounds never happen to hit the exact head-cell coincidence). This test
+    // manufactures that coincidence deterministically rather than searching for a seed that stumbles into
+    // it: `snakeSpeed: 0` freezes every snake exactly at its spawn cell all round (the same trick this
+    // file's own AC3 tests and `tests/unit/game/session.test.js`'s laser-warning tests use to hold a
+    // position still), so round 2 spawns P1 back at the *bit-for-bit identical* cell round 1 ended
+    // on — exactly `cpuPlayer.js`'s own module doc's hazard. A one-second `roundDuration` ends each round
+    // by TIMEOUT quickly; both snakes start at equal length, so it is a DRAW, which `DESIGN-DECISIONS §1`
+    // row 26 replays rather than ending the match — guaranteeing a second round happens.
+    const settings = withOverrides({ snakeSpeed: 0, roundDuration: 1 });
+    const policy = vi.fn(() => null);
+    const { session } = buildSession({ seed: 99, settings });
+    session.setCpuPlayer(1, policy);
+
+    playTo(session, { bestOf: 3 });
+    // The head never moves again this round (frozen at spawn), so no further grid step ever arrives to
+    // ask for a second decision — exactly one call for the whole of round 1.
+    expect(policy).toHaveBeenCalledTimes(1);
+
+    // Past the 1 s round into TIMEOUT, then the scoreboard (no crash slow-mo beat — nobody died), then a
+    // fresh countdown into round 2.
+    runFrames(session, settings.roundDuration + 0.2, 12);
+    expect(session.getState()).toBe(STATES.ROUND_OVER);
+    runFrames(session, SETTINGS.scoreboardSeconds + 0.05, 6);
+    runFrames(session, SETTINGS.countdownStepSeconds * 4 + 0.05, 8);
+
+    // A fresh decision at the identical spawn cell — `startRound`'s `reset()` call is what makes this two,
+    // not one.
+    expect(policy).toHaveBeenCalledTimes(2);
+  });
 });
 
 describe('KI-12-02 AC2', () => {

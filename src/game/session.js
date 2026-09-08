@@ -118,6 +118,14 @@ import { createLoop } from './loop.js';
  * PAUSE (and the READY? beat, and every menu state) fail that gate, so the policy is never even asked while
  * the game is paused (AC3) — the decision is not merely discarded, it is never spent.
  *
+ * This does not contradict KS-07-06's own care above about avoiding a `getState()` clone on every frame:
+ * that snapshot is read only when a CPU is actually configured (`hasCpuPlayer` gates it, same as the boolean
+ * check above), and it is cheap enough not to matter even then — **measured** (PR #226 review) at ≈ 0.5 µs
+ * per call, ≈ 0.003 % of a 16.6 ms frame at 60 fps, independently reproduced on this ticket's own machine.
+ * KS-07-06's own `sim.getState()` read, by contrast, is gated behind an *accepted* human input (a handful of
+ * times a second at most); this one runs every frame a CPU is configured, which is exactly why it was worth
+ * measuring rather than assuming.
+ *
  * `startRound` resets every configured `CpuPlayer` alongside `inputLatency`, for the same reason: a fresh
  * round's snakes spawn at fixed cells, and without clearing `cpuPlayer.js`'s own head-cell memory a spawn
  * cell that happened to match the previous round's final head cell would silently swallow this round's first
