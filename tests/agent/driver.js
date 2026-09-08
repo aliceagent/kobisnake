@@ -203,7 +203,13 @@ async function runMatchInPage(args) {
   if (settingsOverrides !== null) kobi.setSettingsOverrides(settingsOverrides);
 
   const overrides = { bestOf };
-  if (powerUpsEnabled !== null) overrides.powerUps = powerUpsEnabled;
+  // `powerUpsEnabled`, not `powerUps` (#291). `session.js`'s `startMatch` merges this object into
+  // `matchSettings` wholesale, so a misspelled key is added as a stray nobody reads while the field the
+  // round is actually built from (`session.js`'s `startRound`) keeps the match-setup default — a silent
+  // no-op that reports success. `driver.spec.js` holds the test that would have caught it; it has to play a
+  // real match, because this function is shipped into the page as source text and `driver.test.js` cannot
+  // reach it.
+  if (powerUpsEnabled !== null) overrides.powerUpsEnabled = powerUpsEnabled;
   kobi.startMatch(overrides);
 
   const grid = { width: 24, height: 24 };
