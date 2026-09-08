@@ -50,14 +50,24 @@ const AC3_BUDGET_MS = 10 * 60 * 1000;
 /**
  * The size actually run. AC3's numbers are the default; the two environment variables exist because the same
  * loop is what KI-18-03 runs two thousand seeds through, and because measuring the per-seed cost honestly
- * means being able to run ten of them. They are knobs on the campaign, never on the criterion: the budget
- * below scales with the seed count, and is only *asserted* when the run really is AC3's shape.
+ * means being able to run twenty of them. They are knobs on the campaign, never on the criterion.
+ *
+ * **The budget is not scaled to fit them**, which is the correction: it used to be, and a 20-seed pilot then
+ * ran 66.8 s against a 60 s scaled budget — 3.34 s a seed against the 200-seed average of 2.60 — and failed
+ * for a reason that says nothing about AC3. Per-seed cost is not flat: the fixed costs of a page load and of
+ * the first seed's compile are a bigger share of twenty seeds than of two hundred, and twenty seeds is a
+ * small sample of a distribution whose max is four times its min. In the other direction it was worse than
+ * useless: at the two thousand seeds KI-18-03 needs, a scaled hundred-minute budget would have passed while
+ * meaning nothing at all.
+ *
+ * So the ten minutes is asserted **only when the run is exactly AC3's shape**, which is the only run AC3
+ * describes. Every other size prints its per-seed cost projected to 200 seeds — the number that is actually
+ * comparable — and asserts nothing about it.
  */
 const env = /** @type {any} */ (globalThis).process?.env ?? {};
 const CAMPAIGN_SEEDS = Number(env.KI_MONKEY_SEEDS ?? AC3_SEEDS);
 const CAMPAIGN_ACTIONS = Number(env.KI_MONKEY_ACTIONS ?? AC3_ACTIONS);
-const CAMPAIGN_BUDGET_MS = Math.round((AC3_BUDGET_MS * CAMPAIGN_SEEDS) / AC3_SEEDS);
-const IS_AC3_SHAPE = CAMPAIGN_ACTIONS === AC3_ACTIONS;
+const IS_AC3_SHAPE = CAMPAIGN_SEEDS === AC3_SEEDS && CAMPAIGN_ACTIONS === AC3_ACTIONS;
 
 /**
  * The Node-side values `checkInvariants`'s serialised body may not import for itself (ruling 3 on #122),
@@ -326,9 +336,11 @@ test.describe('KI-18-01 · the monkey', () => {
 
   test('KI-18-01 AC3: 200 seeds × 500 actions inside ten minutes', async ({ page }) => {
     test.skip(!RUN_CAMPAIGN, 'Set KI_MONKEY=1 (npm run test:agent:monkey) to run the campaign.');
-    // Twice the budget plus a minute: a run that is over budget should still finish and *report its number*
-    // rather than be killed by Playwright, because the number is the thing AC3 is about.
-    test.setTimeout(CAMPAIGN_BUDGET_MS * 2 + 60_000);
+    // Twice AC3's budget per 200 seeds, plus a minute: a run that is over budget should still finish and
+    // *report its number* rather than be killed by Playwright, because the number is the thing AC3 is about.
+    // This one does scale with the size actually run — it is a deadline, not a criterion, and KI-18-03's two
+    // thousand seeds need a deadline that fits them.
+    test.setTimeout((AC3_BUDGET_MS * 2 * CAMPAIGN_SEEDS) / AC3_SEEDS + 60_000);
 
     const startedAt = Date.now();
     /** @type {import('./monkey.js').MonkeyResult[]} */
@@ -419,13 +431,15 @@ test.describe('KI-18-01 · the monkey', () => {
       if (result.stopped !== null) continue;
       expect(result.actionsApplied, `seed ${result.seed}`).toBe(CAMPAIGN_ACTIONS);
     }
-    // Ten minutes is stated for AC3's own shape. A run reshaped by the environment variables above is
-    // measured against the same per-seed cost, and a run with a different action count is not measured at
-    // all rather than against a number that has stopped meaning what AC3 meant.
-    if (IS_AC3_SHAPE) expect(totalMs).toBeLessThan(CAMPAIGN_BUDGET_MS);
+    // Ten minutes is stated for AC3's own shape and asserted for that shape alone. Any other size prints
+    // the only number that is comparable — its per-seed cost projected to 200 seeds — and asserts nothing.
+    if (IS_AC3_SHAPE) expect(totalMs).toBeLessThan(AC3_BUDGET_MS);
     else
       console.log(
-        `KI-18-01: ${CAMPAIGN_ACTIONS} actions/seed is not AC3's shape; budget not asserted.`,
+        `KI-18-01: ${CAMPAIGN_SEEDS} × ${CAMPAIGN_ACTIONS} is not AC3's shape (${AC3_SEEDS} × ` +
+          `${AC3_ACTIONS}), so the ten-minute budget is not asserted. At this run's ` +
+          `${Math.round(totalMs / CAMPAIGN_SEEDS)} ms/seed, ${AC3_SEEDS} seeds would be ` +
+          `${Math.round((totalMs / CAMPAIGN_SEEDS) * AC3_SEEDS)} ms against ${AC3_BUDGET_MS} ms.`,
       );
   });
 });
