@@ -328,6 +328,31 @@ describe('watchContextLossForErrorScreen — KI-06-02, the third path', () => {
     expect(container.hidden, 'must show the instant the grace period ends').toBe(false);
   });
 
+  it('a restore *after* the grace period takes the screen back down again', () => {
+    // Tech-lead review finding. KI-06-01's `handleContextRestored` resumes the match on this very event, so
+    // a screen left up here would sit over a round that is running again — snakes moving, timer counting —
+    // and a player who believed it and pressed RELOAD would lose a match that had already recovered.
+    const renderer = createFakeContextLossSource();
+    const { root } = createFakeRoot();
+    const screen = createErrorScreen(root);
+    const clock = createFakeClock();
+
+    watchContextLossForErrorScreen(renderer, screen, {
+      setTimeoutFn: clock.setTimeoutFn,
+      clearTimeoutFn: clock.clearTimeoutFn,
+    });
+
+    renderer.fireLost();
+    clock.advance(CONTEXT_LOSS_GRACE_MS);
+    const container = /** @type {any} */ (root).children[0];
+    expect(container.hidden, 'the grace period ran out, so the screen is up').toBe(false);
+
+    renderer.fireRestored();
+
+    expect(container.hidden, 'there is a GPU to draw into again, so show the game').toBe(true);
+    expect(clock.pendingCount()).toBe(0);
+  });
+
   it('a restore before the grace period ends cancels the timer — the screen never shows', () => {
     const renderer = createFakeContextLossSource();
     const { root } = createFakeRoot();

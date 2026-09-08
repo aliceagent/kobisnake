@@ -162,6 +162,9 @@ export const CONTEXT_LOSS_GRACE_MS = 3000;
  * two events (KI-06-01), so this only ever decides whether to put the last-resort screen on top of that
  * already-paused, already-frozen picture.
  *
+ * A restore takes the screen back down whether or not the timer had already fired — see the comment on the
+ * restore handler for why the alternative contradicts KI-06-01.
+ *
  * `setTimeoutFn`/`clearTimeoutFn` default to `window`'s own (never the bare global — `window` is the only
  * timer-owning object `eslint.config.js` declares for `src/**\/*.js`) and are injectable so
  * `tests/unit/ui/errorScreen.test.js` can prove the whole grace period with a fake clock instead of a real
@@ -195,9 +198,19 @@ export function watchContextLossForErrorScreen(renderer, screen, options = {}) {
   });
 
   const offRestored = renderer.onContextRestored(() => {
-    if (timer === null) return;
-    clearTimeoutFn(timer);
-    timer = null;
+    if (timer !== null) {
+      clearTimeoutFn(timer);
+      timer = null;
+    }
+    // **A restore that arrives *after* the grace period still takes the screen down** (tech-lead review).
+    // Without this the two halves of Improvement 06 contradict each other: KI-06-01's
+    // `handleContextRestored` resumes the match through its READY? beat on this very event, so the round
+    // would run on — snakes moving, timer counting — behind a screen telling the player the game is stuck,
+    // and a player who believed it and pressed RELOAD would lose a match that had already recovered. The
+    // screen is a statement about the *present*, not a verdict: the moment there is a GPU to draw into
+    // again, the truthful thing to show is the game. `hide()` on a screen that was never shown is a no-op,
+    // which is the ordinary case (a restore inside the grace period).
+    screen.hide();
   });
 
   return () => {
