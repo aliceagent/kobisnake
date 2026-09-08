@@ -1,0 +1,141 @@
+{
+  "seeds": {
+    "matchSeed": 4242,
+    "roundIndex": 0,
+    "roundSeeds": [2348084964]
+  },
+  "stateAfterCrash": "ROUND_OVER",
+  "replayBeforeCrash": {
+    "seed": 2348084964,
+    "settingsOverrides": {},
+    "inputs": [],
+    "expectedEvents": [
+      {
+        "type": "FOOD_SPAWNED",
+        "tick": 0,
+        "t": 0,
+        "index": 0,
+        "cell": {
+          "x": 13,
+          "y": 17
+        }
+      },
+      {
+        "type": "FOOD_SPAWNED",
+        "tick": 0,
+        "t": 0,
+        "index": 1,
+        "cell": {
+          "x": 15,
+          "y": 3
+        }
+      },
+      {
+        "type": "FOOD_SPAWNED",
+        "tick": 0,
+        "t": 0,
+        "index": 2,
+        "cell": {
+          "x": 12,
+          "y": 2
+        }
+      },
+      {
+        "type": "FOOD_SPAWNED",
+        "tick": 0,
+        "t": 0,
+        "index": 3,
+        "cell": {
+          "x": 17,
+          "y": 15
+        }
+      }
+    ]
+  },
+  "replayAfterCrash": {
+    "seed": 2348084964,
+    "settingsOverrides": {},
+    "inputs": [
+      {
+        "t": 0,
+        "player": "p1",
+        "dir": "UP"
+      }
+    ],
+    "expectedEvents": [
+      {
+        "type": "FOOD_SPAWNED",
+        "tick": 0,
+        "t": 0,
+        "index": 0,
+        "cell": {
+          "x": 13,
+          "y": 17
+        }
+      },
+      {
+        "type": "FOOD_SPAWNED",
+        "tick": 0,
+        "t": 0,
+        "index": 1,
+        "cell": {
+          "x": 15,
+          "y": 3
+        }
+      },
+      {
+        "type": "FOOD_SPAWNED",
+        "tick": 0,
+        "t": 0,
+        "index": 2,
+        "cell": {
+          "x": 12,
+          "y": 2
+        }
+      },
+      {
+        "type": "FOOD_SPAWNED",
+        "tick": 0,
+        "t": 0,
+        "index": 3,
+        "cell": {
+          "x": 17,
+          "y": 15
+        }
+      },
+      {
+        "type": "SNAKE_DIED",
+        "tick": 240,
+        "t": 2,
+        "snakeId": "p1",
+        "cause": "WALL",
+        "cell": {
+          "x": 5,
+          "y": 24
+        }
+      },
+      {
+        "type": "ROUND_OVER",
+        "tick": 240,
+        "t": 2,
+        "result": "P2_WIN",
+        "reason": "DEATH",
+        "winnerId": "p2",
+        "lengths": [4, 4]
+      }
+    ]
+  },
+  "match": {
+    "bestOf": 3,
+    "target": 2,
+    "rewardKeys": 1,
+    "wins": {
+      "1": 0,
+      "2": 1
+    },
+    "roundsPlayed": 1,
+    "consecutiveDraws": 0,
+    "winner": null,
+    "endReason": null
+  }
+}

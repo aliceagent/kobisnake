@@ -297,3 +297,79 @@ describe('KI-01-01 consecutive-draw cap', () => {
     }
   });
 });
+
+/**
+ * KI-12-04 — the key rule (`DESIGN-DECISIONS §1` row 27): "keys are awarded only when at least one human
+ * played". `PLAYERS` above (both plain `{id, color}`, no `isCpu` at all) already proves the untouched default
+ * in the block above (line 87-89: `rewardKeys` equals `settings.rewards[bestOf]` for every `bestOf`) — this
+ * block is the *new* behaviour the ticket adds on top of that, never a replacement for it.
+ */
+describe('KI-12-04 the key rule', () => {
+  it('KI-12-04 AC2: a CPU-vs-CPU match awards zero keys, regardless of bestOf', () => {
+    const bothCpu = [
+      { id: 'p1', color: 'red', isCpu: true },
+      { id: 'p2', color: 'blue', isCpu: true },
+    ];
+    for (const bestOf of SETTINGS.bestOfOptions) {
+      expect(createMatch({ bestOf, players: bothCpu }).rewardKeys).toBe(0);
+    }
+  });
+
+  it('KI-12-04 AC2: a human-vs-CPU match awards the normal amount, exactly as a human-vs-human match would', () => {
+    const humanVsCpu = [
+      { id: 'p1', color: 'red', isCpu: false },
+      { id: 'p2', color: 'blue', isCpu: true },
+    ];
+    const cpuVsHuman = [
+      { id: 'p1', color: 'red', isCpu: true },
+      { id: 'p2', color: 'blue', isCpu: false },
+    ];
+    for (const bestOf of SETTINGS.bestOfOptions) {
+      const normal = SETTINGS.rewards[bestOf];
+      expect(createMatch({ bestOf, players: humanVsCpu }).rewardKeys).toBe(normal);
+      expect(createMatch({ bestOf, players: cpuVsHuman }).rewardKeys).toBe(normal);
+      // Exactly what two humans would have earned before this ticket — the rule adds a new zero case, it
+      // never shrinks the reward a human-involved match already paid.
+      expect(createMatch({ bestOf, players: PLAYERS }).rewardKeys).toBe(normal);
+    }
+  });
+
+  it('KI-12-04: an `isCpu: false` player counts as human exactly like an absent `isCpu` — the omitted-field default is not a special case', () => {
+    const explicitlyHuman = [
+      { id: 'p1', color: 'red', isCpu: false },
+      { id: 'p2', color: 'blue', isCpu: true },
+    ];
+    const omittedField = [
+      { id: 'p1', color: 'red' },
+      { id: 'p2', color: 'blue', isCpu: true },
+    ];
+    expect(createMatch({ bestOf: 3, players: explicitlyHuman }).rewardKeys).toBe(
+      createMatch({ bestOf: 3, players: omittedField }).rewardKeys,
+    );
+  });
+
+  it('KI-12-04: `isCpu` never leaks into `match.players` — its copied shape is exactly {id, color}', () => {
+    const players = [
+      { id: 'p1', color: 'red', isCpu: true },
+      { id: 'p2', color: 'blue', isCpu: false },
+    ];
+    const match = createMatch({ bestOf: 3, players });
+    expect(match.players).toEqual([
+      { id: 'p1', color: 'red' },
+      { id: 'p2', color: 'blue' },
+    ]);
+  });
+
+  it('KI-12-04: prove the rule can go red — deleting the `hasHuman` guard would pay a CPU-vs-CPU match', () => {
+    // The red-proof this ticket's own QA line asks for: reproduce the defect by computing `rewardKeys` the
+    // *old* way (unconditionally) and show it disagrees with the new, correct answer for an all-CPU match.
+    const bothCpu = [
+      { id: 'p1', color: 'red', isCpu: true },
+      { id: 'p2', color: 'blue', isCpu: true },
+    ];
+    const oldWayWouldPay = SETTINGS.rewards[3];
+    const actual = createMatch({ bestOf: 3, players: bothCpu }).rewardKeys;
+    expect(actual).not.toBe(oldWayWouldPay);
+    expect(actual).toBe(0);
+  });
+});

@@ -20,6 +20,9 @@ import { runRound } from '../../sim/harness.js';
 const REPLAYS_DIR = join(dirname(fileURLToPath(import.meta.url)), '../../sim/replays');
 const NO_INPUT_ROUND = JSON.parse(readFileSync(join(REPLAYS_DIR, 'no-input-round.json'), 'utf8'));
 
+/** KI-12-04: the pre-ticket golden fixture for AC1's byte-identical proof. */
+const GOLDEN_DIR = join(dirname(fileURLToPath(import.meta.url)), '__golden__');
+
 /**
  * KS-05-03: the session rewritten around the state machine.
  *
@@ -1679,5 +1682,125 @@ describe('KI-05-04 WATCH LAST ROUND from the match-over screen', () => {
     // The screen was re-rendered with the same match still standing, not torn down (this file's own KI-05-04
     // header note: MATCH_OVER re-enters exactly as it left).
     expect(lastShow(ui, STATES.MATCH_OVER).winner).toBe(matchOverProps.winner);
+  });
+});
+
+/**
+ * KI-12-04 — the switch, and the key rule (`docs/sprints/improvement-12-cpu-opponent.md`).
+ *
+ * `ki-12-04-human-human-baseline.json` was captured by running the scenario below — `buildSession({seed:
+ * 4242})`, `playTo(session, {bestOf: 3})`, `crashPlayerOne` — against the code on `main` *before this
+ * ticket's own commit touched a single file* (tech-lead direction 4: "compare the full event log (and the
+ * replay) against a run on the pre-change code path"). AC1 below re-runs the identical scenario against this
+ * ticket's own code and asserts the two agree byte for byte: same replay (seed, inputs, the full event log)
+ * both before and after the crash, same `MatchState` fields. Nothing in `matchSettings`'s own shape is
+ * compared (this ticket adds `playerKinds`, so the *object* necessarily grows) — only the two places a
+ * player-visible difference could actually hide: what the simulation did, and what the match paid out.
+ */
+describe('KI-12-04 AC1: a match started without touching the row is byte-identical to today’s', () => {
+  /** @type {any} */
+  const golden = JSON.parse(
+    readFileSync(join(GOLDEN_DIR, 'ki-12-04-human-human-baseline.json'), 'utf8'),
+  );
+
+  it('KI-12-04 AC1: HUMAN/HUMAN Bo3, P1 crashes — replay, event log and match state all match the pre-ticket fixture', () => {
+    const { session, target } = buildSession({ seed: 4242 });
+
+    playTo(session, { bestOf: 3 });
+    expect(session.getReplay()).toEqual(golden.replayBeforeCrash);
+
+    crashPlayerOne(session, target);
+
+    expect(session.getState()).toBe(golden.stateAfterCrash);
+    expect(session.getReplay()).toEqual(golden.replayAfterCrash);
+    expect(session.getSeeds()).toEqual(golden.seeds);
+
+    const match = session.getMatch();
+    expect(match).not.toBeNull();
+    expect({
+      bestOf: match?.bestOf,
+      target: match?.target,
+      rewardKeys: match?.rewardKeys,
+      wins: match?.wins,
+      roundsPlayed: match?.roundsPlayed,
+      consecutiveDraws: match?.consecutiveDraws,
+      winner: match?.winner,
+      endReason: match?.endReason,
+    }).toEqual(golden.match);
+  });
+
+  it('KI-12-04 AC1: the default matchSettings carries HUMAN/HUMAN — the untouched row', () => {
+    const { session } = buildSession({ seed: 4242 });
+    expect(session.getMatchSettings().playerKinds).toEqual({ 1: 'HUMAN', 2: 'HUMAN' });
+  });
+});
+
+/**
+ * KI-12-04 AC2 — the key rule, wired end-to-end: `matchSettings.playerKinds` (set the same way the row's own
+ * `onChange` or a `startMatch` override would) flows through `playersForMatch`'s new `isCpu` field into
+ * `core/match.js`'s `createMatch`, which is where `tests/unit/core/match.test.js`'s own `KI-12-04 the key
+ * rule` block already proves the arithmetic in isolation. This block proves the session actually wires it —
+ * a regression here (say, `playersForMatch` forgetting `isCpu`) would pass every `core/match.js` test and
+ * still ship a CPU-vs-CPU match that pays out.
+ */
+describe('KI-12-04 AC2: a CPU-vs-CPU match awards zero keys; a human-vs-CPU match awards the normal amount', () => {
+  it('KI-12-04 AC2: a CPU-vs-CPU match awards zero keys', () => {
+    const { session } = buildSession({ seed: 1 });
+    playTo(session, { bestOf: 3, playerKinds: { 1: 'EASY', 2: 'NORMAL' } });
+    expect(session.getMatch()?.rewardKeys).toBe(0);
+  });
+
+  it('KI-12-04 AC2: a human-vs-CPU match awards the normal amount to the human', () => {
+    const { session } = buildSession({ seed: 1 });
+    playTo(session, { bestOf: 3, playerKinds: { 1: 'HUMAN', 2: 'HARD' } });
+    expect(session.getMatch()?.rewardKeys).toBe(SETTINGS.rewards[3]);
+  });
+
+  it('KI-12-04 AC2: a CPU-vs-human match (the other seat human) also awards the normal amount', () => {
+    const { session } = buildSession({ seed: 1 });
+    playTo(session, { bestOf: 3, playerKinds: { 1: 'EASY', 2: 'HUMAN' } });
+    expect(session.getMatch()?.rewardKeys).toBe(SETTINGS.rewards[3]);
+  });
+
+  it('KI-12-04: prove it can go red — a session that ignored playerKinds entirely would still pay a CPU-vs-CPU match', () => {
+    // The red-proof: compute what an unpatched `playersForMatch` (no `isCpu` at all) would have produced,
+    // and show it disagrees with what this session actually pays.
+    const { session } = buildSession({ seed: 1 });
+    playTo(session, { bestOf: 3, playerKinds: { 1: 'EASY', 2: 'EASY' } });
+    const unpatchedWouldPay = SETTINGS.rewards[3];
+    expect(session.getMatch()?.rewardKeys).not.toBe(unpatchedWouldPay);
+    expect(session.getMatch()?.rewardKeys).toBe(0);
+  });
+});
+
+/**
+ * KI-12-04: the row's own change actually configures a working `CpuPlayer` — not merely a label the reward
+ * rule reads. `syncCpuPlayersFromKinds` is exercised here through `startMatch`'s own `playerKinds` override,
+ * the same shortcut `tests/e2e`/`tests/visual` use to reach a CPU match without a real keypress.
+ */
+describe('KI-12-04: the switch actually drives a CpuPlayer', () => {
+  it('KI-12-04: an EASY player 1 steers away from the wall an unsteered human would eventually hit', () => {
+    const { session } = buildSession({ seed: 4242 });
+    playTo(session, { bestOf: 1, playerKinds: { 1: 'EASY', 2: 'HUMAN' } });
+    // P1 spawns heading RIGHT (`DESIGN-DECISIONS §2.3`); `crashPlayerOne`'s own comment records that an
+    // unsteered snake on this seed reaches its wall by ≈ 3.167 s. 3.3 s is safely past that mark, so a
+    // still-alive player 1 here can only mean its EASY policy is actually being asked and actually steering,
+    // not merely toggling a reward number in `core/match.js`.
+    runFrames(session, 3.3, 40);
+    expect(session.getSim()?.snakes[0].alive).toBe(true);
+  });
+
+  it('KI-12-04: a manually configured CpuPlayer (KI-12-02’s own seam) survives a bare startMatch() with no playerKinds override', () => {
+    // Regression guard for `syncCpuPlayersFromKinds`: `tests/e2e/cpu.spec.js` calls `setCpuPlayer` directly
+    // and then `startMatch()` with no overrides at all — this must never be silently reset back to HUMAN by
+    // the default `playerKinds` (`{1: 'HUMAN', 2: 'HUMAN'}`) `defaultMatchSettings` still carries.
+    const { session } = buildSession({ seed: 4242 });
+    session.setCpuPlayer(1, () => 'UP');
+    session.startMatch({ bestOf: 1 });
+    runFrames(session, SETTINGS.countdownStepSeconds * 4 + 0.01, 8);
+    runFrames(session, 0.3, 3);
+    // The manual policy always answers UP; P1 spawns heading RIGHT, so a queued UP proves the CPU is still
+    // the one driving player 1, not a human's (silent, absent) keyboard.
+    expect(session.getSim()?.snakes[0].direction).toEqual(DIRECTIONS.UP);
   });
 });

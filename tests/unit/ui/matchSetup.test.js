@@ -1,6 +1,7 @@
 // @ts-check
 import { describe, expect, it } from 'vitest';
 import { SETTINGS } from '../../../src/core/settings.js';
+import { LEVELS } from '../../../src/game/bots/levels.js';
 import {
   MIN_COLOUR_DIFFERENCE,
   worstCaseColourDifference,
@@ -10,6 +11,7 @@ import {
   MUSIC_TRACKS,
   changeMatchLength,
   changeMusicTrack,
+  changePlayerKind,
   checkColourSafety,
   controlsCardLabel,
   pickPlayerColor,
@@ -30,6 +32,7 @@ const BASE_SETTINGS = {
   powerUpsEnabled: true,
   musicTrack: MUSIC_TRACKS[0],
   colors: { 1: 'red', 2: 'blue' },
+  playerKinds: { 1: 'HUMAN', 2: 'HUMAN' },
 };
 
 describe('pickPlayerColor — KS-05-04 AC3 colour swap rule', () => {
@@ -116,6 +119,57 @@ describe('changeMusicTrack', () => {
 });
 
 /**
+ * KI-12-04 · `changePlayerKind` — the switch itself. `DESIGN-DECISIONS §1` row 27 fixes the row's cycle order
+ * (`HUMAN` first, then the three CPU levels) and its four approved value strings; `LEVELS` is imported from
+ * `../../game/bots/levels.js` rather than retyped, so this test (and the row it proves) can never drift from
+ * the level ids `session.js`'s own `policyForLevel` actually understands.
+ */
+describe('changePlayerKind — KI-12-04 the switch', () => {
+  const CYCLE = ['HUMAN', ...Object.values(LEVELS)];
+
+  it('KI-12-04 AC1: defaults to HUMAN for both players', () => {
+    expect(BASE_SETTINGS.playerKinds).toEqual({ 1: 'HUMAN', 2: 'HUMAN' });
+  });
+
+  it('cycles player 1 forward through HUMAN -> CPU EASY -> CPU NORMAL -> CPU HARD -> HUMAN, in that order', () => {
+    let settings = { ...BASE_SETTINGS, playerKinds: { 1: 'HUMAN', 2: 'HUMAN' } };
+    for (const expected of [...CYCLE.slice(1), CYCLE[0]]) {
+      settings = changePlayerKind(settings, 1, 1);
+      expect(settings.playerKinds[1]).toBe(expected);
+    }
+  });
+
+  it('cycles backward too', () => {
+    const settings = { ...BASE_SETTINGS, playerKinds: { 1: 'HUMAN', 2: 'HUMAN' } };
+    const prev = changePlayerKind(settings, 1, -1);
+    expect(prev.playerKinds[1]).toBe(CYCLE[CYCLE.length - 1]);
+  });
+
+  it('cycling player 2 never touches player 1, and vice versa', () => {
+    const settings = { ...BASE_SETTINGS, playerKinds: { 1: 'HUMAN', 2: 'HUMAN' } };
+    const next = changePlayerKind(settings, 2, 1);
+    expect(next.playerKinds).toEqual({ 1: 'HUMAN', 2: 'EASY' });
+
+    const other = changePlayerKind(settings, 1, 1);
+    expect(other.playerKinds).toEqual({ 1: 'EASY', 2: 'HUMAN' });
+  });
+
+  it('never touches colors, bestOf, powerUpsEnabled or musicTrack — a CPU still owns a colour', () => {
+    const next = changePlayerKind(BASE_SETTINGS, 1, 1);
+    expect(next.colors).toEqual(BASE_SETTINGS.colors);
+    expect(next.bestOf).toBe(BASE_SETTINGS.bestOf);
+    expect(next.powerUpsEnabled).toBe(BASE_SETTINGS.powerUpsEnabled);
+    expect(next.musicTrack).toBe(BASE_SETTINGS.musicTrack);
+  });
+
+  it('returns a complete new matchSettings object, not a partial patch', () => {
+    const next = changePlayerKind(BASE_SETTINGS, 1, 1);
+    expect(next).not.toBe(BASE_SETTINGS);
+    expect(next.playerKinds).not.toBe(BASE_SETTINGS.playerKinds);
+  });
+});
+
+/**
  * KI-10-02: the controls card (`DESIGN-DECISIONS §3` "Controls card on match setup"). The copy is approved
  * verbatim; the colour word must come from the *live* `matchSettings.colors`, never a hardcoded literal,
  * because this card sits on the very screen that changes those colours (§2.7's swap rule).
@@ -142,6 +196,16 @@ describe('controlsCardLabel — KI-10-02', () => {
   it("KI-10-02 AC1: names each player's own keys", () => {
     expect(controlsCardLabel(1, 'red')).toContain('W A S D');
     expect(controlsCardLabel(2, 'blue')).toContain('ARROW KEYS');
+  });
+
+  it('KI-12-04: a computer player reads "CPU" instead of a key list — the ticket spec, verbatim', () => {
+    expect(controlsCardLabel(1, 'red', true)).toBe('PLAYER 1 · RED — CPU');
+    expect(controlsCardLabel(2, 'blue', true)).toBe('PLAYER 2 · BLUE — CPU');
+  });
+
+  it('KI-12-04: `isCpu` defaults to false — every pre-existing two-argument call keeps its exact behaviour', () => {
+    expect(controlsCardLabel(1, 'red')).toBe(controlsCardLabel(1, 'red', false));
+    expect(controlsCardLabel(2, 'blue')).toBe(controlsCardLabel(2, 'blue', false));
   });
 });
 

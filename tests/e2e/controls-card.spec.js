@@ -61,8 +61,10 @@ test.describe('KI-10-02 controls card', () => {
     const rows = page.locator('.controls-card-row');
     await expect(rows.nth(0)).toHaveText('PLAYER 1 · RED — W A S D');
 
-    // Move focus down to the PLAYER 1 COLOUR row (MATCH LENGTH -> POWER-UPS -> MUSIC -> PLAYER 1 COLOUR) and
-    // cycle it. With only red/blue owned, this swaps the two players' colours (`DESIGN-DECISIONS §2.7`).
+    // Move focus down to the PLAYER 1 COLOUR row (MATCH LENGTH -> POWER-UPS -> MUSIC -> PLAYER 1 (KI-12-04's
+    // own HUMAN/CPU row) -> PLAYER 1 COLOUR) and cycle it. With only red/blue owned, this swaps the two
+    // players' colours (`DESIGN-DECISIONS §2.7`).
+    await page.keyboard.press('ArrowDown');
     await page.keyboard.press('ArrowDown');
     await page.keyboard.press('ArrowDown');
     await page.keyboard.press('ArrowDown');
