@@ -33,9 +33,12 @@ updates:
       day: 'monday'
     versioning-strategy: increase
     open-pull-requests-limit: 10
+    # `dependencies` only. An earlier draft added `sprint:I19` as well; that is wrong for a schedule rather
+    # than a batch — these PRs keep arriving every Monday long after Improvement 19 is signed off, and a
+    # permanent `sprint:I19` label would make every future dependency bump look like part of a finished
+    # sprint. The label has to describe the PR, not the ticket that set the schedule up.
     labels:
       - 'dependencies'
-      - 'sprint:I19'
     commit-message:
       prefix: 'chore(deps)'
       prefix-development: 'chore(deps-dev)'
@@ -79,7 +82,6 @@ updates:
       day: 'monday'
     labels:
       - 'dependencies'
-      - 'sprint:I19'
     commit-message:
       prefix: 'chore(ci)'
     groups:
