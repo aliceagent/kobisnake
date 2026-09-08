@@ -455,6 +455,9 @@ export const hud = /*#__PURE__*/ deepFreeze({
   powerUpIconSpeed: '⚡',
   // UNAPPROVED — KS-06-02 (`hud.js`'s `POWERUP_TAG_COPY.SLOW.icon`).
   powerUpIconSlow: '❄',
+  // APPROVED — DESIGN-DECISIONS §3, "Below-minimum note" (KI-16-03, issue #248). Byte-identical to
+  // `hud.js`'s exported `MIN_SIZE_NOTE_TEXT`.
+  minSizeNote: 'MAKE THE WINDOW BIGGER',
 });
 
 /**
@@ -598,5 +601,6 @@ export const APPROVED_KEYS = deepFreeze([
   'replay.keyHint',
   'replay.tickReadout',
   'playtestPrompt.hintLine',
+  'hud.minSizeNote',
   'tutorial.skipHint',
 ]);

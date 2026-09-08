@@ -1,4 +1,5 @@
 // @ts-check
+import { hud } from './strings.js';
 
 /**
  * The minimal HUD: a centred timer and the two players' current lengths (`ARCHITECTURE §8`; ticket KS-03-05),
@@ -41,6 +42,13 @@
  * that all agree on being visible or not (`ARCHITECTURE §8`'s own state-driven visibility, unchanged); this
  * file only ever builds the element and keeps its `hidden` in lockstep with the other two, exactly the split
  * the tech-lead notes on issue #248 ask for ("responsive sizing belongs in the stylesheet, not in `hud.js`").
+ *
+ * Since KI-20-02 every rendered string here reads from the catalogue's `hud` group (`src/ui/strings.js`,
+ * imported as `{ hud }`, this screen's own group, never the `STRINGS` aggregate — see that module's own doc
+ * comment on why). `MIN_SIZE_NOTE_TEXT` stays exported under its original name, now re-derived from
+ * `hud.minSizeNote`, because `tests/unit/ui/hud.test.js` and `tests/e2e/hudAtEverySize.spec.js` both import it
+ * by this path; `MIN_SUPPORTED_WIDTH`/`MIN_SUPPORTED_HEIGHT`/`POWERUP_TAG_OFFSET` are geometry, not copy, and
+ * stay exactly as they were.
  */
 
 /**
@@ -71,9 +79,6 @@
  * @property {() => void} destroy
  */
 
-/** The banner's exact text (ticket KS-04-03; image `05-laser-closing-phase.png`). Never invent other copy. */
-const LASER_WARNING_TEXT = 'LASERS CLOSING!';
-
 /** CSS class that reddens the timer text for the rest of the round (`src/ui/styles.css`). */
 const TIMER_WARNING_CLASS = 'hud-timer--warning';
 
@@ -95,9 +100,12 @@ export const MIN_SUPPORTED_HEIGHT = 480;
 
 /**
  * The below-minimum note's exact copy (tech-lead notes on issue #248: applied default pending the design
- * lead's ruling on #245). Never invent alternative wording or a second line.
+ * lead's ruling on #245; approved 2026-09-08, `DESIGN-DECISIONS §3` "Below-minimum note"). Never invent
+ * alternative wording or a second line. Re-derived from the catalogue (`hud.minSizeNote`) since KI-20-02,
+ * kept under this name because `tests/unit/ui/hud.test.js` and `tests/e2e/hudAtEverySize.spec.js` both import
+ * it from this path.
  */
-export const MIN_SIZE_NOTE_TEXT = 'MAKE THE WINDOW BIGGER';
+export const MIN_SIZE_NOTE_TEXT = hud.minSizeNote;
 
 /**
  * The tag's copy, per `13-gameplay-hud.png` and the tech-lead note on this ticket: the image shows two lines
@@ -108,8 +116,16 @@ export const MIN_SIZE_NOTE_TEXT = 'MAKE THE WINDOW BIGGER';
  * @type {Record<'SPEED' | 'SLOW', {icon: string, label: string, iconClass: string}>}
  */
 const POWERUP_TAG_COPY = {
-  SPEED: { icon: '⚡', label: 'SPEED BOOST', iconClass: 'hud-powerup-tag-icon--speed' },
-  SLOW: { icon: '❄', label: 'SLOWED', iconClass: 'hud-powerup-tag-icon--slow' },
+  SPEED: {
+    icon: hud.powerUpIconSpeed,
+    label: hud.powerUpSpeedLabel,
+    iconClass: 'hud-powerup-tag-icon--speed',
+  },
+  SLOW: {
+    icon: hud.powerUpIconSlow,
+    label: hud.powerUpSlowLabel,
+    iconClass: 'hud-powerup-tag-icon--slow',
+  },
 };
 
 /**
@@ -143,21 +159,21 @@ export function createHud(root) {
 
   const p1 = doc.createElement('div');
   p1.className = 'hud-player hud-player--p1';
-  p1.textContent = 'P1 0';
+  p1.textContent = hud.length(1, 0);
 
   const timer = doc.createElement('div');
   timer.className = 'hud-timer';
-  timer.textContent = '0:00';
+  timer.textContent = hud.timerInitial;
 
   const p2 = doc.createElement('div');
   p2.className = 'hud-player hud-player--p2';
-  p2.textContent = 'P2 0';
+  p2.textContent = hud.length(2, 0);
 
   row.append(p1, timer, p2);
 
   const banner = doc.createElement('div');
   banner.className = 'hud-laser-banner';
-  banner.textContent = LASER_WARNING_TEXT;
+  banner.textContent = hud.laserWarning;
   banner.hidden = true;
 
   container.append(row, banner);
@@ -179,7 +195,7 @@ export function createHud(root) {
   // `HUD_STATES`), and the media query is what decides whether the viewport is too small for that to be safe.
   const minSizeNote = doc.createElement('div');
   minSizeNote.className = 'hud-min-size-note';
-  minSizeNote.textContent = MIN_SIZE_NOTE_TEXT;
+  minSizeNote.textContent = hud.minSizeNote;
   root.appendChild(minSizeNote);
 
   /** Seconds left before the banner hides itself; only meaningful while `banner.hidden` is `false`. */
@@ -231,8 +247,8 @@ export function createHud(root) {
       timer.textContent = text;
     },
     setLengths(p1Length, p2Length) {
-      p1.textContent = `P1 ${p1Length}`;
-      p2.textContent = `P2 ${p2Length}`;
+      p1.textContent = hud.length(1, p1Length);
+      p2.textContent = hud.length(2, p2Length);
     },
     showLaserWarning(durationSeconds) {
       banner.hidden = false;
@@ -272,7 +288,7 @@ export function createHud(root) {
         element.icon.textContent = copy.icon;
         element.icon.className = `hud-powerup-tag-icon ${copy.iconClass}`;
         element.label.textContent = copy.label;
-        element.seconds.textContent = `${tag.seconds}s`;
+        element.seconds.textContent = hud.powerUpSeconds(tag.seconds);
 
         const stackY = POWERUP_TAG_OFFSET.y + (tag.stackIndex ?? 0) * POWERUP_TAG_STACK_OFFSET_Y;
         element.root.style.left = `${tag.xFraction * 100}%`;

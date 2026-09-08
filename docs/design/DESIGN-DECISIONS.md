@@ -255,10 +255,9 @@ static and instanced.
 
 **Below-minimum note (Improvement 16, KI-16-03).** Below 640×480 the HUD is replaced by one line telling the
 player to make the window bigger — all capitals, no punctuation, like every other HUD label — and the game keeps
-running underneath, so making the window bigger picks the round straight back up. Approved 2026-09-08 exactly as
-it ships in hud.js (MIN_SIZE_NOTE_TEXT). It is deliberately not quoted here yet: the §3 parity test asserts every
-quoted line against the catalogue, and the catalogue carries this one only once KI-20-02 migrates hud.js. That
-PR quotes it here.
+running underneath, so making the window bigger picks the round straight back up. Approved 2026-09-08, and
+quoted here now that KI-20-02 has migrated hud.js to the catalogue: `MAKE THE WINDOW BIGGER`, byte-identical to
+hud.js's exported `MIN_SIZE_NOTE_TEXT` (`hud.minSizeNote` in the catalogue, `src/ui/strings.js`).
 
 ## 4. The SETTINGS object (shipping defaults)
 
