@@ -125,21 +125,62 @@ test.describe('KI-05-03 the REPLAY screen', () => {
     await expect(
       page.locator('[data-screen="REPLAY"] .menu-item', { hasText: REPLAY_COPY.pauseLabel }),
     ).toBeVisible();
-    await page.evaluate(() => /** @type {any} */ (globalThis).__kobi.advance(0.5));
-    const readoutText = await page.locator('[data-replay-readout]').textContent();
-    const tick = Number((readoutText ?? '').match(/TICK (\d+)/)?.[1] ?? '0');
-    expect(tick).toBeGreaterThan(1);
+
+    // KI-05-05: this used to be `advance(0.5)` and then `expect(tick).toBeGreaterThan(1)` — a duration,
+    // and an assertion loose enough to hide how many ticks actually arrived.
+    //
+    // Playing cannot be asserted against an absolute tick at all, and that is the real lesson here:
+    // `main.js` keeps a live `requestAnimationFrame` loop running, `runUpdate`'s REPLAY case advances the
+    // replay on every one of those frames, and frames land in the gaps between Playwright round-trips
+    // (`determinism.spec.js`'s "everything inside ONE synchronous evaluate" note is the same hazard). So
+    // between clicking PLAY and reading the tick back, an unknowable number of real frames have already
+    // run — a first attempt at this fix asked for tick 12 and got 97.
+    //
+    // PAUSE first. `advanceReplayInternal` is a no-op while paused, so the live loop can no longer move
+    // the replay, and from there `stepReplay` gives exact whole ticks (PR #154's rule) that are the same
+    // on any machine. Play, pause and step are all still under test; only the unknowable wait is gone.
+    expect(
+      await page.evaluate(() => /** @type {any} */ (globalThis).__kobi.isReplayPlaying()),
+    ).toBe(true);
+    await page
+      .locator('[data-screen="REPLAY"] .menu-item', { hasText: REPLAY_COPY.pauseLabel })
+      .click();
+
+    const stepped = await page.evaluate((steps) => {
+      const kobi = /** @type {any} */ (globalThis).__kobi;
+      const playing = kobi.isReplayPlaying();
+      const before = kobi.getReplayTick();
+      for (let i = 0; i < steps; i += 1) kobi.stepReplay();
+      return { playing, before, after: kobi.getReplayTick() };
+    }, 5);
+
+    // Assert the player before the DOM: it is what advanced, and the readout is only a picture of it.
+    expect(stepped.playing).toBe(false);
+    expect(stepped.after).toBe(stepped.before + 5);
+    expect(stepped.after).toBeGreaterThan(1);
+    await expect(page.locator('[data-replay-readout]')).toHaveText(
+      new RegExp(`TICK ${stepped.after}\\b`),
+    );
   });
 
   test('KI-05-03 AC4: Esc leaves REPLAY and returns to MAIN_MENU', async ({ page }) => {
     await page.goto(DEFAULT_QUERY);
     await openReplayScreen(page);
 
+    // KI-05-05 (#235): this failed roughly one run in four under full-suite load and passed 3/3 alone.
+    // `page.keyboard.press` delivers to whatever currently has focus, and this test never clicked or
+    // focused anything — it relied on the document holding focus by default, which stops being true when
+    // several browser contexts are competing. Clicking the screen's own title takes focus deterministically
+    // without touching a row: `.menu-title` is a plain `<div>`, not a `.menu-item`, so it cannot activate
+    // anything. The fix is focus, never a longer timeout.
+    await page.locator('[data-screen="REPLAY"] .menu-title').click();
     await page.keyboard.press('Escape');
 
+    // The machine is what Escape actually drives; the DOM follows it on the next frame. Asserting the
+    // state first means a failure says "the key never arrived" rather than "a div was still hidden".
+    await expect
+      .poll(() => page.evaluate(() => /** @type {any} */ (globalThis).__kobi.getState()))
+      .toBe('MAIN_MENU');
     await expect(page.locator('[data-screen="MAIN_MENU"]')).toBeVisible();
-    expect(await page.evaluate(() => /** @type {any} */ (globalThis).__kobi.getState())).toBe(
-      'MAIN_MENU',
-    );
   });
 });

@@ -194,9 +194,20 @@ test.describe('KI-05-02 replay playback', () => {
         // at a time (tech-lead note A).
         kobi.playReplay();
         const wasPlaying = kobi.isReplayPlaying();
+
+        // KI-05-05: one frame through the *play* path, so the play transport is still what is under test
+        // and not merely `stepReplay` in disguise.
+        kobi.advanceReplayFrame(dt);
+        const advancedByPlay = kobi.getReplayTick();
+
+        // ...then step to the end. This loop used to be `advanceReplayFrame(dt)` per tick, and
+        // `advanceReplayFrame` **redraws on every call** (`session.js`), so a 140-tick round paid 140
+        // three.js draws — the same cost `testHooks.js` split `advance` out of `fastForward` to avoid, and
+        // enough to time this test out at 30 s under CI's software renderer. `stepReplay` advances exactly
+        // one tick and draws nothing, so the work is bounded by the replay's own length and by nothing
+        // about the machine.
         let guard = 0;
-        while (kobi.getReplayPhase() === 'PLAYING') {
-          kobi.advanceReplayFrame(dt);
+        while (kobi.stepReplay()) {
           guard += 1;
           if (guard > cap) break;
         }
@@ -204,6 +215,7 @@ test.describe('KI-05-02 replay playback', () => {
         return {
           loaded,
           wasPlaying,
+          advancedByPlay,
           guardHit: guard > cap,
           events: kobi.getReplayEvents(),
           phase: kobi.getReplayPhase(),
@@ -218,6 +230,8 @@ test.describe('KI-05-02 replay playback', () => {
     expect(result.loaded).toEqual({ ok: true });
     expect(result.guardHit).toBe(false);
     expect(result.wasPlaying).toBe(true);
+    // The play transport really did move the replay on, before the step loop finished it.
+    expect(result.advancedByPlay).toBeGreaterThan(0);
     expect(result.phase).toBe('ROUND_OVER');
     expect(result.events).toEqual(LASER_BOTH_HEADS_DRAW.expectedEvents);
     // The fixture's own last event *is* the round's result — reading it back off the live snapshot too is a
