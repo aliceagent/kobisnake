@@ -1,6 +1,7 @@
 // @ts-check
 import { STATES } from '../../game/gameStateMachine.js';
 import { createFocusModel } from '../focus.js';
+import { matchOver } from '../strings.js';
 
 /**
  * The match-over screen (`MATCH_OVER`, `DESIGN-DECISIONS §2.6`: "After MATCH_OVER: REMATCH (same settings,
@@ -37,6 +38,12 @@ import { createFocusModel } from '../focus.js';
  * `onWatchLastRound` dispatches `gameStateMachine.js`'s `SELECT_REPLAY` event (`session.js`'s own doc comment
  * on `watchLastRound`), the same event `mainMenu.js`'s REPLAY row already uses — one event, now two rows that
  * can fire it, per that file's own table-doc note.
+ *
+ * Since KI-20-02 every rendered string here reads from the catalogue's `matchOver` group (`src/ui/strings.js`,
+ * imported as `{ matchOver }`, this screen's own group, never the `STRINGS` aggregate — see that module's own
+ * doc comment on why). `WATCH_LAST_ROUND_LABEL` stays exported under its original name, now re-derived from
+ * `matchOver.watchLastRound`, because `tests/unit/ui/matchOver.test.js` and `tests/e2e/watch-last-round.spec.js`
+ * both import it by this path.
  */
 
 /** @typedef {import('../focus.js').MenuAction} MenuAction */
@@ -69,14 +76,11 @@ import { createFocusModel } from '../focus.js';
  * The WATCH LAST ROUND row's label — approved copy, `DESIGN-DECISIONS §3` ("The REPLAY screen"), ruled on
  * issue #211 and repeated on #222. Verbatim, never respelled here (the same rule `scoreboard.js`'s own
  * `DRAW_TEXT` carries) — exported so `tests/unit/ui/matchOver.test.js` asserts against this constant rather
- * than a second copy of the literal.
+ * than a second copy of the literal. Re-derived from the catalogue (`matchOver.watchLastRound`) since
+ * KI-20-02, kept under this name because `tests/unit/ui/matchOver.test.js` and
+ * `tests/e2e/watch-last-round.spec.js` both import it from this path.
  */
-export const WATCH_LAST_ROUND_LABEL = 'WATCH LAST ROUND';
-
-/** @param {string} name @returns {string} */
-function capitalize(name) {
-  return name.length === 0 ? name : name.charAt(0).toUpperCase() + name.slice(1);
-}
+export const WATCH_LAST_ROUND_LABEL = matchOver.watchLastRound;
 
 /**
  * Build the match-over screen inside `root`.
@@ -110,12 +114,12 @@ export function createMatchOverScreen(root) {
 
   const rematchRow = doc.createElement('div');
   rematchRow.className = 'menu-item';
-  rematchRow.textContent = 'REMATCH';
+  rematchRow.textContent = matchOver.rematch;
   panel.appendChild(rematchRow);
 
   const menuRow = doc.createElement('div');
   menuRow.className = 'menu-item';
-  menuRow.textContent = 'MAIN MENU';
+  menuRow.textContent = matchOver.mainMenu;
   panel.appendChild(menuRow);
 
   // KI-05-04: appended after the two existing rows, not inserted between them — `tests/e2e/menus.spec.js` and
@@ -175,12 +179,9 @@ export function createMatchOverScreen(root) {
     const { winner, colorNames, wins, bestOf, keys } = props;
     // `winner === null` must be checked before `colorNames[winner]` is ever read (module doc comment): a tie
     // has no player to name, and `IT'S A TIE` is the approved copy (`DESIGN-DECISIONS §3`), not a fallback.
-    winnerLine.textContent =
-      winner === null
-        ? "IT'S A TIE"
-        : `${capitalize(colorNames[winner]).toUpperCase()} WINS THE MATCH`;
-    scoreLine.textContent = `BEST OF ${bestOf} — ${wins[1]}-${wins[2]}`;
-    keysLine.textContent = `${keys} KEY${keys === 1 ? '' : 'S'} EARNED`;
+    winnerLine.textContent = winner === null ? matchOver.tie : matchOver.winner(colorNames[winner]);
+    scoreLine.textContent = matchOver.scoreLine(bestOf, wins[1], wins[2]);
+    keysLine.textContent = matchOver.keysEarned(keys);
   }
 
   renderText();
