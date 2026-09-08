@@ -38,8 +38,10 @@ yet: `package.json` is at `0.1.0`, Sprint 18 cuts `v1.0.0`, and everything below
   frozen picture, and picks the round up where it stopped, with the same `READY?` count-in a normal unpause
   gets. Before this, the only way out was reloading the page, which lost the match (#287).
 - **A plain screen for when it truly cannot be fixed.** If graphics were never available, if a lost picture
-  never comes back after a few seconds, or if something goes wrong while the game is starting up, the screen
-  now says so in plain words and offers a RELOAD button — instead of a blank page or a frozen one (#284).
+  never comes back after three seconds, or if something goes wrong while the game is starting up, the screen
+  now says so in plain words and offers a RELOAD button — instead of a blank page or a frozen one. It reads
+  "SOMETHING WENT WRONG", then "The game got stuck. It isn't anything you did. Click RELOAD to start it
+  again." And if the graphics come back, the screen goes away again and the game carries on (#284, #297).
 
 ### Changed
 

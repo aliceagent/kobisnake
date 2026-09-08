@@ -193,6 +193,14 @@ eleven-year-old: short words, no jargon, and no exclamation mark doing the work 
 - **The scoreboard on the third consecutive draw** (#150): that round is not replayed, so it must not say REPLAY.
   It reads **"THIRD DRAW — MATCH OVER"**, then the match-over screen follows as usual. The ordinary draw keeps
   "DRAW — REPLAY" and the second keeps its "one more and the match is called" warning.
+- **Error screen (Improvement 06, KI-06-02).** The last-resort screen, shown when the game cannot draw at
+  all: no WebGL at start-up, a lost graphics context that has not come back after three seconds, or an
+  unexpected throw while the game is loading. Three lines, verbatim — the heading "SOMETHING WENT WRONG",
+  then "The game got stuck. It isn't anything you did. Click RELOAD to start it again.", then the button
+  "RELOAD". Three short sentences rather than two clauses joined by a dash: the reassurance in the middle is
+  the best line on the screen and it deserves to stand on its own. No cause is named and no jargon appears —
+  a rule with a test behind it, not a hope. The screen comes back down again the moment the graphics return,
+  because it is a statement about the present rather than a verdict.
 - **The colour-safe pairing note on match setup** (Improvement 15, KI-15-02): two lines, verbatim, next to
   the colour rows — "These two colours look alike to some players." and "Try TEAL for PLAYER 2." The colour
   word and the player number are computed, never literals; PLAYER is capitalised because the controls card

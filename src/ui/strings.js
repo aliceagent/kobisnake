@@ -491,21 +491,25 @@ export const tutorial = /*#__PURE__*/ deepFreeze({
  *
  * KI-06-02 (`docs/sprints/improvement-06-resilience-and-recovery.md`): the last-resort screen
  * (`src/ui/screens/error.js`), shown when WebGL was never available, a lost context never comes back, or
- * something threw during startup. Every entry is a first draft transcribed for the design lead to rule on —
- * see this module's own doc comment's "Approved vs. unapproved" section — written to the ticket's own spec:
- * "in words an eleven-year-old can act on, not a stack trace", with no `WebGL`, `context`, `GPU`, `Error`,
- * stack or error code anywhere in it. `tests/unit/ui/strings.test.js`'s "KI-06-02 AC3" describe block is the
- * machine-checkable half of that rule: a list of forbidden substrings run against every string this group
- * renders.
+ * something threw during startup. **All three entries are approved** (the design lead's ruling on #276,
+ * recorded in `DESIGN-DECISIONS §3` under "Error screen"), so the AC1 parity test now holds them to §3
+ * character for character. They are written to the ticket's own spec: "in words an eleven-year-old can act
+ * on, not a stack trace", with no `WebGL`, `context`, `GPU`, `Error`, stack or error code anywhere in them.
+ * `tests/unit/ui/strings.test.js`'s "KI-06-02 AC3" describe block is the machine-checkable half of that
+ * second rule: a list of forbidden substrings run against every string this group renders.
  */
 export const error = /*#__PURE__*/ deepFreeze({
-  // UNAPPROVED — KI-06-02 (`error.js`'s `heading.textContent`). "What happened", without naming the cause:
-  // an eleven-year-old has no use for "WebGL context lost", and the ticket rules that word choice out anyway.
+  // APPROVED — DESIGN-DECISIONS §3
+  // "What happened", without naming the cause: an eleven-year-old has no use for a lost graphics context, and
+  // the ticket rules that word choice out anyway.
   heading: 'SOMETHING WENT WRONG',
-  // UNAPPROVED — KI-06-02 (`error.js`'s `message.textContent`). "What to do about it", plus one reassurance a
-  // player looking at a dead screen needs before anything else: this was not something they did.
-  message: "The game got stuck. It isn't anything you did — click RELOAD to start it again.",
-  // UNAPPROVED — KI-06-02 (`error.js`'s `reloadButton.textContent`); the ticket's own name for the control.
+  // APPROVED — DESIGN-DECISIONS §3
+  // Three short sentences rather than two clauses joined by a dash (the design lead's ruling on #276): the
+  // reassurance in the middle is the best line on the screen and deserves to stand on its own, which is also
+  // why `Click` is capitalised here — it opens a sentence now, where it used to follow a dash.
+  message: "The game got stuck. It isn't anything you did. Click RELOAD to start it again.",
+  // APPROVED — DESIGN-DECISIONS §3
+  // The ticket's own name for the control, and the word the message tells the player to look for.
   reloadButton: 'RELOAD',
 });
 
@@ -581,4 +585,7 @@ export const APPROVED_KEYS = deepFreeze([
   'playtestPrompt.hintLine',
   'hud.minSizeNote',
   'tutorial.skipHint',
+  'error.heading',
+  'error.message',
+  'error.reloadButton',
 ]);
