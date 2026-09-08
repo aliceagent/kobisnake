@@ -1,5 +1,8 @@
 // @ts-check
 
+import { cpus } from 'node:os';
+import process from 'node:process';
+
 /**
  * KI-17-01 (`docs/sprints/improvement-17-mutation-testing.md`) — mutation testing over `src/core`.
  *
@@ -34,8 +37,9 @@
  *   test.** If a mutant survives here that `tests/sim` would have killed, the answer is the unit test, not
  *   widening this config.
  *
- * The narrowing is done with the vitest runner's `dir` option rather than a second Vitest config file, so
- * there is exactly one place (`vitest.config.js`) that says how this project's tests run.
+ * The narrowing itself lives in `vitest.mutation.config.js`, which inherits everything else from
+ * `vitest.config.js` so there is still one place that says how this project's tests run. Its header records
+ * why the vitest runner's own `dir` and `related` options could not do the job.
  *
  * ## No network, ever
  *
@@ -86,10 +90,16 @@ const config = {
   // Set by KI-17-02 from the honest baseline; the nightly gate (KI-17-03) compares against it.
   thresholds: { high: 100, low: 95, break: 95 },
 
-  // Four cores in the container this runs in, shared with the other sprint sessions' worktrees, and a
-  // GitHub runner is four cores too. Stryker's own default is already half the cores; it is stated here so
-  // that a machine with more of them does not turn a twenty-minute gate into a fan-out nobody measured.
-  concurrency: 2,
+  // **On CI, every core; locally, half of them** — and the asymmetry is the same one `vitest.config.js`
+  // already draws for `maxWorkers`, for the same reason. A GitHub runner is one container running one job
+  // with nothing else on it, so holding a core back buys nothing and costs wall clock on a gate with a
+  // twenty-minute budget. This container runs several sprint sessions' worktrees at once, where a full
+  // fan-out is a fiction that starves the neighbours.
+  //
+  // Measured on the full 1320-mutant baseline here, on a four-core container shared with three other
+  // sessions: **49 min 28 s at concurrency 2, 27 min 36 s at concurrency 4**, with an identical score and an
+  // identical survivor list both times. Speed changes what the run costs, never what it concludes.
+  concurrency: process.env.CI ? cpus().length : Math.max(2, Math.floor(cpus().length / 2)),
 
   // A mutant that makes the simulation loop forever (a `while (ticks < limit)` whose comparison is flipped)
   // must be reported as a timeout, not hang the run. Stryker derives the limit from the initial run's

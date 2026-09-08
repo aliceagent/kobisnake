@@ -21,6 +21,12 @@ export default [
       'playwright-report/**',
       'test-results/**',
       '.claude/**',
+      // KI-17-01: the mutation run's scratch checkout and its reports. `.stryker-tmp` holds *instrumented
+      // copies* of `src/`, which are machine-generated, deliberately not formatted and full of the mutation
+      // switch statements — linting them means 1300 errors about code nobody wrote. Both are gitignored;
+      // ESLint's flat config does not read `.gitignore`, so they have to be named here too.
+      '.stryker-tmp/**',
+      'reports/**',
     ],
   },
   js.configs.recommended,
