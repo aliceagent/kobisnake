@@ -221,6 +221,25 @@ import { createReplayPlayer } from './replayPlayer.js';
  * exactly as it did the first time — untouched by anything in this section (the "never touches match state"
  * property this file's KI-05-02 header note already establishes) — so the screen redraws identically rather
  * than losing the winner or the score.
+ *
+ * ## Surviving a lost WebGL context (KI-06-01)
+ *
+ * A laptop waking from sleep, a driver reset or a browser reclaiming GPU memory ends the same way: the canvas
+ * fires `webglcontextlost` and there is nothing to draw into. Nothing here listens for that event — this file
+ * may not touch the DOM (`ARCHITECTURE §3`) — it subscribes to the *renderer*, which owns the canvas and
+ * turns those two events into {@link SessionRenderer.onContextLost} / `onContextRestored`.
+ *
+ * What happens on each is deliberately not new machinery. **Loss pauses the match through the existing
+ * `AUTO_PAUSE`**, the same event a backgrounded tab already dispatches, and therefore through the same
+ * {@link enterPause}: `loop.timeScale` goes to 0, `runUpdate`'s `default` case ticks nothing, and no
+ * simulated time passes while the picture is gone. **Restore resumes through the existing {@link resume}**,
+ * and therefore through the same one-second READY? beat the RESUME row and Esc play. The match continues
+ * from the tick it stopped on because the simulation never advanced past it — `src/core` is pure and
+ * headless and none of this reaches it.
+ *
+ * The one piece of state the recovery adds is {@link pausedByContextLoss}, and it exists to answer one
+ * question honestly: a context that comes back while the player is sitting on a pause screen *they* opened
+ * must not resume the match under them.
  */
 
 /** @typedef {import('./input.js').Direction} Direction */
@@ -267,6 +286,11 @@ import { createReplayPlayer } from './replayPlayer.js';
  *   three.js and so can never name the real `GameplayCamera` class.
  * @property {(player: number) => ProjectableVector} [getHeadWorldPosition] - KS-06-02: where the HUD tag
  *   anchors. Optional, like `camera`, so a minimal test renderer stays legal.
+ * @property {(listener: () => void) => () => void} [onContextLost] - KI-06-01: subscribe to the canvas
+ *   losing its WebGL context; the return value unsubscribes. Optional for the same reason the two members
+ *   above are — a test that is not about context loss passes a renderer without it and nothing subscribes.
+ * @property {(listener: () => void) => () => void} [onContextRestored] - KI-06-01: subscribe to the context
+ *   coming back, after the renderer has repaired itself.
  */
 
 /**
@@ -739,6 +763,13 @@ export function createSession({
   let pendingRoundOver = null;
   /** `loop.timeScale` as it was when PAUSE was entered, so RESUME can put slow-mo back mid-beat. */
   let timeScaleBeforePause = 1;
+  /**
+   * KI-06-01: true while the game is paused **because the WebGL context went away**, rather than because a
+   * player asked for it. Only that pause resumes itself when the context comes back — a player sitting on a
+   * pause screen they opened deliberately must not have the match restarted under them by a driver reset
+   * they never noticed.
+   */
+  let pausedByContextLoss = false;
   /** Seconds since the HUD text was last written; flushed at {@link HUD_INTERVAL_SECONDS}. */
   let hudAccumulator = 0;
   /** The frame's real duration, remembered for the renderer, which wants wall dt for its own decay. */
@@ -1595,6 +1626,35 @@ export function createSession({
   }
 
   /**
+   * KI-06-01: the canvas lost its WebGL context — a laptop waking from sleep, a driver reset, a browser
+   * reclaiming GPU memory. Pause **exactly the way PAUSE does**, through the same `AUTO_PAUSE` event a
+   * backgrounded tab already uses, so `loop.timeScale` goes to 0 and `runUpdate`'s `default` case ticks
+   * nothing: no simulated time passes while there is nothing to see (AC2). The simulation is pure and
+   * headless and survives all of this untouched, which is exactly what makes the match recoverable.
+   *
+   * `can()` first, for the same reason {@link autoPause} guards: a context is lost from a menu too, and only
+   * PLAYING and LASER_WARNING have an `AUTO_PAUSE` row. The flag is set only when the pause is really ours,
+   * so {@link handleContextRestored} has a truthful answer to "did I pause this?".
+   */
+  function handleContextLost() {
+    if (!machine.can(GAME_EVENTS.AUTO_PAUSE)) return;
+    pausedByContextLoss = true;
+    autoPause();
+  }
+
+  /**
+   * KI-06-01: the context came back, and the renderer has already repaired itself (`renderer.js` registers
+   * its own restore listener before this one). Resume through {@link resume} — the same function the RESUME
+   * row and Esc call — so the match continues through the same one-second READY? beat a normal resume plays,
+   * from the same tick it stopped on. There is deliberately no second path: recovery that does not reuse the
+   * ordinary resume is recovery nobody has tested.
+   */
+  function handleContextRestored() {
+    if (!pausedByContextLoss) return;
+    resume();
+  }
+
+  /**
    * Resume from pause: back to the state pause came from, after a one-second READY? (`§2.8`).
    *
    * `event` is which of the two ways out of the pause screen the player took. Both rows in
@@ -1606,6 +1666,9 @@ export function createSession({
    */
   function resume(event = GAME_EVENTS.RESUME) {
     if (!machine.can(event)) return;
+    // KI-06-01: however this pause ends, it is no longer the context's to end. A player who pressed RESUME
+    // while the canvas was still dead has answered the question themselves.
+    pausedByContextLoss = false;
     machine.dispatch(event);
     readyRemaining = READY_SECONDS;
     // Still frozen through the beat — "resuming from pause shows a 1-second READY? then continues".
@@ -1662,6 +1725,16 @@ export function createSession({
       : blurSource;
   blurTarget?.addEventListener('blur', autoPause);
 
+  // KI-06-01. The subscription lives here rather than in `main.js` because pausing and resuming a match is
+  // this file's job, and it goes through the renderer rather than through the canvas because `src/game/`
+  // may not touch the DOM (`ARCHITECTURE §3`). Both members are optional on {@link SessionRenderer}, so a
+  // test renderer that knows nothing about context loss simply never subscribes.
+  /** @type {(() => void)[]} */
+  const contextLossUnsubscribes = [
+    renderer.onContextLost?.(handleContextLost),
+    renderer.onContextRestored?.(handleContextRestored),
+  ].filter((off) => off !== undefined);
+
   showMainMenu();
 
   return {
@@ -1679,6 +1752,7 @@ export function createSession({
       loop.dispose();
       input.destroy();
       blurTarget?.removeEventListener('blur', autoPause);
+      for (const off of contextLossUnsubscribes) off();
     },
     /** @returns {GameState} */
     getState() {

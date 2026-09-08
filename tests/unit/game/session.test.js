@@ -1914,3 +1914,160 @@ describe('KI-16-02 resize', () => {
     expect(renderer.render).toHaveBeenCalledTimes(1);
   });
 });
+
+/**
+ * A renderer that also offers KI-06-01's two context subscriptions, plus the two triggers a test needs to
+ * fire them. The real seam is `renderer.js`'s `createContextLossWatcher` (proved in
+ * `tests/unit/render/renderer.test.js`); what is proved here is the other half — what `session.js` does when
+ * it is told.
+ */
+function createContextLossRenderer() {
+  /** @type {Set<() => void>} */
+  const lost = new Set();
+  /** @type {Set<() => void>} */
+  const restored = new Set();
+  return {
+    ...createFakeRenderer(),
+    /** @param {() => void} listener */
+    onContextLost(listener) {
+      lost.add(listener);
+      return () => lost.delete(listener);
+    },
+    /** @param {() => void} listener */
+    onContextRestored(listener) {
+      restored.add(listener);
+      return () => restored.delete(listener);
+    },
+    loseContext() {
+      for (const listener of [...lost]) listener();
+    },
+    restoreContext() {
+      for (const listener of [...restored]) listener();
+    },
+    subscriberCount: () => lost.size + restored.size,
+  };
+}
+
+describe('KI-06-01 surviving a lost WebGL context', () => {
+  it('KI-06-01 AC2: losing the context pauses the match, and no simulated time passes while it is gone', () => {
+    const renderer = createContextLossRenderer();
+    const { session } = buildSession({ renderer });
+    playTo(session);
+    const tickWhenLost = session.getSim().getState().tick;
+    expect(tickWhenLost).toBeGreaterThanOrEqual(0);
+
+    renderer.loseContext();
+
+    expect(session.getState()).toBe(STATES.PAUSE);
+    // Ten wall seconds of frames — many times a whole round's worth of ticks — with the context gone.
+    runFrames(session, 10, 200);
+    expect(session.getSim().getState().tick).toBe(tickWhenLost);
+  });
+
+  it('KI-06-01: the pause is the ordinary PAUSE, not a second kind of pause', () => {
+    // The design constraint on #276, asserted rather than asserted-in-prose: the same state, the same screen
+    // with the same props, and `loop.timeScale` at 0 the way `enterPause` leaves it.
+    const renderer = createContextLossRenderer();
+    const { session, ui } = buildSession({ renderer });
+    playTo(session);
+
+    renderer.loseContext();
+
+    expect(session.getState()).toBe(STATES.PAUSE);
+    expect(session.loop.timeScale).toBe(0);
+    const props = lastShow(ui, STATES.PAUSE);
+    expect(typeof props.onResume).toBe('function');
+    expect(typeof props.onRestart).toBe('function');
+    expect(typeof props.onMenu).toBe('function');
+  });
+
+  it('KI-06-01 AC1: restoring the context resumes through the same READY? beat, from the same tick', () => {
+    const renderer = createContextLossRenderer();
+    const { session, ui } = buildSession({ renderer });
+    playTo(session);
+    const tickWhenLost = session.getSim().getState().tick;
+
+    renderer.loseContext();
+    runFrames(session, 5, 100);
+    renderer.restoreContext();
+
+    // The READY? beat first — one wall second in which the round is still frozen (`DESIGN-DECISIONS §2.8`).
+    expect(session.getState()).toBe(STATES.PLAYING);
+    expect(countdownLabels(ui).at(-1)).toBe('READY?');
+    runFrames(session, 0.5, 10);
+    expect(session.getSim().getState().tick).toBe(tickWhenLost);
+
+    // Then the beat ends and the round carries on from exactly where it stopped.
+    runFrames(session, 0.6, 12);
+    expect(session.loop.timeScale).toBe(1);
+    runFrames(session, 1, 20);
+    expect(session.getSim().getState().tick).toBeGreaterThan(tickWhenLost);
+  });
+
+  it('KI-06-01: a context lost outside a round pauses nothing, and its restore resumes nothing', () => {
+    // MAIN_MENU has no `AUTO_PAUSE` row, so there is no pause to owe — and the restore must not dispatch a
+    // `RESUME` the machine would refuse (and, in `strict`, throw over).
+    const renderer = createContextLossRenderer();
+    const { session } = buildSession({ renderer, strict: true });
+    expect(session.getState()).toBe(STATES.MAIN_MENU);
+
+    expect(() => {
+      renderer.loseContext();
+      renderer.restoreContext();
+    }).not.toThrow();
+    expect(session.getState()).toBe(STATES.MAIN_MENU);
+  });
+
+  it('KI-06-01: a context that comes back does not resume a pause the player opened', () => {
+    // The reason `pausedByContextLoss` exists. A player who paused deliberately, then had a driver reset they
+    // never noticed, must still be looking at their pause screen afterwards.
+    const renderer = createContextLossRenderer();
+    const { session } = buildSession({ renderer });
+    playTo(session);
+    session.pause();
+    expect(session.getState()).toBe(STATES.PAUSE);
+
+    renderer.loseContext();
+    renderer.restoreContext();
+
+    expect(session.getState()).toBe(STATES.PAUSE);
+    expect(session.loop.timeScale).toBe(0);
+  });
+
+  it('KI-06-01: a player who resumes while the context is still gone owns the pause from then on', () => {
+    const renderer = createContextLossRenderer();
+    const { session, ui } = buildSession({ renderer });
+    playTo(session);
+    renderer.loseContext();
+
+    // RESUME while the canvas is still dead: the player has answered the question themselves, so the restore
+    // that follows must not play a second READY? beat over the one already running.
+    session.resume();
+    const beatsAfterResume = countdownLabels(ui).length;
+    expect(session.getState()).toBe(STATES.PLAYING);
+
+    renderer.restoreContext();
+
+    expect(countdownLabels(ui).length).toBe(beatsAfterResume);
+    expect(session.getState()).toBe(STATES.PLAYING);
+  });
+
+  it('KI-06-01: dispose() unsubscribes from both context events', () => {
+    const renderer = createContextLossRenderer();
+    const { session } = buildSession({ renderer });
+    expect(renderer.subscriberCount()).toBe(2);
+
+    session.dispose();
+
+    expect(renderer.subscriberCount()).toBe(0);
+  });
+
+  it('KI-06-01: a renderer with no context subscriptions is still legal', () => {
+    // `SessionRenderer`'s two new members are optional, like `camera` and `getHeadWorldPosition` before them:
+    // every existing test in this file passes a renderer without them, and `dispose()` must not mind either.
+    const { session } = buildSession();
+    playTo(session);
+    expect(session.getState()).toBe(STATES.PLAYING);
+    expect(() => session.dispose()).not.toThrow();
+  });
+});
