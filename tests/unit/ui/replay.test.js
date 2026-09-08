@@ -421,7 +421,13 @@ describe('createReplayScreen', () => {
         (c) => c.textContent === REPLAY_COPY.pauseLabel,
       ),
     ).toBeDefined();
-    expect(findByClass(/** @type {any} */ (root), 'replay-end').hidden).toBe(true);
+    // KI-05-06 (#260): visibility, not the box. The end line keeps its height at all times so the transport
+    // rows below it never move when it appears — see `replay.js`'s note on this element.
+    expect(
+      findByClass(/** @type {any} */ (root), 'replay-end').className.includes(
+        'replay-end--placeholder',
+      ),
+    ).toBe(true);
 
     screen.updateProgress({ tick: 380, replay, phase: 'ROUND_OVER', isPlaying: false });
     expect(findByData(/** @type {any} */ (root), 'replayReadout').textContent).toBe(
@@ -432,7 +438,11 @@ describe('createReplayScreen', () => {
         (c) => c.textContent === REPLAY_COPY.playLabel,
       ),
     ).toBeDefined();
-    expect(findByClass(/** @type {any} */ (root), 'replay-end').hidden).toBe(false);
+    expect(
+      findByClass(/** @type {any} */ (root), 'replay-end').className.includes(
+        'replay-end--placeholder',
+      ),
+    ).toBe(false);
   });
 
   it('destroy removes the screen from the root', () => {
