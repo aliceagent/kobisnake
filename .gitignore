@@ -9,3 +9,7 @@ test-results/
 
 # Agent worktrees (Claude Code creates these when subagents work in parallel).
 .claude/
+
+# KI-17-01: mutation-testing scratch and reports (Stryker).
+.stryker-tmp/
+reports/
