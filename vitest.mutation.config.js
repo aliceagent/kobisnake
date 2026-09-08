@@ -44,5 +44,32 @@ export default {
      * designed for it. Vitest's per-test timeout was never that mechanism; it was only ever in the way.
      */
     testTimeout: 60_000,
+
+    /**
+     * The three settings that make an exhaustive run affordable, and the measurement that forced them.
+     *
+     * The first full baseline took **53 minutes** for 1320 mutants against AC2's twenty-minute budget. It
+     * was not the tests: Stryker narrows each mutant to the tests that cover it (18.84 of 286 on average,
+     * about 0.27 s of actual test time), so of the ~4.8 s each mutant cost, roughly 4.5 s was Vitest
+     * standing a test run back up — re-forking workers, re-transforming and re-collecting twelve files —
+     * 1320 times over. A mutant is not a code change from Vitest's point of view: the instrumented source is
+     * already loaded and the switch is a runtime check on a global. Paying a cold start for each one buys
+     * nothing.
+     *
+     * So: one worker (Stryker already provides the parallelism, and stacking Vitest's fan-out inside each of
+     * its workers only oversubscribes a four-core runner), the threads pool rather than forks (a thread is
+     * far cheaper to hand work to than a process), and no per-file isolation (the module registry survives
+     * between runs, which is what removes the re-transform).
+     *
+     * `isolate: false` is the one with teeth, and it is safe *here* for the reason this directory was chosen
+     * as the mutation target in the first place: `src/core` is pure. It holds no module-level mutable state,
+     * reads no ambient clock and no ambient randomness — `eslint.config.js` forbids all four ways it could
+     * (KI-09-03) and `tests/unit/core/purity.test.js` proves it. All 286 tests pass unchanged under these
+     * settings; if that ever stops being true, the honest fix is to find the shared state, not to re-isolate
+     * and accept the hour.
+     */
+    maxWorkers: 1,
+    pool: 'threads',
+    poolOptions: { threads: { singleThread: true, isolate: false } },
   },
 };
