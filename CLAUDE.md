@@ -76,6 +76,13 @@ There is no `test:sim` script: simulation tests live in `tests/sim/` but run und
   report (a `webServer` that never came up emits no annotations at all).
 
 ## The never list
+- **Never re-enable Vercel deployments.** `vercel.json` carries `"git": { "deploymentEnabled": false }` on
+  purpose: on 2026-09-08 the concurrent sprint sessions pushed over a hundred deployments in a day and
+  exhausted the Hobby plan's daily allowance for the whole account, which is shared with every other project
+  on it. Roughly four in five of those were preview builds of branches that nobody opened, because
+  `vercel.app` domains are not reachable from an agent session. The last production build keeps serving the
+  live site; nothing you push deploys, and nothing you push needs to. Turning it back on is the design lead's
+  call at a milestone, in a commit of its own.
 - Never load anything from a CDN or external URL. three.js comes from npm and is bundled. The built site makes
   zero network requests after load; a test enforces this.
 - Never change a value in `src/core/settings.js` or a rule in `DESIGN-DECISIONS.md`. Propose it in your PR with
@@ -101,8 +108,9 @@ There is no `test:sim` script: simulation tests live in `tests/sim/` but run und
   every test with coverage off, `test:coverage` is the per-file thresholds. `test:coverage` sets
   `COVERAGE_STRICT` itself, so the old trap — thresholds silently 0 locally because only CI set the flag —
   is gone.
-- Visual work: include a preview screenshot next to the reference-image crop in the PR. Label the PR
-  `needs-design-review`.
+- Visual work: include a screenshot next to the reference-image crop in the PR, taken from a local
+  `npm run preview` or from `tests/visual`. There is no Vercel preview to screenshot — see the never list.
+  Label the PR `needs-design-review`.
 - Determinism: all randomness goes through `src/core/rng.js` with a seed. E2e tests fast-forward time through
   `window.__kobi`; they never sleep.
 

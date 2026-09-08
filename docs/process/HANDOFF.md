@@ -66,9 +66,13 @@ anything visual, textual, timing- or rule-related changed. Do not merge. Report 
 ## Environment limits the build team must know
 - GitHub *repository settings* (default branch, protection, rulesets, labels via API) cannot be written from
   agent sessions; the proxy refuses those paths. Prepare the exact settings as a checklist and ask the owner.
-- The Vercel team is on the Hobby plan (100 deployments/day). Do not retry refused deployments in a loop.
-- `vercel.app` domains are not reachable from agent sessions; verify deployments through the GitHub commit
-  status that Vercel posts, or through the Vercel connector.
+- **Vercel deployments are paused** (`vercel.json`, `git.deploymentEnabled: false`, 2026-09-08). The Hobby
+  plan allows 100 deployments a day *across the whole account*, and one day of parallel sprint sessions spent
+  all of them — about four in five on preview builds of branches nobody opened. The last production build
+  still serves the live game. Nothing a builder pushes deploys. Do not re-enable it, and do not retry a
+  refused deployment in a loop.
+- `vercel.app` domains are not reachable from agent sessions anyway, which is why the preview builds were
+  waste: verify a deployment through the GitHub commit status Vercel posts, or through the Vercel connector.
 - Never put model names in commits, code, or comments.
 
 ## Running a playtest gate without a facilitator (Improvement 11)

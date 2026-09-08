@@ -32,11 +32,11 @@ owner; that assignment wins over the rule of thumb.
    below. They run the fast checks locally before pushing and paste the output in the PR.
 4. **Review.** Opus reviews every PR for correctness, architecture compliance and readability. Fable reviews
    every PR labelled `needs-design-review` (any PR that changes visuals, UI text, tunables, timing, rules or
-   audio) by opening the Vercel preview and comparing against the reference images. Both reviewers leave
+   audio) by comparing the screenshots committed with the PR against the reference images. Both reviewers leave
    findings as review comments; the builder fixes and re-requests. Two approvals (Opus + Fable where required)
    merge the PR.
 5. **Sprint QA pass (Sonnet QA + Opus adversary).** Once all tickets merge, QA runs the sprint's *QA plan* on the
-   `main` preview deployment, files bugs as issues labelled `bug` + `sprint:NN`, and posts the sprint QA report
+   built `main` (`npm run build && npm run preview`), files bugs as issues labelled `bug` + `sprint:NN`, and posts the sprint QA report
    (template in `docs/qa/QA-STRATEGY.md §7`).
 6. **Bug fixing.** Bugs marked `blocker` are fixed in the same sprint. Others go to the next sprint's backlog
    with Fable's triage decision.
@@ -65,7 +65,8 @@ QA: the tests this ticket must add or make pass
 - Do not change a tunable value. Propose it in the PR; Fable decides.
 - Do not add a dependency. Propose it in the PR; Opus decides.
 - Every PR: description uses the template, links the issue, includes the fast-check output, and for visual work
-  includes a screenshot from the Vercel preview next to the reference image crop it is matching.
+  includes a screenshot from a local `npm run preview` or from `tests/visual` next to the reference image
+  crop it is matching.
 - **Every PR answers "player-visible?"** (KI-19-04). A change is player-visible if it alters what is on screen,
   what the game does, what a key press causes, or what the game says — not merely because it is large or
   risky. Tests, CI, tooling and refactors are not. If it is, label the PR `player-visible` and add a line to
@@ -104,8 +105,11 @@ engineer never decides what a sentence should say, which is the rule this replac
 - Labels: `sprint:NN`, `owner:*`, `type:*`, `needs-design-review`, `bug`, `blocker`, `tuning-proposal`.
 - Sign-off: a row in the `docs/sprints/README.md` table plus a comment on the tracking issue. Tags
   (`sprint-NN-done`, `v1.0.0`) are owner-applied because agent sessions cannot push tag refs.
-- Vercel: the GitHub integration builds every PR into a preview URL (posted automatically on the PR). `main`
-  deploys to production. Nobody deploys manually.
+- Vercel: **deployments are paused.** `vercel.json` sets `git.deploymentEnabled` to `false`, so no push
+  builds anything — not a branch, not `main`. The last production build stays live and serves the game. The
+  pause exists because this team's concurrency (a session per sprint, several pushes per PR) spent the Hobby
+  plan's whole daily allowance on preview builds nobody could open. Resuming is one line in `vercel.json`,
+  and it is the design lead's call at a milestone, never a builder's.
 
 ## 5. Parallelism map
 

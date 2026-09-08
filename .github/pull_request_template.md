@@ -40,6 +40,6 @@ npm run lint && npm run typecheck && npm run test:unit && npm run build
 - [ ] No tunable values changed without a `tuning-proposal`
 - [ ] No new dependencies without Opus approval
 - [ ] No network requests added; no CDN URLs
-- [ ] Console is clean on the Vercel preview
+- [ ] Console is clean in a local `npm run preview` (Vercel deployments are paused — see `CLAUDE.md`)
 
 🤖 Generated with [Claude Code](https://claude.com/claude-code)
