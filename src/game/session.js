@@ -251,6 +251,7 @@ import { createReplayPlayer } from './replayPlayer.js';
  */
 /** @typedef {import('./loop.js').RequestFrame} RequestFrame */
 /** @typedef {import('./loop.js').VisibilitySource} VisibilitySource */
+/** @typedef {import('./loop.js').LifecycleSource} LifecycleSource */
 /** @typedef {import('./gameStateMachine.js').GameState} GameState */
 /** @typedef {import('./gameStateMachine.js').GameEvent} GameEvent */
 /** @typedef {import('../core/settings.js').Settings} Settings */
@@ -392,6 +393,10 @@ import { createReplayPlayer } from './replayPlayer.js';
  * @property {BlurSource | null} [blurSource] - where the window `blur` that triggers `AUTO_PAUSE` comes from
  *   (`DESIGN-DECISIONS §2.8`: "losing window focus pauses automatically"). Defaults to `window` where there
  *   is one; pass `null` to opt out.
+ * @property {LifecycleSource | null} [documentLifecycleSource] - KI-06-03: forwarded to `createLoop` verbatim
+ *   — where `freeze`/`resume` come from. Defaults to `document` where there is one; pass `null` to opt out.
+ * @property {LifecycleSource | null} [windowLifecycleSource] - KI-06-03: forwarded to `createLoop` verbatim —
+ *   where `pagehide`/`pageshow` come from. Defaults to `window` where there is one; pass `null` to opt out.
  * @property {boolean} [strict] - forwarded to the state machine: throw on an illegal transition (development
  *   and tests) or ignore and log it once (production).
  * @property {() => number} [randomSeed] - draws a match seed when none is fixed; defaults to `Date.now`
@@ -579,6 +584,8 @@ export function createSession({
   cancelFrame,
   now,
   visibilitySource,
+  documentLifecycleSource,
+  windowLifecycleSource,
   blurSource,
   strict = true,
   randomSeed = Date.now,
@@ -1719,6 +1726,12 @@ export function createSession({
     cancelFrame,
     now,
     visibilitySource,
+    // KI-06-03: `pagehide`/`freeze` for a tab the browser suspends, and the `pagehide`/`freeze`/`pageshow`/
+    // `resume` return trip that must not credit the frame loop with the gap. Forwarded verbatim — `loop.js`
+    // already owns the clamp, the cancellation and the "next frame is zero-length" reset this ticket needs,
+    // so this file has nothing of its own to add beyond wiring the two sources through.
+    documentLifecycleSource,
+    windowLifecycleSource,
   });
 
   // `DESIGN-DECISIONS §2.8`: "losing window focus pauses automatically". `loop.js`'s own `onAutoPause` covers

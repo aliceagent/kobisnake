@@ -130,6 +130,31 @@ function createFakeVisibility() {
   };
 }
 
+/**
+ * A stand-in for `document`'s freeze/resume half or `window`'s pagehide/pageshow half (KI-06-03) — the same
+ * fake `loop.test.js` uses, one shape serving both real targets since neither pair carries a property to
+ * read.
+ */
+function createFakeLifecycle() {
+  /** @type {Map<string, Set<() => void>>} */
+  const listeners = new Map();
+  return {
+    /** @param {string} type @param {() => void} listener */
+    addEventListener(type, listener) {
+      if (!listeners.has(type)) listeners.set(type, new Set());
+      listeners.get(type)?.add(listener);
+    },
+    /** @param {string} type @param {() => void} listener */
+    removeEventListener(type, listener) {
+      listeners.get(type)?.delete(listener);
+    },
+    /** @param {string} type */
+    fire(type) {
+      for (const listener of [...(listeners.get(type) ?? [])]) listener();
+    },
+  };
+}
+
 /** @param {object} [overrides] - forwarded to `createSession`, on top of the fakes below. */
 function buildSession(overrides = {}) {
   const renderer = createFakeRenderer();
@@ -145,6 +170,8 @@ function buildSession(overrides = {}) {
     requestFrame: () => 0,
     cancelFrame: () => {},
     visibilitySource: null,
+    documentLifecycleSource: null,
+    windowLifecycleSource: null,
     blurSource,
     ...overrides,
   });
@@ -805,6 +832,81 @@ describe('KS-05-03 AC3: pause', () => {
     expect(() => session.pause()).not.toThrow();
     expect(() => session.resume()).not.toThrow();
     expect(session.getState()).toBe(STATES.MAIN_MENU);
+  });
+});
+
+/**
+ * KI-06-03 — the rest of the tab lifecycle beyond the hidden-tab freeze `KS-05-03: a tab coming back
+ * auto-pauses through loop.onAutoPause` (above) already proves.
+ *
+ * `session.advanceSimulation` — what {@link runFrames} uses everywhere else in this file — calls `runUpdate`
+ * directly and bypasses `loop.js`'s own clamp entirely (it is not driven through a frame at all), so it
+ * cannot fabricate a suspension of minutes the way a real one would arrive. `session.loop.step(...)` is the
+ * seam that does: it goes through the same clamp `loop.test.js` pins down directly, exercised here against a
+ * real `RoundSimulation` rather than a bare mock, which is the whole difference AC1 is about ("the round, not
+ * the loop").
+ */
+describe('KI-06-03 tab lifecycle', () => {
+  it('KI-06-03 AC1: a simulated multi-minute suspension advances the round by nothing', () => {
+    const documentLifecycle = createFakeLifecycle();
+    const { session } = buildSession({ documentLifecycleSource: documentLifecycle });
+    playTo(session);
+    const tickWhenSuspended = session.getSim().getState().tick;
+
+    documentLifecycle.fire('freeze');
+    expect(session.loop.isSuspended()).toBe(true);
+    // Suspending alone does not pause the game state — exactly like a tab merely going hidden, it is *coming
+    // back* that auto-pauses (below), not going away.
+    expect(session.getState()).toBe(STATES.PLAYING);
+
+    // Ten simulated minutes as one fabricated frame — the exact shape a real multi-minute suspension hands
+    // the loop, and far more than `maxFrameSeconds` would ever let through even unsuspended.
+    session.loop.step(600);
+    expect(session.getSim().getState().tick).toBe(tickWhenSuspended);
+
+    // Not merely under-advanced: a second, larger fabricated frame while still suspended moves nothing
+    // either, because `step()` refuses to reach `update` at all while suspended (`loop.js`'s own guarantee).
+    session.loop.step(6000);
+    expect(session.getSim().getState().tick).toBe(tickWhenSuspended);
+
+    documentLifecycle.fire('resume');
+    expect(session.loop.isSuspended()).toBe(false);
+    // Coming back auto-pauses instead of resuming silently — the same `onAutoPause` seam the hidden-tab test
+    // above already proves, reached through the identical wiring rather than a second copy of it. Firing the
+    // event alone runs no frame; the next one is what discovers the pause.
+    session.loop.step(0.05);
+    expect(session.getState()).toBe(STATES.PAUSE);
+    expect(session.getSim().getState().tick).toBe(tickWhenSuspended);
+  });
+
+  it('KI-06-03: converges on the same READY? beat a normal resume plays, from the same tick, via pagehide/pageshow', () => {
+    // The other real target (`window`), proved once here rather than duplicating the whole AC1 test above —
+    // `loop.test.js` already proves both pairs reach identical internal state; what is worth proving again
+    // here is that `session.js` does not grow a second pause/resume path for the second pair of events.
+    const windowLifecycle = createFakeLifecycle();
+    const { session, ui } = buildSession({ windowLifecycleSource: windowLifecycle });
+    playTo(session);
+    const tickWhenSuspended = session.getSim().getState().tick;
+
+    windowLifecycle.fire('pagehide');
+    session.loop.step(120); // two fabricated simulated minutes
+    windowLifecycle.fire('pageshow');
+    session.loop.step(0.05);
+
+    expect(session.getState()).toBe(STATES.PAUSE);
+    expect(session.getSim().getState().tick).toBe(tickWhenSuspended);
+    const props = lastShow(ui, STATES.PAUSE);
+    expect(typeof props.onResume).toBe('function');
+
+    // RESUME plays the ordinary one-second READY? beat and continues from the exact tick it stopped on —
+    // `resume()` itself, with no lifecycle-specific branch anywhere in this file.
+    props.onResume();
+    expect(countdownLabels(ui).at(-1)).toBe('READY?');
+    expect(session.loop.timeScale).toBe(0);
+    // Past the one-second beat — ordinary resumption from here, nothing left to do with `loop.step`'s clamp.
+    runFrames(session, 1.1, 11);
+    expect(session.getState()).toBe(STATES.PLAYING);
+    expect(session.getSim().getState().tick).toBe(tickWhenSuspended);
   });
 });
 
