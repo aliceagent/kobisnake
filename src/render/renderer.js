@@ -129,6 +129,110 @@ export function resizeRendererToCanvas(renderer, canvas, devicePixelRatio) {
 }
 
 /**
+ * Anything that fires the two WebGL context events — a `<canvas>` in the browser, a plain `EventTarget` in a
+ * unit test. Typed structurally, and deliberately narrower than `HTMLCanvasElement`, for the same reason
+ * `session.js` types its collaborators structurally: {@link createContextLossWatcher} needs exactly two
+ * methods, and a test that has to build a whole canvas to prove a listener is a test nobody writes.
+ *
+ * @typedef {object} ContextEventTarget
+ * @property {(type: string, listener: (event: any) => void) => void} addEventListener
+ * @property {(type: string, listener: (event: any) => void) => void} removeEventListener
+ */
+
+/**
+ * What {@link createContextLossWatcher} hands back.
+ *
+ * @typedef {object} ContextLossWatcher
+ * @property {() => boolean} isLost - true between a `webglcontextlost` and the `webglcontextrestored` that
+ *   answers it.
+ * @property {(listener: () => void) => () => void} onLost - subscribe; the return value unsubscribes.
+ * @property {(listener: () => void) => () => void} onRestored - subscribe; the return value unsubscribes.
+ * @property {() => void} dispose - remove both DOM listeners and drop every subscriber.
+ */
+
+/**
+ * Watch a canvas for the GPU going away and coming back (KI-06-01).
+ *
+ * A laptop waking from sleep, a driver reset, or a browser reclaiming GPU memory from a background tab all
+ * end the same way: the canvas fires `webglcontextlost`, every GPU resource behind it is gone, and nothing
+ * is ever drawn again unless the page asks for the context back. Until this ticket nothing in the codebase
+ * listened, so the symptom was a dead picture over a match that was still running underneath it — and the
+ * only way out was a reload, which loses the match.
+ *
+ * **`preventDefault()` on the loss event is the whole ticket** (AC3). The default action of
+ * `webglcontextlost` is "this context is finished": the browser fires `webglcontextrestored` **only** if a
+ * listener cancelled the loss event first. Without that one call there is no restore to listen for, and
+ * every line of recovery code below would be unreachable. three.js's own `WebGLRenderer` happens to call it
+ * too, in a listener it registers on the same canvas — but the game may not depend on a library internal for
+ * the one call without which none of this works, and a `preventDefault` on an already-prevented event is
+ * free.
+ *
+ * Subscription rather than a single callback because two layers need the same two events and neither owns
+ * the other: `session.js` pauses and resumes the match on them (this ticket), and `main.js` will hang
+ * KI-06-02's "it never came back" grace timer off them.
+ *
+ * @param {ContextEventTarget} canvas
+ * @returns {ContextLossWatcher}
+ */
+export function createContextLossWatcher(canvas) {
+  /** @type {Set<() => void>} */
+  const lostListeners = new Set();
+  /** @type {Set<() => void>} */
+  const restoredListeners = new Set();
+  let lost = false;
+
+  /**
+   * Notify a set of subscribers, over a copy of it. A listener that unsubscribes itself (or a neighbour)
+   * while it runs must not change what this loop iterates — the game pauses from inside one of these calls.
+   *
+   * @param {Set<() => void>} listeners
+   */
+  function notify(listeners) {
+    for (const listener of [...listeners]) listener();
+  }
+
+  /** @param {{preventDefault?: () => void}} event */
+  function handleLost(event) {
+    // See this function's own doc comment: without this the browser never fires `webglcontextrestored`, and
+    // a lost context is lost for the life of the page.
+    event.preventDefault?.();
+    // A second loss without an intervening restore is not a thing a browser does, but a fabricated event in
+    // a test is, and pausing an already-paused match twice would be a second READY? beat owed on the way
+    // back. The flag is the state; the events only change it.
+    if (lost) return;
+    lost = true;
+    notify(lostListeners);
+  }
+
+  function handleRestored() {
+    if (!lost) return;
+    lost = false;
+    notify(restoredListeners);
+  }
+
+  canvas.addEventListener('webglcontextlost', handleLost);
+  canvas.addEventListener('webglcontextrestored', handleRestored);
+
+  return {
+    isLost: () => lost,
+    onLost(listener) {
+      lostListeners.add(listener);
+      return () => lostListeners.delete(listener);
+    },
+    onRestored(listener) {
+      restoredListeners.add(listener);
+      return () => restoredListeners.delete(listener);
+    },
+    dispose() {
+      canvas.removeEventListener('webglcontextlost', handleLost);
+      canvas.removeEventListener('webglcontextrestored', handleRestored);
+      lostListeners.clear();
+      restoredListeners.clear();
+    },
+  };
+}
+
+/**
  * Build the scene, the camera and the views, with no WebGL involved. Split out from
  * {@link createGameplayRenderer} so the whole composition can be built and asserted on in a unit test.
  *
@@ -245,6 +349,11 @@ export function createGameplayScene({
  * @property {() => boolean} resize
  * @property {(player: number) => THREE.Vector3} getHeadWorldPosition
  * @property {() => number} getDrawCalls
+ * @property {(listener: () => void) => () => void} onContextLost - KI-06-01: subscribe to the canvas losing
+ *   its WebGL context; the return value unsubscribes. See {@link createContextLossWatcher}.
+ * @property {(listener: () => void) => () => void} onContextRestored - KI-06-01: subscribe to the context
+ *   coming back, *after* this renderer has repaired itself; the return value unsubscribes.
+ * @property {() => boolean} isContextLost - KI-06-01: true while there is no GPU to draw into.
  * @property {(x: number, y: number, z: number) => {x: number, y: number, z: number}} projectToNdc - KI-16-01:
  *   the smallest real seam onto `THREE.Vector3.prototype.project`, so a measurement layer can ask "where does
  *   this world point land on screen" without re-deriving the camera's own maths. Plain object, not a
@@ -272,6 +381,35 @@ export function createGameplayRenderer(canvas, options = {}) {
   const composition = createGameplayScene({ ...options, aspect });
   const { scene, camera, snakes } = composition;
 
+  /**
+   * Match the drawing buffer and the camera to the canvas's current box. Shared by the public `resize()` and
+   * by the context-restore repair below, because "make the renderer agree with the canvas again" is the same
+   * job whether the canvas changed size or the GPU went away and came back.
+   *
+   * @returns {boolean} whether the canvas had an area to re-frame for
+   */
+  function applyResize() {
+    const nextAspect = resizeRendererToCanvas(renderer, canvas);
+    if (nextAspect === null) return false;
+    camera.setAspect(nextAspect);
+    return true;
+  }
+
+  const contextLoss = createContextLossWatcher(canvas);
+
+  // KI-06-01. Registered here, before `createGameplayRenderer` returns, so it runs **before** any subscriber
+  // the game adds afterwards (a `Set` notifies in insertion order): by the time `session.js` resumes the
+  // match, this renderer is already fit to draw the frame that resume will ask for.
+  //
+  // three.js does the bulk of the rebuilding itself — its own `webglcontextrestored` listener re-initialises
+  // the GL state and every texture, geometry and program is re-uploaded lazily on the next draw. What it
+  // does not do is re-apply the drawing-buffer size, which lives on the renderer rather than in the context
+  // three just replaced, so the restored context starts at its own default viewport. One `applyResize()` is
+  // the whole repair, and it is the same call a window resize already makes.
+  contextLoss.onRestored(() => {
+    applyResize();
+  });
+
   return {
     renderer,
     scene,
@@ -282,6 +420,12 @@ export function createGameplayRenderer(canvas, options = {}) {
      * @param {number} [dt]
      */
     render(snapshot, dt = 0) {
+      // KI-06-01: there is nothing to draw into while the context is gone, and nothing to show it on. three's
+      // own `render()` already returns early in that state, so this is not about avoiding a GL error — it is
+      // about not advancing the camera's shake and zoom envelopes (`composition.update`'s `dt`) through
+      // frames the player never sees. The match is paused by then anyway; this keeps the *picture* paused too,
+      // so what comes back after the restore is the frame that went away.
+      if (contextLoss.isLost()) return;
       composition.update(snapshot, dt);
       renderer.render(scene, camera);
     },
@@ -297,10 +441,7 @@ export function createGameplayRenderer(canvas, options = {}) {
      * @returns {boolean} whether the canvas had an area to re-frame for; `false` means nothing changed
      */
     resize() {
-      const nextAspect = resizeRendererToCanvas(renderer, canvas);
-      if (nextAspect === null) return false;
-      camera.setAspect(nextAspect);
-      return true;
+      return applyResize();
     },
     /**
      * Where a player's head was last drawn, in world units. This is what `__kobi.getHeadWorldPosition`
@@ -345,7 +486,29 @@ export function createGameplayRenderer(canvas, options = {}) {
       const projected = new THREE.Vector3(x, y, z).project(camera);
       return { x: projected.x, y: projected.y, z: projected.z };
     },
+    /**
+     * KI-06-01: the two events the game recovers from, as subscriptions rather than as one callback each,
+     * because two layers need them and neither owns the other — `session.js` pauses and resumes the match on
+     * them, and `main.js` hangs the "it never came back" grace timer off the same pair.
+     *
+     * @param {() => void} listener
+     * @returns {() => void} unsubscribe
+     */
+    onContextLost(listener) {
+      return contextLoss.onLost(listener);
+    },
+    /**
+     * @param {() => void} listener
+     * @returns {() => void} unsubscribe
+     */
+    onContextRestored(listener) {
+      return contextLoss.onRestored(listener);
+    },
+    isContextLost() {
+      return contextLoss.isLost();
+    },
     dispose() {
+      contextLoss.dispose();
       composition.dispose();
       renderer.dispose();
     },

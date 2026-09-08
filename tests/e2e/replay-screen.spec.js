@@ -142,9 +142,14 @@ test.describe('KI-05-03 the REPLAY screen', () => {
     expect(
       await page.evaluate(() => /** @type {any} */ (globalThis).__kobi.isReplayPlaying()),
     ).toBe(true);
-    await page
-      .locator('[data-screen="REPLAY"] .menu-item', { hasText: REPLAY_COPY.pauseLabel })
-      .click();
+    // KI-05-06 (#260): addressed by `data-replay-toggle`, never by the label. This used to be
+    // `.menu-item` filtered by the text `PAUSE`, and the label flips back to `PLAY` the instant the replay
+    // ends — 3.17 s after PLAY, for this 380-tick fixture. On CI everything before this line is slower, so
+    // the replay had usually finished by the time the click was attempted, the filtered locator matched
+    // nothing, and Playwright waited out the full 30 s test timeout. Addressing the row by a handle that
+    // does not change means the click lands whatever the label says, and a genuine failure fails fast
+    // instead of timing out.
+    await page.locator('[data-replay-toggle]').click();
 
     const stepped = await page.evaluate((steps) => {
       const kobi = /** @type {any} */ (globalThis).__kobi;
@@ -154,6 +159,9 @@ test.describe('KI-05-03 the REPLAY screen', () => {
       return { playing, before, after: kobi.getReplayTick() };
     }, 5);
 
+    // The toggle's label follows the player, and reads PLAY again now it is paused.
+    await expect(page.locator('[data-replay-toggle]')).toHaveText(REPLAY_COPY.playLabel);
+
     // Assert the player before the DOM: it is what advanced, and the readout is only a picture of it.
     expect(stepped.playing).toBe(false);
     expect(stepped.after).toBe(stepped.before + 5);
@@ -161,6 +169,61 @@ test.describe('KI-05-03 the REPLAY screen', () => {
     await expect(page.locator('[data-replay-readout]')).toHaveText(
       new RegExp(`TICK ${stepped.after}\\b`),
     );
+  });
+
+  test('KI-05-06: the transport does not move while the replay plays, or when it ends', async ({
+    page,
+  }) => {
+    await page.goto(DEFAULT_QUERY);
+    await openReplayScreen(page);
+    await page.locator('[data-replay-paste]').fill(NO_INPUT_ROUND);
+    await page
+      .locator('[data-screen="REPLAY"] .menu-item', { hasText: REPLAY_COPY.watchLabel })
+      .click();
+    await expect(page.locator('.replay-player')).toBeVisible();
+    await page.locator('[data-replay-toggle]').click();
+
+    // #260: Playwright will not dispatch a click until an element's box is the same across two consecutive
+    // animation frames. This samples the transport's own box every frame, right through the final tick —
+    // the moment `END OF REPLAY` appears, which is what used to shift it. Sampling happens inside one
+    // `page.evaluate` so no round trip can land between two frames and hide a shift.
+    const boxes = await page.evaluate(async () => {
+      const kobi = /** @type {any} */ (globalThis).__kobi;
+      const doc = /** @type {any} */ (globalThis).document;
+      const toggle = /** @type {HTMLElement} */ (doc.querySelector('[data-replay-toggle]'));
+      const endEl = /** @type {HTMLElement} */ (doc.querySelector('[data-replay-end]'));
+      const shown = () => !endEl.classList.contains('replay-end--placeholder');
+      /** @type {{box: string, phase: string | null, endShown: boolean}[]} */
+      const seen = [];
+      // Bounded by the event under test, not by a frame count: sample every frame until the end-of-replay
+      // line has appeared and a few frames have passed with it up, so the transition itself is inside the
+      // window. The 380-tick fixture takes ~3.2 s of wall time to play out; the deadline is a safety net
+      // that fails the test honestly rather than hanging if it never gets there.
+      const deadline = performance.now() + 8000;
+      let afterEnd = 0;
+      while (afterEnd < 5 && performance.now() < deadline) {
+        await new Promise((resolve) => requestAnimationFrame(resolve));
+        const r = toggle.getBoundingClientRect();
+        seen.push({
+          box: `${r.x},${r.y},${r.width},${r.height}`,
+          phase: kobi.getReplayPhase(),
+          endShown: shown(),
+        });
+        if (shown()) afterEnd += 1;
+      }
+      return seen;
+    });
+
+    // The replay really did finish inside the sampled window, so the end-of-replay transition is covered
+    // rather than merely assumed — without this the test could pass by never reaching the interesting frame.
+    expect(boxes.some((s) => s.phase === 'PLAYING')).toBe(true);
+    expect(boxes.some((s) => s.endShown)).toBe(true);
+
+    const distinct = [...new Set(boxes.map((s) => s.box))];
+    expect(
+      distinct,
+      `the transport moved while playing — boxes seen: ${distinct.join(' | ')}`,
+    ).toHaveLength(1);
   });
 
   test('KI-05-03 AC4: Esc leaves REPLAY and returns to MAIN_MENU', async ({ page }) => {
