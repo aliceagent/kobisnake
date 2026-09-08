@@ -49,6 +49,21 @@ import { STATES } from './gameStateMachine.js';
  * @property {() => object} getRenderedSnapshot - KI-15-02: the exact object the last `drawFrame` handed the
  *   renderer, so a spec can assert the match-setup apple's fixed cell without depending on a three.js draw-
  *   call count or another implementation detail of *how* it was drawn.
+ * @property {(input: string | unknown) => {ok: true} | {ok: false, error: {code: string, message: string}}} loadReplay -
+ *   KI-05-02, a declared deviation from that ticket's own `Files:` list (this file is not on it) — the
+ *   smallest way to make `session.js`'s new replay mode reachable from Playwright at all, mirroring every
+ *   earlier ticket's own declared extension here (KS-07-06, KI-15-02, KI-15-03).
+ * @property {() => void} playReplay - KI-05-02.
+ * @property {() => void} pauseReplay - KI-05-02.
+ * @property {() => boolean} isReplayPlaying - KI-05-02.
+ * @property {() => boolean} stepReplay - KI-05-02.
+ * @property {(tick: number) => void} seekReplay - KI-05-02.
+ * @property {(wallSeconds: number) => void} advanceReplayFrame - KI-05-02: advances the loaded replay by
+ *   `wallSeconds` of real time while it is playing, then draws it with the existing renderer and HUD.
+ * @property {() => number | null} getReplayTick - KI-05-02.
+ * @property {() => import('../core/events.js').Phase | null} getReplayPhase - KI-05-02.
+ * @property {() => object[]} getReplayEvents - KI-05-02.
+ * @property {() => object | null} getReplaySnapshot - KI-05-02.
  */
 
 /**
@@ -142,6 +157,21 @@ import { STATES } from './gameStateMachine.js';
  *   handed the renderer — `session.js`'s own `EMPTY_SNAPSHOT`, its `MATCH_SETUP_SNAPSHOT`, or a live round's
  *   state. What a match-setup e2e spec reads to assert the preview apple's fixed cell without depending on a
  *   three.js draw-call count or another implementation detail of *how* it got drawn.
+ * @property {(input: string | unknown) => {ok: true} | {ok: false, error: {code: string, message: string}}} loadReplay -
+ *   KI-05-02 (declared deviation from that ticket's own `Files:` list — see {@link TestHooksSession.loadReplay}).
+ *   Loads a replay and builds `session.js`'s replay-mode player from it.
+ * @property {() => void} playReplay - KI-05-02.
+ * @property {() => void} pauseReplay - KI-05-02.
+ * @property {() => boolean} isReplayPlaying - KI-05-02.
+ * @property {() => boolean} stepReplay - KI-05-02: advances the loaded replay by exactly one simulation tick.
+ * @property {(tick: number) => void} seekReplay - KI-05-02: seeks the loaded replay by replaying from the start.
+ * @property {(wallSeconds: number) => void} advanceReplayFrame - KI-05-02: the replay-mode counterpart to
+ *   `fastForward` — advances the loaded replay by `wallSeconds` while it is playing, then draws one frame
+ *   with the existing renderer and HUD.
+ * @property {() => number | null} getReplayTick - KI-05-02.
+ * @property {() => import('../core/events.js').Phase | null} getReplayPhase - KI-05-02.
+ * @property {() => object[]} getReplayEvents - KI-05-02: the loaded replay's event log so far.
+ * @property {() => object | null} getReplaySnapshot - KI-05-02.
  */
 
 /**
@@ -392,6 +422,43 @@ export function createTestHooks({ session, renderer, eventTarget, KeyboardEventC
       // exact number a real crash frame would.
       session.renderFrame();
       return camera.position.distanceTo(camera.basePosition);
+    },
+    // KI-05-02, a declared deviation from that ticket's own `Files:` list (`docs/sprints/improvement-05-
+    // replay-capture-and-playback.md`) — this file is not on it, but every method below is a one-line
+    // forward with no logic of its own, the same minimal-surface pattern KS-07-06/KI-15-02/KI-15-03 already
+    // used to reach a `session.js` addition from Playwright.
+    loadReplay(input) {
+      return session.loadReplay(input);
+    },
+    playReplay() {
+      session.playReplay();
+    },
+    pauseReplay() {
+      session.pauseReplay();
+    },
+    isReplayPlaying() {
+      return session.isReplayPlaying();
+    },
+    stepReplay() {
+      return session.stepReplay();
+    },
+    seekReplay(tick) {
+      session.seekReplay(tick);
+    },
+    advanceReplayFrame(wallSeconds) {
+      session.advanceReplayFrame(wallSeconds);
+    },
+    getReplayTick() {
+      return session.getReplayTick();
+    },
+    getReplayPhase() {
+      return session.getReplayPhase();
+    },
+    getReplayEvents() {
+      return session.getReplayEvents();
+    },
+    getReplaySnapshot() {
+      return session.getReplaySnapshot();
     },
   };
 }

@@ -10,6 +10,7 @@ import { createGameStateMachine, GAME_EVENTS, STATES } from './gameStateMachine.
 import { createInput } from './input.js';
 import { createInputLatencyTracker, disabledInputLatencyStats } from './inputLatency.js';
 import { createLoop } from './loop.js';
+import { createReplayPlayer } from './replayPlayer.js';
 
 /**
  * Session wiring (KS-05-03): the game state machine, a best-of match, one round simulation at a time, the
@@ -130,6 +131,29 @@ import { createLoop } from './loop.js';
  * round's snakes spawn at fixed cells, and without clearing `cpuPlayer.js`'s own head-cell memory a spawn
  * cell that happened to match the previous round's final head cell would silently swallow this round's first
  * decision.
+ *
+ * ## KI-05-02: a replay mode that never touches match state
+ *
+ * `docs/sprints/improvement-05-replay-capture-and-playback.md` KI-05-02 asks this file to grow "a replay mode
+ * that renders it with the existing renderer and HUD". Per that ticket's own tech-lead notes, the transport
+ * (play/pause/step/seek) and every rule about *how* a replay reproduces a round belong entirely in
+ * `replayPlayer.js` — this file's job is only to hold one `replayPlayer.js` instance, render whatever it says
+ * to look like right now, and never let anything else touch it.
+ *
+ * "Never let anything else touch it" is what makes AC3 ("replay mode accepts no player input into the
+ * simulation") true by construction rather than by a runtime check: {@link replayPlayer} is a variable this
+ * section alone reads and writes, `handleDirection` (the one function a real keydown ever reaches) knows
+ * nothing about it and only ever calls `sim.applyInput` on the *match* simulation, and nothing below ever
+ * assigns a replay's `RoundSimulation` to `sim`. A movement key pressed while a replay is loaded therefore
+ * cannot reach it regardless of what state the game machine happens to be in — there is no code path from a
+ * keydown to `replayPlayer` at all.
+ *
+ * Deliberately **not** wired into `runUpdate`'s state-machine switch, `GAME_EVENTS`, or the frame loop: doing
+ * that is KI-05-03's "new state in the machine with its generated transition tests", and adding one here would
+ * both duplicate that ticket's work and widen this file's diff into the match-setup code Improvement 12 is
+ * editing concurrently (tech-lead note H). `advanceReplayFrame` below is called by hand — today, by
+ * `tests/e2e/replay.spec.js` through `__kobi`, and later by whatever loop KI-05-03's screen drives — rather
+ * than from a state-machine `onEnter`.
  */
 
 /** @typedef {import('./input.js').Direction} Direction */
@@ -543,6 +567,14 @@ export function createSession({
   let roundSeeds = [];
   /** Set by the pause screen's "Restart match", consumed by the countdown that follows it. */
   let restartRequested = false;
+
+  /**
+   * KI-05-02: the loaded replay's driver, or `null` when no replay is loaded. Entirely separate from `sim`
+   * (see this file's own "a replay mode that never touches match state" header note) — nothing outside the
+   * `-- replay mode --` section below reads or writes it.
+   * @type {import('./replayPlayer.js').ReplayPlayer | null}
+   */
+  let replayPlayer = null;
 
   /**
    * The current round's own input log and full event log, in the exact `{t, player, dir}` /
@@ -1058,6 +1090,28 @@ export function createSession({
     inputLatency?.markRendered();
   }
 
+  // --- replay mode (KI-05-02) -----------------------------------------------------------------------------
+  //
+  // Additive and self-contained: nothing here dispatches a `GAME_EVENTS`, reads or writes `sim`/`match`, or
+  // is called from `runUpdate`'s state-machine switch (see this file's own header note). A replay plays back
+  // only when something calls one of the functions below by hand.
+
+  /**
+   * Draws the loaded replay's current tick with the same renderer and HUD a live round uses (ticket spec:
+   * "renders it with the existing renderer and HUD"), or the empty arena when no replay is loaded.
+   */
+  function renderReplayFrame() {
+    const state = replayPlayer === null ? EMPTY_SNAPSHOT : replayPlayer.getSnapshot();
+    lastRenderedState = state;
+    renderer.render(state, lastDt);
+    if (replayPlayer !== null) {
+      const snapshot = /** @type {RoundSnapshot} */ (state);
+      ui.hud.setTime(formatTime(snapshot.timeRemaining ?? 0));
+      const [p1, p2] = snapshot.snakes;
+      ui.hud.setLengths(p1?.length ?? 0, p2?.length ?? 0);
+    }
+  }
+
   // --- input --------------------------------------------------------------------------------------------
 
   /**
@@ -1457,6 +1511,81 @@ export function createSession({
         inputs: roundInputLog.map((entry) => ({ ...entry })),
         expectedEvents: roundEventLog.map((event) => ({ ...event })),
       };
+    },
+
+    /**
+     * KI-05-02: loads a replay and builds its player (`replayPlayer.js`'s `createReplayPlayer`), discarding
+     * whatever replay was loaded before. `input` is whatever `parseReplay` accepts — JSON text, or an
+     * already-parsed value such as another session's `getReplay()` (KI-05-01's seam). Never throws: a
+     * malformed file, an unsupported version or a `seed: null` replay all come back as `{ok: false, error}`
+     * rather than leaving the previous replay (or a half-built one) in place.
+     *
+     * @param {string | unknown} input
+     * @returns {{ok: true} | {ok: false, error: {code: string, message: string}}}
+     */
+    loadReplay(input) {
+      const built = createReplayPlayer(input);
+      if (!built.ok) return built;
+      replayPlayer = built.player;
+      return { ok: true };
+    },
+    /** Whether a replay is currently loaded. */
+    hasReplay() {
+      return replayPlayer !== null;
+    },
+    /** Marks the loaded replay as playing; {@link advanceReplayFrame} is what actually moves it forward. */
+    playReplay() {
+      replayPlayer?.play();
+    },
+    /** Marks the loaded replay as paused. `stepReplay`/`seekReplay` still work while paused. */
+    pauseReplay() {
+      replayPlayer?.pause();
+    },
+    /** @returns {boolean} */
+    isReplayPlaying() {
+      return replayPlayer?.isPlaying() ?? false;
+    },
+    /** Advances the loaded replay by exactly one simulation tick. A no-op once it has left `PLAYING`. */
+    stepReplay() {
+      return replayPlayer?.step() ?? false;
+    },
+    /**
+     * Seeks the loaded replay to `tick` by replaying it from the start (ticket spec: "cheap and exact") — see
+     * `replayPlayer.js`'s own `seek`.
+     * @param {number} tick
+     */
+    seekReplay(tick) {
+      replayPlayer?.seek(tick);
+    },
+    /**
+     * Consumes `wallSeconds` of real time of the loaded replay, while it is playing, then draws it with the
+     * existing renderer and HUD (ticket spec) — the replay-mode counterpart to `advanceSimulation`/
+     * `fastForward`. A no-op (still renders) when no replay is loaded or it is paused.
+     * @param {number} wallSeconds
+     */
+    advanceReplayFrame(wallSeconds) {
+      replayPlayer?.advance(wallSeconds);
+      renderReplayFrame();
+    },
+    /** Draws one frame of the loaded replay's current tick, without advancing it. */
+    renderReplayFrame() {
+      renderReplayFrame();
+    },
+    /** The loaded replay's current tick, or `null` when none is loaded. */
+    getReplayTick() {
+      return replayPlayer?.tick ?? null;
+    },
+    /** The loaded replay's current `RoundSimulation` phase, or `null` when none is loaded. */
+    getReplayPhase() {
+      return replayPlayer?.phase ?? null;
+    },
+    /** The loaded replay's event log so far, or `[]` when none is loaded. */
+    getReplayEvents() {
+      return replayPlayer?.getEvents() ?? [];
+    },
+    /** The loaded replay's current snapshot, or `null` when none is loaded. */
+    getReplaySnapshot() {
+      return replayPlayer?.getSnapshot() ?? null;
     },
   };
 }
