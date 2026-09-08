@@ -39,7 +39,7 @@
     "@stryker-mutator/vitest-runner": "9.6.1",
     "@types/three": "0.185.4",
     "@vitest/coverage-v8": "3.2.4",
-    "eslint": "9.39.5",
+    "eslint": "10.10.0",
     "eslint-config-prettier": "10.1.8",
     "eslint-plugin-import": "2.32.0",
     "prettier": "3.9.6",
