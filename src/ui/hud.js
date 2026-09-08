@@ -31,6 +31,16 @@
  * resolve their percentage `left`/`top` against that short box instead of the viewport the projection assumed
  * — and `setVisible` below shows or hides both together, so the HUD-visibility rule (`ARCHITECTURE §8`)
  * still applies to the tags without a second rule anywhere.
+ *
+ * **KI-16-03: a below-minimum note, sized entirely by CSS.** Below a stated minimum viewport
+ * (`MIN_SUPPORTED_WIDTH`/`MIN_SUPPORTED_HEIGHT`) a pill would overlap the arena no matter how it is laid out
+ * (`docs/qa/playtests/viewports.md`'s own matrix), so `createHud` also builds one more element — a plain
+ * `MAKE THE WINDOW BIGGER` note — and ties its own `hidden` to the identical "should the HUD be up" signal
+ * `setVisible` already threads to `container`/`tagsLayer`. This file makes no decision about viewport size at
+ * all: `styles.css`'s own media query is what actually decides whether the note paints, given three elements
+ * that all agree on being visible or not (`ARCHITECTURE §8`'s own state-driven visibility, unchanged); this
+ * file only ever builds the element and keeps its `hidden` in lockstep with the other two, exactly the split
+ * the tech-lead notes on issue #248 ask for ("responsive sizing belongs in the stylesheet, not in `hud.js`").
  */
 
 /**
@@ -66,6 +76,28 @@ const LASER_WARNING_TEXT = 'LASERS CLOSING!';
 
 /** CSS class that reddens the timer text for the rest of the round (`src/ui/styles.css`). */
 const TIMER_WARNING_CLASS = 'hud-timer--warning';
+
+/**
+ * KI-16-03: the stated minimum supported viewport. `docs/qa/playtests/viewports.md` (KI-16-01) is the
+ * smallest size the matrix found the HUD clear at every other size it measured except this one — 640×480
+ * itself is supported and must show the *full* HUD; the note below only ever replaces it strictly below
+ * this box (`width < MIN_SUPPORTED_WIDTH || height < MIN_SUPPORTED_HEIGHT`), never at it. Exported so a
+ * spec can build viewports on both sides of the boundary from this one number rather than a copy of it —
+ * the tech-lead notes on issue #248 ask for both 639×480 and 640×480 to be tested, and this is the constant
+ * both cases are computed from. `styles.css`'s own media query is one CSS pixel narrower on each axis
+ * (`max-width: 639px`, `max-height: 479px`) than these — `max-width`/`max-height` are themselves inclusive of
+ * the boundary they name, so matching this file's strict `<` takes one pixel off each; that file's own
+ * comment cross-references these two constants by name.
+ */
+export const MIN_SUPPORTED_WIDTH = 640;
+/** @see MIN_SUPPORTED_WIDTH */
+export const MIN_SUPPORTED_HEIGHT = 480;
+
+/**
+ * The below-minimum note's exact copy (tech-lead notes on issue #248: applied default pending the design
+ * lead's ruling on #245). Never invent alternative wording or a second line.
+ */
+export const MIN_SIZE_NOTE_TEXT = 'MAKE THE WINDOW BIGGER';
 
 /**
  * The tag's copy, per `13-gameplay-hud.png` and the tech-lead note on this ticket: the image shows two lines
@@ -137,6 +169,19 @@ export function createHud(root) {
   tagsLayer.className = 'hud-powerup-tags';
   root.appendChild(tagsLayer);
 
+  // KI-16-03: the below-minimum note (see `MIN_SUPPORTED_WIDTH`/`MIN_SUPPORTED_HEIGHT` above). Built once,
+  // always in the DOM, and non-interactive (`pointer-events: none` in `styles.css`, matching `#ui` itself) —
+  // whether it is ever *shown* is `styles.css`'s own media query, keyed to the live viewport size, not
+  // anything this file computes: a `resize` needs no JS listener here to react to it. Its own `hidden` is
+  // driven by the exact same "should the HUD be up right now" signal `container`/`tagsLayer` already get
+  // from `setVisible` below, which is what makes it genuinely *replace* the HUD rather than merely coexist
+  // with it — it can only ever show at a moment the round HUD itself would have (`ARCHITECTURE §8`'s
+  // `HUD_STATES`), and the media query is what decides whether the viewport is too small for that to be safe.
+  const minSizeNote = doc.createElement('div');
+  minSizeNote.className = 'hud-min-size-note';
+  minSizeNote.textContent = MIN_SIZE_NOTE_TEXT;
+  root.appendChild(minSizeNote);
+
   /** Seconds left before the banner hides itself; only meaningful while `banner.hidden` is `false`. */
   let bannerRemaining = 0;
 
@@ -178,6 +223,9 @@ export function createHud(root) {
     setVisible(visible) {
       container.hidden = !visible;
       tagsLayer.hidden = !visible;
+      // Tied to the identical signal (see the doc comment where `minSizeNote` is built) — `styles.css`'s
+      // media query alone decides whether this ever actually paints.
+      minSizeNote.hidden = !visible;
     },
     setTime(text) {
       timer.textContent = text;
@@ -240,6 +288,7 @@ export function createHud(root) {
     destroy() {
       container.remove();
       tagsLayer.remove();
+      minSizeNote.remove();
     },
   };
 }

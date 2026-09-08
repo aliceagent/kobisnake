@@ -105,6 +105,76 @@ body {
   text-align: center;
 }
 
+/* KI-16-03: at narrower-than-16:9 aspect ratios the arena's own screen box grows toward the flanks the pills
+   live in — `DESIGN-DECISIONS §1 row 31`'s framing rule is *why*: the vertical FOV binds regardless of
+   aspect, so a narrower viewport gives the arena a *larger* share of the frame width, not a smaller one
+   (`docs/qa/playtests/viewports.md`'s own finding). These three breakpoints track the narrower sizes that
+   matrix measured pill/arena overlap at — 1024×768, 800×600, 640×480 — every one 4:3, which is why a plain
+   viewport-width query is enough: the flank is a function of aspect ratio, not raw width, and all three share
+   one aspect. 1280px and up (every 16:9-or-wider viewport the matrix measured) is untouched by any rule
+   below, so the confirmed picture's own pixels stay exactly what they were (`DESIGN-DECISIONS §1 row 24`,
+   KI-16-02 AC2) and every existing baseline at 1280×720 is unaffected. Values were measured against the real
+   arena box via `tests/agent/viewports.js`'s own `measureMidRoundFrame`/`rectOverlap`, not eyeballed — see
+   the PR description for the before/after numbers at all three sizes. */
+@media (max-width: 1099px) {
+  .hud-row {
+    font-size: 1rem;
+    gap: 0.6rem;
+  }
+
+  .hud-player {
+    min-width: 2.5rem;
+    padding: 0.4rem 0.55rem;
+  }
+
+  .hud-timer {
+    padding: 0.4rem 0.8rem;
+    font-size: 1.2rem;
+  }
+}
+
+@media (max-width: 899px) {
+  .hud {
+    padding: 0.75rem 1rem;
+  }
+
+  .hud-row {
+    font-size: 0.85rem;
+    gap: 0.4rem;
+  }
+
+  .hud-player {
+    min-width: 2rem;
+    padding: 0.3rem 0.4rem;
+  }
+
+  .hud-timer {
+    padding: 0.3rem 0.6rem;
+    font-size: 1.05rem;
+  }
+}
+
+@media (max-width: 699px) {
+  .hud {
+    padding: 0.5rem 0.6rem;
+  }
+
+  .hud-row {
+    font-size: 0.7rem;
+    gap: 0.25rem;
+  }
+
+  .hud-player {
+    min-width: 1.5rem;
+    padding: 0.2rem 0.3rem;
+  }
+
+  .hud-timer {
+    padding: 0.25rem 0.5rem;
+    font-size: 0.85rem;
+  }
+}
+
 /* KS-04-03 AC2: the timer turns red on `LASER_WARNING` and stays that way for the rest of the round. Same
    red as the P1 pill's border above, so the warning colour is not a new one invented just for this. */
 .hud-timer--warning {
@@ -135,6 +205,53 @@ body {
    `.hud-laser-banner` and `.menu-screen` above and below already do. */
 .hud[hidden] {
   display: none;
+}
+
+/* KI-16-03: the below-minimum note (`hud.js`'s `MIN_SIZE_NOTE_TEXT`/`MIN_SUPPORTED_WIDTH`/
+   `MIN_SUPPORTED_HEIGHT` — the two constants this rule's own media query mirrors). `hud.js` builds this
+   element unconditionally and keeps its `hidden` attribute exactly in step with `.hud`'s own (see that
+   file's module doc comment) — every decision belongs to this stylesheet: the note is never rendered at all
+   unless BOTH the round HUD would be up AND the viewport is too small to lay the HUD out without a pill
+   overlapping the arena. Same dark full-bleed treatment `.overlay`/`.menu-screen` already use above, so this
+   introduces no new colour (CLAUDE.md: hex colours belong only in this file, and reuse before inventing).
+   `pointer-events: none`, like every other direct child of `#ui` — it is information, not a control, and
+   must never block a click meant for whatever is genuinely still running underneath it (AC2: "the game still
+   runs"). */
+.hud-min-size-note {
+  position: absolute;
+  inset: 0;
+  display: none;
+  align-items: center;
+  justify-content: center;
+  padding: 2rem;
+  background: rgba(10, 12, 16, 0.85);
+  color: #ffffff;
+  font-size: clamp(1rem, 9vmin, 2rem);
+  font-weight: 800;
+  letter-spacing: 0.06em;
+  text-align: center;
+  text-transform: uppercase;
+  pointer-events: none;
+}
+
+.hud-min-size-note[hidden] {
+  display: none;
+}
+
+/* `max-width`/`max-height` are inclusive of the value they name, so these sit one CSS pixel below
+   `MIN_SUPPORTED_WIDTH`/`MIN_SUPPORTED_HEIGHT` (640/480) in `hud.js` — 640×480 itself must show the full HUD,
+   never this note (KI-16-03 tech-lead notes on #248: "640×480 is the minimum, and it is supported"). Two
+   independent conditions, matching `hud.js`'s own `width < 640 || height < 480`: either axis alone being too
+   small is enough. */
+@media (max-width: 639px), (max-height: 479px) {
+  .hud-min-size-note:not([hidden]) {
+    display: flex;
+  }
+
+  .hud,
+  .hud-powerup-tags {
+    display: none !important;
+  }
 }
 
 /* KS-06-02: the power-up tag, per `docs/reference/images/13-gameplay-hud.png` — a dark rounded pill with a

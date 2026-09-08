@@ -1,6 +1,12 @@
 // @ts-check
 import { describe, expect, it } from 'vitest';
-import { createHud, POWERUP_TAG_OFFSET } from '../../../src/ui/hud.js';
+import {
+  MIN_SIZE_NOTE_TEXT,
+  MIN_SUPPORTED_HEIGHT,
+  MIN_SUPPORTED_WIDTH,
+  POWERUP_TAG_OFFSET,
+  createHud,
+} from '../../../src/ui/hud.js';
 
 /**
  * KS-04-03: the "LASERS CLOSING!" banner and red-timer presentation on `LASER_WARNING`.
@@ -410,5 +416,59 @@ describe('createHud — KS-06-02 power-up tag', () => {
     expect(tagsLayer.hidden).toBe(true);
     hud.setVisible(true);
     expect(tagsLayer.hidden).toBe(false);
+  });
+});
+
+/**
+ * KI-16-03: the below-minimum note. `hud.js`'s own module doc comment explains the split this suite proves:
+ * this file only ever builds the note and keeps its `hidden` in lockstep with the rest of the HUD —
+ * `styles.css`'s media query is what actually decides whether a viewer ever sees it, which is exactly why
+ * these tests check `hidden` (the one thing `createHud` controls) rather than any layout, and never assert a
+ * viewport size against it at all — the fake root here has no notion of one.
+ */
+describe('createHud — KI-16-03 below-minimum note', () => {
+  it('builds the note with the exact copy, and it starts in lockstep with the rest of the HUD', () => {
+    const root = createFakeRoot();
+    createHud(root);
+    const note = findByClass(/** @type {any} */ (root), 'hud-min-size-note');
+    const container = findByClass(/** @type {any} */ (root), 'hud');
+
+    expect(note.textContent).toBe(MIN_SIZE_NOTE_TEXT);
+    expect(note.textContent).toBe('MAKE THE WINDOW BIGGER'); // the ticket's own exact wording, never invented
+    expect(note.hidden).toBe(container.hidden);
+  });
+
+  it('setVisible(false)/setVisible(true) tie the note to the exact signal the pills/timer already get', () => {
+    const root = createFakeRoot();
+    const hud = createHud(root);
+    const note = findByClass(/** @type {any} */ (root), 'hud-min-size-note');
+    const container = findByClass(/** @type {any} */ (root), 'hud');
+    const tagsLayer = findByClass(/** @type {any} */ (root), 'hud-powerup-tags');
+
+    hud.setVisible(false);
+    expect(note.hidden).toBe(true);
+    expect(note.hidden).toBe(container.hidden);
+    expect(note.hidden).toBe(tagsLayer.hidden);
+
+    hud.setVisible(true);
+    expect(note.hidden).toBe(false);
+    expect(note.hidden).toBe(container.hidden);
+    expect(note.hidden).toBe(tagsLayer.hidden);
+  });
+
+  it('destroy() removes the note along with the rest of the HUD', () => {
+    const root = createFakeRoot();
+    const hud = createHud(root);
+
+    hud.destroy();
+    expect(search(/** @type {any} */ (root), 'hud-min-size-note')).toBeNull();
+  });
+
+  it('KI-16-03: the minimum is exactly 640×480, the size the matrix found the HUD last clear at', () => {
+    // `docs/qa/playtests/viewports.md`'s own smallest viewport — the boundary these two constants encode is
+    // not an arbitrary round number, it is the size the KI-16-01 matrix measured and this ticket's own CSS
+    // keeps clear (`styles.css`'s media query mirrors these by name in its own comment).
+    expect(MIN_SUPPORTED_WIDTH).toBe(640);
+    expect(MIN_SUPPORTED_HEIGHT).toBe(480);
   });
 });
