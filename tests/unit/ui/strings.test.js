@@ -46,6 +46,34 @@ import { APPROVED_KEYS, STRINGS } from '../../../src/ui/strings.js';
  * shape rule does not anticipate would need a human to notice the false positive; that risk is bounded, not
  * eliminated, and is the reason `describe('extractApprovedFromSection3 — shape rules')` below tests the
  * extraction function in isolation against synthetic input as well as the real document.
+ *
+ * ## Exact membership, not substring — and the one named exception
+ *
+ * Each extracted span is checked against the catalogue by **exact** membership (`corpus.includes(value)`),
+ * not substring containment. A substring check would let a short approved label "pass" merely because some
+ * longer, unrelated catalogue string happens to contain it — e.g. deleting `replay.playLabel` (`'PLAY'`)
+ * would go unnoticed while `replay.keyHint` (`'SPACE PLAY · . STEP · ← → SCRUB · ESC BACK'`) is still in the
+ * corpus, or deleting `replay.watchLabel` (`'WATCH'`) would hide behind `matchOver.watchLastRound`
+ * (`'WATCH LAST ROUND'`). That defeats the point of AC1 as KI-20-02's deletion-safety net: it has to be able
+ * to see an approved string go missing, not just find *something* that happens to contain its letters.
+ *
+ * There is exactly **one** named exception, in {@link APPROVED_FRAGMENT_EXCEPTIONS}: the third-consecutive-
+ * draw bullet in §3 ("The scoreboard on the third consecutive draw") quotes `"one more and the match is
+ * called"` as a fragment of the warning text, not as its own standalone label — the live approved string is
+ * the whole of `scoreboard.drawWarning`, `'DRAW — REPLAY · one more and the match is called'`, and §3 only
+ * quotes the second half of it. That one span is checked by substring, everything else by exact equality.
+ *
+ * `describe('KI-20-01 AC1 — a deletion sweep …')` below proves this catches KI-20-02-style regressions: it
+ * simulates dropping each {@link APPROVED_KEYS} entry one at a time and re-running the AC1 check, and asserts
+ * the set of "undetected" deletions is exactly two known, accepted, duplicate-value pairs — never more:
+ * - `menu.itemHowToPlay` and `howToPlay.title` both resolve to the exact string `'HOW TO PLAY'`.
+ * - `menu.itemReplay`, `replay.menuLabel` and `replay.screenHeading` all resolve to the exact string
+ *   `'REPLAY'`.
+ * Deleting one member of either group is invisible to a *value*-based check, because the sibling key still
+ * supplies the identical string to the corpus — deleting every member of a group is caught (nothing left
+ * supplies that value). This is inherent to two or more keys legitimately holding the same word for different
+ * screen purposes, not a gap in the check; the sweep test exists precisely so a *third*, unrelated key
+ * silently becoming undetectable would be caught as a regression.
  */
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
@@ -131,6 +159,26 @@ const APPROVED_SAMPLE_ARGS = {
   'replay.tickReadout': [[137, 380]],
 };
 
+/**
+ * The one, single, named exception to exact catalogue-membership matching in AC1 — see this file's own module
+ * doc comment, "Exact membership, not substring — and the one named exception", for why it exists and why it
+ * is deliberately not a general rule.
+ * @type {ReadonlySet<string>}
+ */
+const APPROVED_FRAGMENT_EXCEPTIONS = new Set(['one more and the match is called']);
+
+/**
+ * Whether `value` (one span AC1 extracted from §3) is present in `corpus` — exact membership for everything
+ * except {@link APPROVED_FRAGMENT_EXCEPTIONS}, which are checked by substring. @param {string[]} corpus
+ * @param {string} value @returns {boolean}
+ */
+function corpusHasApprovedValue(corpus, value) {
+  if (APPROVED_FRAGMENT_EXCEPTIONS.has(value)) {
+    return corpus.some((entry) => entry.includes(value));
+  }
+  return corpus.includes(value);
+}
+
 /** @param {string} dotPath @returns {unknown} */
 function getByPath(dotPath) {
   return dotPath.split('.').reduce((value, key) => {
@@ -145,12 +193,17 @@ function getByPath(dotPath) {
  * Every string {@link STRINGS} actually produces for its approved entries — a plain string value as-is, an
  * array's entries each on their own, and a function called once per sample-arg tuple in
  * {@link APPROVED_SAMPLE_ARGS} (defaulting to one no-arg call when a function has no entry there).
+ *
+ * @param {string | null} excludeKey - when given, that one {@link APPROVED_KEYS} dot-path (and everything it
+ *   resolves to) is left out entirely — simulating "this key was deleted from the catalogue", for the
+ *   deletion-sweep test below.
  * @returns {string[]}
  */
-function approvedCatalogueValues() {
+function approvedCatalogueValues(excludeKey = null) {
   /** @type {string[]} */
   const values = [];
   for (const dotPath of APPROVED_KEYS) {
+    if (dotPath === excludeKey) continue;
     const resolved = getByPath(dotPath);
     if (typeof resolved === 'string') {
       values.push(resolved);
@@ -265,13 +318,13 @@ describe('KI-20-01 AC1 — every string in DESIGN-DECISIONS §3 is present and i
   });
 
   it.each(approved.map((value, i) => [i, value]))('§3 string %#: %s', (_i, value) => {
-    // Substring, not exact-element, containment: an approved §3 fragment can be part of a longer catalogue
-    // string (e.g. "one more and the match is called" inside `scoreboard.drawWarning`'s full text), and a
-    // parameterised entry's sample output can likewise carry an approved phrase alongside computed text.
-    const found = corpus.some((entry) => entry.includes(value));
+    // Exact membership by default; substring only for the one named fragment exception — see this file's own
+    // module doc comment ("Exact membership, not substring — and the one named exception") for why.
+    const found = corpusHasApprovedValue(corpus, value);
     expect(
       found,
-      `"${value}" was not found, character for character, in any approved catalogue value`,
+      `"${value}" was not found, character for character, as its own catalogue value (or, for the one named ` +
+        `fragment exception, as a substring of one)`,
     ).toBe(true);
   });
 
@@ -303,6 +356,55 @@ describe('KI-20-01 AC1 — every string in DESIGN-DECISIONS §3 is present and i
 
     expect(markerCount).toBe(APPROVED_KEYS.length);
     expect(row27MarkerCount).toBeGreaterThan(0);
+  });
+});
+
+describe('KI-20-01 AC1 — a deletion sweep proves the check can actually see a key go missing', () => {
+  // Simulates KI-20-02 accidentally dropping each approved key, one at a time: rebuild the corpus without
+  // that key's contribution, and re-run the same exact-membership-plus-one-fragment-exception check the AC1
+  // test above uses. A key is "undetected" if every §3 span is still found without it — i.e. deleting that
+  // key alone would not turn this test suite red.
+  const markdown = readFileSync(DESIGN_DECISIONS_PATH, 'utf8');
+  const { approved } = extractApprovedFromSection3(markdown);
+
+  /** @type {string[]} */
+  const undetected = [];
+  for (const dotPath of APPROVED_KEYS) {
+    const reducedCorpus = approvedCatalogueValues(dotPath);
+    const stillAllFound = approved.every((value) => corpusHasApprovedValue(reducedCorpus, value));
+    if (stillAllFound) undetected.push(dotPath);
+  }
+
+  // The only two ways a single key's deletion can be invisible to a value-based check: another key resolves
+  // to the exact same string. Named and accepted here (see the module doc comment above) — not a gap in the
+  // check, but two keys legitimately sharing a word for different screen purposes.
+  const KNOWN_UNDETECTABLE_DUE_TO_DUPLICATE_VALUE = new Set([
+    'menu.itemHowToPlay', // 'HOW TO PLAY' — also supplied by howToPlay.title
+    'howToPlay.title', // 'HOW TO PLAY' — also supplied by menu.itemHowToPlay
+    'menu.itemReplay', // 'REPLAY' — also supplied by replay.menuLabel / replay.screenHeading
+    'replay.menuLabel', // 'REPLAY' — also supplied by menu.itemReplay / replay.screenHeading
+    'replay.screenHeading', // 'REPLAY' — also supplied by menu.itemReplay / replay.menuLabel
+  ]);
+
+  it('every undetected key is one of the two known duplicate-value pairs — nothing else', () => {
+    const unexpected = undetected.filter(
+      (key) => !KNOWN_UNDETECTABLE_DUE_TO_DUPLICATE_VALUE.has(key),
+    );
+    expect(unexpected, 'a key whose deletion is invisible for no documented reason').toEqual([]);
+  });
+
+  it('the known duplicate-value keys are, as expected, exactly the undetected set (so this test would fail loudly if a fix ever de-duplicates them)', () => {
+    expect(new Set(undetected)).toEqual(KNOWN_UNDETECTABLE_DUE_TO_DUPLICATE_VALUE);
+  });
+
+  it('every key outside the two duplicate-value pairs IS caught by its own deletion', () => {
+    const singleValueKeys = APPROVED_KEYS.filter(
+      (key) => !KNOWN_UNDETECTABLE_DUE_TO_DUPLICATE_VALUE.has(key),
+    );
+    expect(singleValueKeys.length).toBeGreaterThan(0);
+    for (const dotPath of singleValueKeys) {
+      expect(undetected, `deleting "${dotPath}" should have been caught`).not.toContain(dotPath);
+    }
   });
 });
 
