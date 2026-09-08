@@ -67,7 +67,7 @@ are where a finding here turns into a fix.
 
 - **Arena framing is correct at every measured viewport.** The floor rectangle plus one wall thickness of camera margin (`DESIGN-DECISIONS §1 row 24`'s own framing target) and the wall ring's own real geometry both stay inside the frame at all 7 viewports — nothing is cut off, at any aspect ratio in the list.
 - **The near-edge fit has zero slack.** The floor-plus-margin box's near edge (the corner closest to the camera) lands on the frustum boundary to within one floating-point ULP at every viewport — the largest gap measured is 2.22e-16 of the NDC range, which is float noise, not a real margin. `render/camera.js`'s vertical-FOV constraint binds the camera distance whenever the viewport's aspect ratio exceeds roughly 1.023 (`1 / sin(78°)`, since the arena is square) — every viewport in this list is 4:3 (1.333) or wider, so the height constraint is what's tight everywhere measured, and the camera distance the framing solve produces is therefore identical across every landscape viewport here (see the matrix below — the same distance would show up as the same near-edge NDC y, which it does).
-- **HUD pills vs. the arena:** at least one player pill overlaps the arena at 3 of 7 viewports — 1024x768, 800x600, 640x480. KI-16-03's job, not this ticket's.
+- **HUD pills vs. the arena:** neither player pill overlaps the arena's own projected bounds at any measured viewport.
 - **Laser banner vs. the pills:** the "LASERS CLOSING!" banner does not overlap either player pill at any measured viewport.
 
 ## The matrix
@@ -75,12 +75,12 @@ are where a finding here turns into a fix.
 | Viewport | Why | Canvas backing size | Canvas CSS box | DPR | Whole arena on screen (NDC bounds) | Floor near-edge NDC y | P1 pill overlaps arena | P2 pill overlaps arena | Banner overlaps a pill | Screenshot |
 |---|---|---|---|---|---|---|---|---|---|---|
 | 1280x720 | the confirmed picture; every existing baseline | 1280×720 | 1280×720 | 1 | yes (x -0.575…0.575, y -1.000…0.891) | -1.0000000000000002 | no (0 px²) | no (0 px²) | no (P1 0 px², P2 0 px²) | [screenshot](viewports/1280x720.png) |
-| 1024x768 | 4:3 laptop | 1024×768 | 1024×768 | 1 | yes (x -0.767…0.767, y -1.000…0.891) | -1.0000000000000002 | yes (80 px²) | yes (80 px²) | no (P1 0 px², P2 0 px²) | [screenshot](viewports/1024x768.png) |
-| 800x600 | the school laptop | 800×600 | 800×600 | 1 | yes (x -0.767…0.767, y -1.000…0.891) | -1.0000000000000002 | yes (742 px²) | yes (742 px²) | no (P1 0 px², P2 0 px²) | [screenshot](viewports/800x600.png) |
+| 1024x768 | 4:3 laptop | 1024×768 | 1024×768 | 1 | yes (x -0.767…0.767, y -1.000…0.891) | -1.0000000000000002 | no (0 px²) | no (0 px²) | no (P1 0 px², P2 0 px²) | [screenshot](viewports/1024x768.png) |
+| 800x600 | the school laptop | 800×600 | 800×600 | 1 | yes (x -0.767…0.767, y -1.000…0.891) | -1.0000000000000002 | no (0 px²) | no (0 px²) | no (P1 0 px², P2 0 px²) | [screenshot](viewports/800x600.png) |
 | 1920x1080 | ARCHITECTURE §12's own resolution | 1920×1080 | 1920×1080 | 1 | yes (x -0.575…0.575, y -1.000…0.891) | -1.0000000000000002 | no (0 px²) | no (0 px²) | no (P1 0 px², P2 0 px²) | [screenshot](viewports/1920x1080.png) |
 | 2560x1080 | ultrawide | 2560×1080 | 2560×1080 | 1 | yes (x -0.431…0.431, y -1.000…0.891) | -1.0000000000000002 | no (0 px²) | no (0 px²) | no (P1 0 px², P2 0 px²) | [screenshot](viewports/2560x1080.png) |
 | 1280x720@2 | high-DPI | 2560×1440 | 1280×720 | 2 | yes (x -0.575…0.575, y -1.000…0.891) | -1.0000000000000002 | no (0 px²) | no (0 px²) | no (P1 0 px², P2 0 px²) | [screenshot](viewports/1280x720@2.png) |
-| 640x480 | the stated minimum | 640×480 | 640×480 | 1 | yes (x -0.767…0.767, y -1.000…0.891) | -1.0000000000000002 | yes (1507 px²) | yes (1507 px²) | no (P1 0 px², P2 0 px²) | [screenshot](viewports/640x480.png) |
+| 640x480 | the stated minimum | 640×480 | 640×480 | 1 | yes (x -0.767…0.767, y -1.000…0.891) | -1.0000000000000002 | no (0 px²) | no (0 px²) | no (P1 0 px², P2 0 px²) | [screenshot](viewports/640x480.png) |
 
 **Floor near-edge NDC y** is the floor-plus-margin box's own near-edge bound (`floorNdcBounds.minY`), at full float precision — this is the number "What this found" calls a zero-slack fit: it sits a single floating-point ULP past `-1.0`, identically at every viewport, because the vertical framing constraint binds regardless of aspect ratio (see below). A row marked *(… outside)* names which of the two groups — the floor-plus-margin framing box, or the wall ring's own real geometry — actually left the frame; none does at any viewport measured here.
 
@@ -206,12 +206,12 @@ committed document against on every `npm run test:unit`.
       "canvasCssHeight": 768,
       "devicePixelRatio": 1,
       "p1OverlapsArena": {
-        "overlaps": true,
-        "areaPx2": 79.64686282539589
+        "overlaps": false,
+        "areaPx2": 0
       },
       "p2OverlapsArena": {
-        "overlaps": true,
-        "areaPx2": 79.86993675043712
+        "overlaps": false,
+        "areaPx2": 0
       },
       "laserWarningReached": true,
       "bannerOverlapsP1": {
@@ -257,12 +257,12 @@ committed document against on every `npm run test:unit`.
       "canvasCssHeight": 600,
       "devicePixelRatio": 1,
       "p1OverlapsArena": {
-        "overlaps": true,
-        "areaPx2": 741.9481551949957
+        "overlaps": false,
+        "areaPx2": 0
       },
       "p2OverlapsArena": {
-        "overlaps": true,
-        "areaPx2": 742.3138379489349
+        "overlaps": false,
+        "areaPx2": 0
       },
       "laserWarningReached": true,
       "bannerOverlapsP1": {
@@ -461,12 +461,12 @@ committed document against on every `npm run test:unit`.
       "canvasCssHeight": 480,
       "devicePixelRatio": 1,
       "p1OverlapsArena": {
-        "overlaps": true,
-        "areaPx2": 1506.9722633632282
+        "overlaps": false,
+        "areaPx2": 0
       },
       "p2OverlapsArena": {
-        "overlaps": true,
-        "areaPx2": 1507.4398095663798
+        "overlaps": false,
+        "areaPx2": 0
       },
       "laserWarningReached": true,
       "bannerOverlapsP1": {
