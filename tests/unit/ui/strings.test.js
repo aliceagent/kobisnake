@@ -1,5 +1,5 @@
 // @ts-check
-import { readFileSync } from 'node:fs';
+import { readdirSync, readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import path from 'node:path';
 
@@ -336,8 +336,11 @@ describe('KI-20-01 AC1 — every string in DESIGN-DECISIONS §3 is present and i
 
   it('APPROVED_KEYS agrees with the "// APPROVED — DESIGN-DECISIONS §3" comment convention in the source', () => {
     const source = readFileSync(STRINGS_JS_PATH, 'utf8');
-    const objectStart = source.indexOf('const STRINGS_UNFROZEN = {');
-    const objectEnd = source.indexOf('\nfunction deepFreeze');
+    // KI-20-05 split the one `STRINGS_UNFROZEN` literal into a per-group export apiece, so the slice that
+    // isolates the entries from this module's own doc comment (which quotes the marker as an example) now
+    // runs from the first group to the aggregate that re-assembles them.
+    const objectStart = source.indexOf('export const menu = ');
+    const objectEnd = source.indexOf('export const STRINGS = ');
     expect(objectStart).toBeGreaterThan(-1);
     expect(objectEnd).toBeGreaterThan(objectStart);
     const objectBody = source.slice(objectStart, objectEnd);
@@ -405,6 +408,93 @@ describe('KI-20-01 AC1 — a deletion sweep proves the check can actually see a 
     for (const dotPath of singleValueKeys) {
       expect(undetected, `deleting "${dotPath}" should have been caught`).not.toContain(dotPath);
     }
+  });
+});
+
+describe("KI-20-05 — the catalogue must not defeat KI-11-05's entry/playtest chunk split", () => {
+  // KI-11-05 (#158) requires the playtest modules to be dynamically imported so their strings never reach
+  // the entry chunk every player downloads; `tests/e2e/playtest-bundle.spec.js` enforces it by asserting the
+  // entry chunk contains none of `Find your head`, `Buffered turns`, `kobisnake-playtest-session`, `CHOOSE`.
+  // `playtestPrompt.hintLine` is one of those strings, and it lives in this catalogue.
+  //
+  // Rollup cannot tree-shake individual properties out of one object literal, so a single `STRINGS` object
+  // imported by any entry-reachable module drags the whole catalogue — playtest copy included — into the
+  // entry chunk. Measured on the real build (#258): migrating one screen to `import { STRINGS }` put
+  // `CHOOSE` in the entry chunk; the same screen using `import { howToPlay }` does not.
+  //
+  // Two things make that work, and both are load-bearing:
+  //   1. every group is its own top-level named export, so Rollup can drop the ones nobody imports; and
+  //   2. each is annotated `/*#__PURE__*/`, because Rollup treats a bare `deepFreeze(...)` call as possibly
+  //      side-effectful and keeps it regardless.
+  // These tests guard both, plus the rule that follows from them: a screen imports its group, never the
+  // aggregate. The bundling itself is proved by KI-11-05's e2e; these are the cheap unit-level tripwires
+  // that say *why* it broke when it does.
+
+  const source = readFileSync(STRINGS_JS_PATH, 'utf8');
+
+  /** Every top-level group name the catalogue is expected to export separately. */
+  const GROUPS = [
+    'menu',
+    'howToPlay',
+    'matchSetup',
+    'matchOver',
+    'scoreboard',
+    'pause',
+    'countdown',
+    'replay',
+    'playtestPrompt',
+    'hud',
+    'tuning',
+    'tutorial',
+  ];
+
+  it.each(GROUPS)('exports "%s" as its own /*#__PURE__*/-annotated top-level const', (group) => {
+    expect(
+      source.includes(`export const ${group} = /*#__PURE__*/ deepFreeze({`),
+      `${group} must be its own PURE-annotated export, or Rollup cannot drop it from a chunk that does not use it`,
+    ).toBe(true);
+  });
+
+  it('every exported group is reachable through the STRINGS aggregate too, and is the same object', async () => {
+    const module = await import('../../../src/ui/strings.js');
+    for (const group of GROUPS) {
+      expect(module[group], `${group} is not exported`).toBeDefined();
+      expect(
+        module.STRINGS[group],
+        `STRINGS.${group} must be the very same object as the named export`,
+      ).toBe(module[group]);
+    }
+  });
+
+  it('no module under src/ui imports the aggregate STRINGS — each imports its own group', () => {
+    const uiDir = path.join(REPO_ROOT, 'src/ui');
+    /** @param {string} dir @returns {string[]} */
+    const walk = (dir) =>
+      readdirSync(dir, { withFileTypes: true }).flatMap((entry) => {
+        const full = path.join(dir, entry.name);
+        if (entry.isDirectory()) return walk(full);
+        return entry.isFile() && entry.name.endsWith('.js') ? [full] : [];
+      });
+
+    const offenders = walk(uiDir)
+      .filter((file) => file !== STRINGS_JS_PATH)
+      .filter((file) => {
+        const text = readFileSync(file, 'utf8');
+        // Any import from the catalogue whose binding list contains the aggregate.
+        return [...text.matchAll(/import\s*\{([^}]*)\}\s*from\s*'[^']*strings\.js'/g)].some(
+          (match) =>
+            match[1]
+              .split(',')
+              .map((name) => name.trim().split(/\s+as\s+/)[0])
+              .includes('STRINGS'),
+        );
+      })
+      .map((file) => path.relative(REPO_ROOT, file));
+
+    expect(
+      offenders,
+      'importing the aggregate STRINGS from a screen pulls every group into that chunk and reintroduces #258 — import the group instead',
+    ).toEqual([]);
   });
 });
 
