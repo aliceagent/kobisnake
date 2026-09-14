@@ -48,8 +48,8 @@ jobs:
     name: agent playtest
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
         with:
           node-version: ${{ env.NODE_VERSION }}
           cache: npm
@@ -62,7 +62,7 @@ jobs:
           echo "version=$version" >> "$GITHUB_OUTPUT"
 
       # Same cache key shape as `ci.yml`, so a run here warms the browser binary for the pull-request job too.
-      - uses: actions/cache@v4
+      - uses: actions/cache@v6
         with:
           path: ~/.cache/ms-playwright
           key: playwright-chromium-${{ runner.os }}-${{ steps.playwright-version.outputs.version }}
@@ -83,7 +83,7 @@ jobs:
       # AC1's "uploads the report": the committed run document (KI-03-04) as this run regenerated it, plus
       # Playwright's own report. `if: always()` so a red run still uploads the evidence that explains it —
       # that is the whole point of the artifact.
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         if: always()
         with:
           name: agent-playtest-report
@@ -113,8 +113,8 @@ jobs:
     name: session fuzz
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
         with:
           node-version: ${{ env.NODE_VERSION }}
           cache: npm
@@ -126,7 +126,7 @@ jobs:
           version=$(node -p "require('./package-lock.json').packages['node_modules/@playwright/test'].version")
           echo "version=$version" >> "$GITHUB_OUTPUT"
 
-      - uses: actions/cache@v4
+      - uses: actions/cache@v6
         with:
           path: ~/.cache/ms-playwright
           key: playwright-chromium-${{ runner.os }}-${{ steps.playwright-version.outputs.version }}
@@ -143,7 +143,7 @@ jobs:
           PLAYWRIGHT_HTML_REPORT: playwright-report/monkey
         run: npm run test:agent:monkey -- --reporter=github,html
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         if: always()
         with:
           name: session-fuzz-report

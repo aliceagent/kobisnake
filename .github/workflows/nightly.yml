@@ -33,8 +33,8 @@ jobs:
       matrix:
         browser: [webkit]
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
         with:
           node-version: ${{ env.NODE_VERSION }}
           cache: npm
@@ -46,7 +46,7 @@ jobs:
           version=$(node -p "require('./package-lock.json').packages['node_modules/@playwright/test'].version")
           echo "version=$version" >> "$GITHUB_OUTPUT"
 
-      - uses: actions/cache@v4
+      - uses: actions/cache@v6
         with:
           path: ~/.cache/ms-playwright
           key: playwright-${{ matrix.browser }}-${{ runner.os }}-${{ steps.playwright-version.outputs.version }}
@@ -76,7 +76,7 @@ jobs:
           node scripts/run-playwright-suite.mjs e2e-${{ matrix.browser }}
           tests/e2e --project=${{ matrix.browser }} --reporter=github,html
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         if: failure()
         with:
           name: playwright-report-${{ matrix.browser }}
@@ -109,8 +109,8 @@ jobs:
     name: determinism (webkit)
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
         with:
           node-version: ${{ env.NODE_VERSION }}
           cache: npm
@@ -122,7 +122,7 @@ jobs:
           version=$(node -p "require('./package-lock.json').packages['node_modules/@playwright/test'].version")
           echo "version=$version" >> "$GITHUB_OUTPUT"
 
-      - uses: actions/cache@v4
+      - uses: actions/cache@v6
         with:
           path: ~/.cache/ms-playwright
           key: playwright-webkit-${{ runner.os }}-${{ steps.playwright-version.outputs.version }}
@@ -146,7 +146,7 @@ jobs:
           node scripts/run-playwright-suite.mjs determinism-webkit
           tests/e2e/determinism.spec.js --project=webkit --reporter=github,html
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         if: failure()
         with:
           name: playwright-report-determinism-webkit
@@ -175,8 +175,8 @@ jobs:
     name: perf
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
         with:
           node-version: ${{ env.NODE_VERSION }}
           cache: npm
@@ -188,7 +188,7 @@ jobs:
           version=$(node -p "require('./package-lock.json').packages['node_modules/@playwright/test'].version")
           echo "version=$version" >> "$GITHUB_OUTPUT"
 
-      - uses: actions/cache@v4
+      - uses: actions/cache@v6
         with:
           path: ~/.cache/ms-playwright
           key: playwright-chromium-${{ runner.os }}-${{ steps.playwright-version.outputs.version }}
@@ -206,7 +206,7 @@ jobs:
 
       # `if: always()`: the measurement tables this suite prints are the point of running it nightly, and a
       # red run's are the ones worth reading.
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         if: always()
         with:
           name: playwright-report-perf
